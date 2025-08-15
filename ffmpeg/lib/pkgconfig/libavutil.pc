@@ -1,0 +1,14 @@
+prefix=ffmpeg_build
+exec_prefix=${prefix}
+libdir=ffmpeg_build/lib
+includedir=ffmpeg_build/include
+
+Name: libavutil
+Description: FFmpeg utility library
+Version: 58.29.100
+Requires: 
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavutil user32.lib bcrypt.lib
+Libs.private: 
+Cflags: -I${includedir}

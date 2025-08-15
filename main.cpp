@@ -7,6 +7,7 @@
 #include "stb_image_write.h"
 
 #include "detect.h"
+#include "util.h"
 
 // detect.h
 //    int detect_faces(Image*, Rect* rects)
