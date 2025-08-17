@@ -1,24 +1,17 @@
 #include "base.h"
 #include "facedetectcnn.h"
 
-unsigned char *detect_buffer = NULL;
+U8 detect_buffer[0x9000] = {0};
 
-int detect_faces(Image* image, Rect* rects)
+void* detect_faces(DetectInfo* di)
 {
-    if(!detect_buffer)
-        detect_buffer = (unsigned char*)malloc(0x9000);
+    U32 *results = facedetect_cnn(detect_buffer,di->image->data,di->image->w,di->image->h,di->image->w*di->image->channels); 
 
-    if(!detect_buffer)
-    {
-        fprintf(stderr, "Failed to allocate buffer\n");
-        return 1;
-    }
+    U32 num_faces = (results ? *results : 0);
 
-    int *results = facedetect_cnn(detect_buffer,image->data,image->w,image->h,image->w*image->channels); 
+    Rect* rects = (Rect*)malloc(num_faces*sizeof(Rect));
 
-    int num_faces = (results ? *results : 0);
-
-    for(int i = 0; i < num_faces; ++i)
+    for(U32 i = 0; i < num_faces; ++i)
     {
         short *p = ((short*)(results+1)) + 16*i;
 
@@ -31,5 +24,5 @@ int detect_faces(Image* image, Rect* rects)
         r->h = p[4];
     }
 
-    return num_faces;
+    pthread_exit(rects);
 }
