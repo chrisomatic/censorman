@@ -14,8 +14,10 @@ cd build
 
 srcs="../main.cpp ../models/facedetectcnn-data.cpp ../models/facedetectcnn-model.cpp ../models/facedetectcnn.cpp"
 opts="-O3"
-includes="-I../include -I../ffmpeg/include"
-libs="-L../ffmpeg/lib -lavformat -lavcodec -lavutil -lswscale -lm -lz"
+includes="-I../include"
+libs="-lm -lz"
+#includes="-I../include -I../ffmpeg/include"
+#libs="-L../ffmpeg/lib -lavformat -lavcodec -lavutil -lswscale -lm -lz"
 
 cmd="g++ ${srcs} ${includes} ${libs} -o ../bin/censorman"
 echo "${cmd}"

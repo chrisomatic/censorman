@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <pthread.h>
 #include "base.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -7,7 +8,7 @@
 #include "stb_image_write.h"
 
 #include "detect.h"
-#include "util.h"
+#include "transform.h"
 
 // detect.h
 //    int detect_faces(Image*, Rect* rects)
@@ -19,11 +20,11 @@
 
 void reverse_rgb_order(Image *image)
 {
-    printf("Reversing RGB Order... %d\n", image->w*image->h);
-    for(U32 i = 0; i < image->w*image->h; ++i)
+    printf("Reversing RGB Order... pixel count: %d\n", image->w*image->h);
+    for(int i = 0; i < image->w*image->h; ++i)
     {
-        U32 n = i*image->channels;
-        U8 temp = image->data[n+0];
+        int n = i*image->channels;
+        u8 temp = image->data[n+0];
         image->data[n+0] = image->data[i*3+2]; // R -> B
         image->data[n+2] = temp;               // B -> R
     }
@@ -32,8 +33,8 @@ void reverse_rgb_order(Image *image)
 int main(int argc, char** args)
 {
     // Initialize threads
-    const U32 num_threads = 8;
-    pthread_t* threads = calloc(num_threads,sizeof(pthread_t));
+    const int num_threads = 8;
+    pthread_t* threads = (pthread_t*)calloc(num_threads,sizeof(pthread_t));
 
     Image image = {0};
 
@@ -57,13 +58,12 @@ int main(int argc, char** args)
 
     printf("Detecting faces...\n");
 
-
     // Determine image subdivision
 
     bool is_horiz = (image.w >= image.h);
 
-    U32 rows = 0;
-    U32 cols = 0;
+    int rows = 0;
+    int cols = 0;
 
     switch(num_threads)
     {
@@ -136,23 +136,35 @@ int main(int argc, char** args)
             cols = is_horiz ? num_threads : 1;
     }
 
-    U32 actual_thread_count = 0;
-    U32 x = 0;
-    U32 y = 0;
+    int sub_width  = ceil(image.w / cols);
+    int sub_height = ceil(image.h / rows);
 
-    sub_width  = ceil(image.w / cols);
-    sub_height = ceil(image.h / rows);
+    printf("Image sub-size: (%d, %d), config: %dx%d\n", sub_width, sub_height, rows, cols);
 
-    for(U32 i = 0; i < num_threads; ++i)
+    int actual_thread_count = 0;
+    int x = 0;
+    int y = 0;
+
+    for(int i = 0; i < num_threads; ++i)
     {
-        DetectInfo di = {
-            .image = &image,
-            .x_offset = x,
-            .y_offset = y, 
-            .step = sub_width
+        int offset = (y*image.w*sub_height*image.channels) + x*sub_width*image.channels;
+        Image sub_image = {
+            .data = image.data + offset,
+            .w = sub_width,
+            .h = sub_height,
+            .channels = image.channels
         };
 
-        if(pthread_create(&threads[actual_thread_count], NULL, detect_faces, &di) == 0)
+#if 0
+        Rect r = {x*sub_width, y*sub_height, sub_width, sub_height, 0};
+        printf("Rect: (%d, %d, %d, %d)\n", r.x, r.y, r.w, r.h);
+        Color c = {255, 255, 0, 255};
+        transform_draw_rect(&image, r, c, false);
+#endif
+
+        printf("Starting thread %d (%d, %d) @ offset=%d\n", i, x, y, offset);
+
+        if(pthread_create(&threads[actual_thread_count], NULL, detect_faces, (void*)&sub_image) == 0)
         {
             actual_thread_count++;
         }
@@ -161,47 +173,46 @@ int main(int argc, char** args)
             printf("Failed to start thread!\n");
         }
 
-        y++;
-        if(y >= cols) {
-            y = 0;
-            x++;
+        x++;
+        if(x >= cols)
+        {
+            x = 0;
+            y++;
         }
     }
 
-    U32 num_faces = 0; // @TEMP
-    
-    void* returned_rects = NULL;
+    int num_faces = 0;
 
-    for(U32 i = 0; i < actual_thread_count; ++i)
+    for(int i = 0; i < actual_thread_count; ++i)
     {
+        void* returned_rects = NULL;
         pthread_join(threads[i], &returned_rects);
+
+        int offset = 0;
+        if(returned_rects)
+        {
+            int sub_faces_found = *((int*)returned_rects);
+            num_faces += sub_faces_found;
+            offset += sizeof(int);
+
+            for(int j = 0; j < num_faces; ++j)
+            {
+                Rect* r = (Rect*)(returned_rects+offset);
+                transform_black_out(&image, *r);
+                offset += sizeof(Rect);
+            }
+
+        }
     }
 
     printf("%d faces detected\n", num_faces);
-    U32 step = image.w*image.channels;
 
-    for(U32 i = 0; i < num_faces; ++i)
-    {
-        Rect* r = &rects[i];
-        if(r->confidence < 80) continue;
+    //reverse_rgb_order(&image);
 
-        // black out pixels (for now)
-        for(U32 j = r->y; j < r->y + r->h; ++j)
-        {
-            for(U32 k = r->x; k < r->x + r->w; ++k)
-            {
-                U32 kn = k*image.channels;
-                image.data[j*step+kn+0] = 0x00;
-                image.data[j*step+kn+1] = 0x00;
-                image.data[j*step+kn+2] = 0x00;
-            }
-        }
-    }
-
-    reverse_rgb_order(&image);
 
     printf("Writing output file...\n");
-    U32 res = stbi_write_png("output/out.png", image.w, image.h, image.channels, image.data, step);
+    int step = image.w*image.channels;
+    int res = stbi_write_png("output/out.png", image.w, image.h, image.channels, image.data, step);
     if(res == 0)
     {
         fprintf(stderr, "Failed to write output!\n");
