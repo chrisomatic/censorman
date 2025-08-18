@@ -1,20 +1,18 @@
 #include "base.h"
 #include "facedetectcnn.h"
 
-u8 detect_buffer[0x9000] = {0};
-
-void* detect_faces(void* _image)
+void* detect_faces(void* arg)
 {
-    Image* image = (Image*)_image;
-    int *results = facedetect_cnn(detect_buffer,image->data,image->w,image->h,image->w*image->channels); 
+    Image* image = (Image*)arg;
+
+    int *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step); 
 
     int num_faces = (results ? *results : 0);
 
-    printf("Found %d faces!\n", num_faces);
-
-    u8* ret = (u8*)malloc(sizeof(int) + num_faces*sizeof(Rect));
+    void* ret = arena_alloc((Arena*)image->arena, sizeof(int) + num_faces*sizeof(Rect));
 
     int offset = 0;
+    
     memcpy(ret, &num_faces, sizeof(int));
     offset += sizeof(int);
 
@@ -22,17 +20,18 @@ void* detect_faces(void* _image)
     {
         short *p = ((short*)(results+1)) + 16*i;
 
-        Rect *r = (Rect*)(ret+offset);
+        Rect *r = (Rect*)((u8*)(ret)+offset);
 
         r->confidence = p[0];
-        r->x = p[1];
-        r->y = p[2];
+        r->x = p[1] + (image->subx*image->w);
+        r->y = p[2] + (image->suby*image->h);
         r->w = p[3];
         r->h = p[4];
 
         offset += sizeof(Rect);
     }
 
+    free(results);
+
     pthread_exit(ret);
-    return NULL;
 }

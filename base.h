@@ -1,5 +1,34 @@
 #pragma once
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdarg.h>
+#include <unistd.h> // for usleep
+#if _WIN32
+#include <profileapi.h>
+#else
+#include <sys/time.h>
+#endif
+
+#include <assert.h>
+#include <float.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// strings
+#define STR_EMPTY(x)      (x == 0 || strlen(x) == 0)
+#define STR_EQUAL(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
+#define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
+
+// util
+#define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
+
+// base types
 typedef unsigned char  u8;
 typedef unsigned short u16;
 typedef unsigned int   u32;
@@ -21,10 +50,15 @@ typedef struct
 
 typedef struct
 {
+    u8 *detect_buffer;
     u8 *data;
     int w;
     int h;
-    int channels;
+    int n; // channels
+    int step; // number of bytes to advance to next row of box
+    u8 subx; // position in larger image
+    u8 suby; // position in larger image
+    void* arena;
 } Image;
 
 typedef struct
@@ -34,3 +68,366 @@ typedef struct
     u8 b;
     u8 a;
 } Color;
+
+// timer 
+
+typedef struct
+{
+    float  fps;
+    float  spf;
+    double time_start;
+    double time_last;
+    double frame_fps;
+    double frame_fps_hist[60];
+    double frame_fps_avg;
+} Timer;
+
+void timer_init(void);
+
+void timer_begin(Timer* timer);
+void timer_set_fps(Timer* timer, float fps);
+void timer_wait_for_frame(Timer* timer);
+double timer_get_prior_frame_fps(Timer* timer);
+
+double timer_get_elapsed(Timer* timer);
+void timer_delay_us(int us);
+double timer_get_time();
+
+void stopwatch_start();
+double stopwatch_capture(char* str);
+void stopwatch_reset();
+
+static struct
+{
+    bool monotonic;
+    uint64_t  frequency;
+    uint64_t  offset;
+} _timer;
+
+static double _fps_hist[60] = {0};
+static int _fps_hist_count = 0;
+static int _fps_hist_max_count = 0;
+
+// used for profiling
+double _stopwatch_start = 0.0;
+double _stopwatch_time = 0.0;
+double _stopwatch_time_prior  = 0.0;
+
+#if _WIN32
+void usleep(__int64 usec)
+{
+    HANDLE timer;
+    LARGE_INTEGER ft;
+
+    ft.QuadPart = -(10 * usec); // Convert to 100 nanosecond interval, negative value indicates relative time
+
+    timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
+    WaitForSingleObject(timer, INFINITE);
+    CloseHandle(timer);
+}
+#endif
+
+static uint64_t get_timer_value(void)
+{
+#if _WIN32
+    uint64_t counter;
+    QueryPerformanceCounter((LARGE_INTEGER*)&counter);
+    return counter;
+#else
+#if defined(_POSIX_TIMERS) && defined(_POSIX_MONOTONIC_CLOCK)
+    if (_timer.monotonic)
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        return (uint64_t)ts.tv_sec * (uint64_t)1000000000 + (uint64_t)ts.tv_nsec;
+    }
+    else
+#endif
+
+    {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return (uint64_t) tv.tv_sec * (uint64_t) 1000000 + (uint64_t) tv.tv_usec;
+
+    }
+#endif
+}
+
+void timer_init(void)
+{
+#if _WIN32
+    uint64_t freq;
+    QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
+    _timer.monotonic = false;
+    _timer.frequency = freq;
+#else
+
+    srand(time(NULL));
+
+#if defined(_POSIX_TIMERS) && defined(_POSIX_MONOTONIC_CLOCK)
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+    {
+        _timer.monotonic = true;
+        _timer.frequency = 1000000000;
+    }
+    else
+#endif
+    {
+        _timer.monotonic = false;
+        _timer.frequency = 1000000;
+    }
+#endif
+    _timer.offset = get_timer_value();
+
+}
+
+
+static double get_time()
+{
+    return (double) (get_timer_value() - _timer.offset) / (double)_timer.frequency;
+}
+
+void timer_begin(Timer* timer)
+{
+    timer->time_start = get_time();
+    timer->time_last = timer->time_start;
+    timer->frame_fps = 0.0f;
+    timer->frame_fps_avg = 0.0f;
+}
+
+double timer_get_time()
+{
+    return get_time();
+}
+
+void timer_set_fps(Timer* timer, float fps)
+{
+    timer->fps = fps;
+    timer->spf = 1.0f / fps;
+}
+
+void timer_wait_for_frame(Timer* timer)
+{
+    double now;
+    for(;;)
+    {
+        now = get_time();
+        if(now >= timer->time_last + timer->spf)
+            break;
+    }
+
+    timer->frame_fps = 1.0f / (now - timer->time_last);
+    timer->time_last = now;
+
+    // calculate average FPS
+    _fps_hist[_fps_hist_count++] = timer->frame_fps;
+
+    if(_fps_hist_count >= 60)
+        _fps_hist_count = 0;
+
+    if(_fps_hist_max_count < 60)
+        _fps_hist_max_count++;
+
+    double fps_sum = 0.0;
+    for(int i = 0; i < _fps_hist_max_count; ++i)
+        fps_sum += _fps_hist[i];
+
+    timer->frame_fps_avg = (fps_sum / _fps_hist_max_count);
+}
+
+double timer_get_elapsed(Timer* timer)
+{
+    double time_curr = get_time();
+    return time_curr - timer->time_start;
+}
+
+double timer_get_prior_frame_fps(Timer* timer)
+{
+    return timer->frame_fps;
+}
+
+void timer_delay_us(int us)
+{
+    usleep(us);
+}
+
+// logging
+
+#define LOG_COLOR_BLACK   "30"
+#define LOG_COLOR_RED     "31"
+#define LOG_COLOR_GREEN   "32"
+#define LOG_COLOR_BROWN   "33"
+#define LOG_COLOR_BLUE    "34"
+#define LOG_COLOR_PURPLE  "35"
+#define LOG_COLOR_CYAN    "36"
+#define LOG_COLOR_WHITE   "37"
+#define LOG_COLOR(COLOR)  "\033[0;" COLOR "m"
+#define LOG_BOLD(COLOR)   "\033[1;" COLOR "m"
+#define LOG_RESET_COLOR   "\033[0m"
+#define LOG_COLOR_E       LOG_COLOR(LOG_COLOR_RED)
+#define LOG_COLOR_W       LOG_COLOR(LOG_COLOR_BROWN)
+#define LOG_COLOR_I       LOG_COLOR(LOG_COLOR_GREEN)
+#define LOG_COLOR_D       LOG_COLOR(LOG_COLOR_PURPLE)
+#define LOG_COLOR_V       LOG_COLOR(LOG_COLOR_CYAN)
+#define LOG_COLOR_N       LOG_COLOR(LOG_COLOR_WHITE)
+
+#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+
+#if defined(WIN32)
+
+#define LOG_FMT_START(letter)   #letter " [" "%-10.10s:%4d " "%7.2f ]: "
+#define LOG_FMT_END()           "\n"
+#define LOG_FMT(letter, format) LOG_FMT_START(letter) format LOG_FMT_END()
+
+#else
+
+#define LOG_FMT_START(letter)     LOG_COLOR_ ## letter #letter LOG_RESET_COLOR " [" LOG_COLOR(LOG_COLOR_BLUE) "%-10.10s:%4d " LOG_RESET_COLOR "%7.2f ]: " LOG_COLOR_ ## letter
+#define LOG_FMT_END()           LOG_RESET_COLOR "\n"
+#define LOG_FMT(letter, format) LOG_FMT_START(letter) format LOG_FMT_END()
+
+#endif
+
+static bool is_quiet = false;
+
+static Timer log_timer = {0};
+static void log_init(int log_level)
+{
+    timer_begin(&log_timer);
+}
+
+static void print_log(const char* fmt, ...)
+{
+    if(is_quiet) return;
+
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
+#define LOG(format, ...) print_log(format, __FILENAME__, __LINE__, timer_get_elapsed(&log_timer), ##__VA_ARGS__)
+
+#define LOGE(format,...) LOG(LOG_FMT(E, format), ##__VA_ARGS__) // error
+#define LOGW(format,...) LOG(LOG_FMT(W, format), ##__VA_ARGS__) // warning
+#define LOGI(format,...) LOG(LOG_FMT(I, format), ##__VA_ARGS__) // info
+#define LOGV(format,...) LOG(LOG_FMT(V, format), ##__VA_ARGS__) // verbose
+#define LOGN(format,...) LOG(LOG_FMT(N, format), ##__VA_ARGS__) // network
+
+// arenas
+
+#define ARENA_SIZE_TINY        16*1024 //  16K
+#define ARENA_SIZE_SMALL      128*1024 // 128K
+#define ARENA_SIZE_MEDIUM  1*1024*1024 //   1M
+#define ARENA_SIZE_LARGE  16*1024*1024 //  16M
+
+#define ARENA_GROWTH_SIZE ARENA_SIZE_MEDIUM
+
+typedef struct Arena
+{
+    u8* base;
+    size_t capacity;
+    size_t offset;
+    struct Arena *next; // used for chaining arenas together
+} Arena;
+
+Arena *arena_create(size_t capacity)
+{
+    Arena *a = (Arena*)malloc(sizeof(Arena));
+    if(!a) return NULL;
+
+    a->base = (u8*)malloc(capacity * sizeof(u8));
+    a->capacity = capacity;
+    a->offset = 0;
+    a->next = NULL;
+
+    return a;
+}
+
+void arena_destroy(Arena* arena)
+{
+    if(!arena) return;
+
+    Arena* a = arena;
+
+    for(;;)
+    {
+        if(a->base) free(a->base);
+
+        a->base = NULL;
+        a->capacity = 0;
+        a->offset = 0;
+
+        if(a->next)
+        {
+            Arena* tmp = a;
+            a = a->next;
+            free(tmp);
+            continue;
+        }
+
+        break;
+    }
+
+    arena = NULL;
+}
+
+void* arena_alloc(Arena* arena, size_t size)
+{
+    assert(arena);
+
+    Arena* a = arena;
+
+    for(;;)
+    {
+        if(a->offset + size <= a->capacity)
+            break; // enough space, we're good
+
+        // can't fit data on current arena
+        // check for a next arena
+        if(a->next)
+        {
+            a = a->next;
+            continue;
+        }
+
+        // allocate a new arena that doubles the arena base capacity
+        // or more to accommodate a large allocation
+        
+        size_t new_arena_size = (a->capacity >= size ? a->capacity : size);
+
+        a->next = (Arena*)malloc(sizeof(Arena));
+        a->next->base = (u8*)malloc(new_arena_size * sizeof(u8));
+        a->next->offset = 0;
+        a->next->capacity = new_arena_size;
+    }
+
+    void* ptr = a->base+a->offset;
+    a->offset += size;
+
+    return ptr;
+}
+
+void arena_reset(Arena* arena)
+{
+    assert(arena);
+
+    Arena* a = arena;
+    for(;;)
+    {
+        a->offset = 0;
+        if(a->next)
+        {
+            a = a->next;   
+            continue;
+        }
+        break;
+    }
+}
+                                                          
+#ifdef __cplusplus
+}
+#endif
+

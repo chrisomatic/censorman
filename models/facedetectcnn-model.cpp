@@ -50,29 +50,35 @@ cv::TickMeter cvtm;
 #define TIME_END(FUNCNAME)
 #endif
 
-
 #define NUM_CONV_LAYER 53
 
 extern ConvInfoStruct param_pConvInfo[NUM_CONV_LAYER];
-Filters<float> g_pFilters[NUM_CONV_LAYER];
 
 bool param_initialized = false;
 
+/*
 void init_parameters()
 {
     for(int i = 0; i < NUM_CONV_LAYER; i++)
         g_pFilters[i] = param_pConvInfo[i];
+
+    param_initialized = true;
 }
+*/
 
 std::vector<FaceRect> objectdetect_cnn(unsigned char * rgbImageData, int width, int height, int step)
 {
+    Filters<float> g_pFilters[NUM_CONV_LAYER];
+    for(int i = 0; i < NUM_CONV_LAYER; i++)
+        g_pFilters[i] = param_pConvInfo[i];
 
     TIME_START;
+#if 0
     if (!param_initialized)
     {
         init_parameters();
-        param_initialized = true;
     }
+#endif
     TIME_END("init");
 
 
