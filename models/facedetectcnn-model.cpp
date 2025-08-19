@@ -55,8 +55,8 @@ cv::TickMeter cvtm;
 extern ConvInfoStruct param_pConvInfo[NUM_CONV_LAYER];
 
 bool param_initialized = false;
+Filters<float> g_pFilters[NUM_CONV_LAYER];
 
-/*
 void init_parameters()
 {
     for(int i = 0; i < NUM_CONV_LAYER; i++)
@@ -64,21 +64,14 @@ void init_parameters()
 
     param_initialized = true;
 }
-*/
 
 std::vector<FaceRect> objectdetect_cnn(unsigned char * rgbImageData, int width, int height, int step)
 {
-    Filters<float> g_pFilters[NUM_CONV_LAYER];
-    for(int i = 0; i < NUM_CONV_LAYER; i++)
-        g_pFilters[i] = param_pConvInfo[i];
-
     TIME_START;
-#if 0
     if (!param_initialized)
     {
         init_parameters();
     }
-#endif
     TIME_END("init");
 
 
@@ -204,6 +197,11 @@ std::vector<FaceRect> objectdetect_cnn(unsigned char * rgbImageData, int width, 
     std::vector<FaceRect> facesInfo = detection_output(cls, reg, kps, obj, 0.45f, 0.2f, 1000, 512);
     TIME_END("detection output")
     return facesInfo;
+}
+
+void facedetect_init()
+{
+    init_parameters();
 }
 
 int* facedetect_cnn(unsigned char * result_buffer, //buffer memory for storing face detection results, !!its size must be 0x9000 Bytes!!

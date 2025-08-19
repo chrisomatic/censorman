@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include <time.h>
 #if _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -23,15 +24,28 @@
 extern "C" {
 #endif
 
-// strings
+//
+// Math
+//
+#define MIN(x,y) ((x)  < (y) ? (x) : (y))
+#define MAX(x,y) ((x) >= (y) ? (x) : (y))
+
+//
+// Strings
+//
 #define STR_EMPTY(x)      (x == 0 || strlen(x) == 0)
 #define STR_EQUAL(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
 #define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
 
-// util
+//
+// Util
+//
 #define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
 
-// base types
+//
+// Types
+// 
+
 typedef unsigned char  u8;
 typedef unsigned short u16;
 typedef unsigned int   u32;
@@ -73,12 +87,12 @@ typedef struct
     u8 a;
 } Color;
 
-// timer 
+//
+// Timer 
+//
 
 typedef struct
 {
-    float  fps;
-    float  spf;
     double time_start;
     double time_last;
 } Timer;
@@ -86,8 +100,6 @@ typedef struct
 void timer_init(void);
 
 void timer_begin(Timer* timer);
-void timer_wait_for_frame(Timer* timer);
-
 double timer_get_elapsed(Timer* timer);
 void timer_delay_us(int us);
 double timer_get_time();
@@ -186,19 +198,6 @@ double timer_get_time()
     return get_time();
 }
 
-void timer_wait_for_frame(Timer* timer)
-{
-    double now;
-    for(;;)
-    {
-        now = get_time();
-        if(now >= timer->time_last + timer->spf)
-            break;
-    }
-
-    timer->time_last = now;
-}
-
 double timer_get_elapsed(Timer* timer)
 {
     double time_curr = get_time();
@@ -210,7 +209,7 @@ void timer_delay_us(int us)
     usleep(us);
 }
 
-// logging
+// Logging
 
 #define LOG_COLOR_BLACK   "30"
 #define LOG_COLOR_RED     "31"
@@ -272,7 +271,7 @@ static void print_log(const char* fmt, ...)
 #define LOGV(format,...) LOG(LOG_FMT(V, format), ##__VA_ARGS__) // verbose
 #define LOGN(format,...) LOG(LOG_FMT(N, format), ##__VA_ARGS__) // network
 
-// arenas
+// Arenas
 
 #define ARENA_SIZE_TINY        16*1024 //  16K
 #define ARENA_SIZE_SMALL      128*1024 // 128K

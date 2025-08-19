@@ -12,6 +12,7 @@
 
 #define MAX_ARENAS 64
 Arena* arenas[MAX_ARENAS] = {0};
+Timer timer = {0};
 
 // -> image -> division -> detect faces -> consolidate results -> apply transforms
 
@@ -27,14 +28,47 @@ void reverse_rgb_order(Image *image)
     }
 }
 
+void sort_rects(int num_rects, Rect* rects, bool asc)
+{
+    // insertion sort
+    int i, j;
+    Rect key;
+
+    for (i = 1; i < num_rects; ++i)
+    {
+        memcpy(&key, &rects[i], sizeof(Rect));
+        j = i - 1;
+
+        if(asc)
+        {
+            while (j >= 0 && rects[j].confidence > key.confidence)
+            {
+                memcpy(&rects[j+1], &rects[j], sizeof(Rect));
+                j = j - 1;
+            }
+        }
+        else
+        {
+            while (j >= 0 && rects[j].confidence < key.confidence)
+            {
+                memcpy(&rects[j+1], &rects[j], sizeof(Rect));
+                j = j - 1;
+            }
+        }
+        memcpy(&rects[j+1], &key, sizeof(Rect));
+    }
+}
+
 int main(int argc, char** args)
 {
     // init
-
     timer_init();
     log_init(0);
 
-    const int num_threads = 7;
+    time_t t;
+    srand((unsigned) time(&t));
+
+    const int num_threads = 8;
     pthread_t* threads = (pthread_t*)calloc(num_threads,sizeof(pthread_t));
 
     Image image = {0};
@@ -105,7 +139,14 @@ int main(int argc, char** args)
     int x = 0;
     int y = 0;
 
-    LOGI("Detecting faces...");
+    LOGI("Detecting faces... (threads: %d)", num_threads);
+
+    facedetect_init();
+
+    const float padding_factor = 0.1;
+    int padding = MAX(sub_width, sub_height)*padding_factor;
+
+    timer_begin(&timer);
 
     for(int i = 0; i < num_threads; ++i)
     {
@@ -113,6 +154,7 @@ int main(int argc, char** args)
         pthread_t* thread = &threads[actual_thread_count];
         Image* sub_image = sub_images[actual_thread_count];
 
+        // calculate offset into base image
         int offset = (y*image.w*sub_height*image.n) + x*sub_width*image.n;
 
         sub_image->detect_buffer = detect_buffers[actual_thread_count];
@@ -125,10 +167,9 @@ int main(int argc, char** args)
         sub_image->subx = x;
         sub_image->suby = y;
 
-
         if(pthread_create(thread, NULL, detect_faces, (void*)sub_image) == 0)
         {
-            LOGI("Thread %d started (%d, %d)", i, x, y);
+            //LOGI("Thread %d started (%d, %d)", i, x, y);
             actual_thread_count++;
         }
         else
@@ -144,14 +185,20 @@ int main(int argc, char** args)
         }
     }
 
-    int num_faces = 0;
 
     for(int i = 0; i < num_threads; ++i)
     {
-        LOGI("Thread %d joined", i);
+        //LOGI("Thread %d joined", i);
         pthread_join(threads[i], NULL);
     }
 
+    double detection_time = timer_get_elapsed(&timer);
+    LOGI("detection time: %.3f ms", detection_time*1000.0f);
+
+    Rect total_rects[32] = {0};
+    int num_faces = 0;
+
+    // collect face box results
     for(int i = 0; i < actual_thread_count; ++i)
     {
         Image* sub_image = sub_images[i];
@@ -160,19 +207,28 @@ int main(int argc, char** args)
             u8* ret_rects = sub_image->result;
             int offset = 0;
             int sub_faces_found = *((int*)(ret_rects));
-            num_faces += sub_faces_found;
             offset += sizeof(int);
 
             for(int j = 0; j < sub_faces_found; ++j)
             {
                 Rect* r = (Rect*)(ret_rects+offset);
-                Color c = {0,255,255,255};
-                //transform_draw_rect(&image, *r, c, false);
-                transform_black_out(&image, *r);
-                LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r->x, r->y, r->w, r->h, r->confidence);
+                memcpy(&total_rects[num_faces],r,sizeof(Rect));
                 offset += sizeof(Rect);
+                num_faces++;
             }
         }
+    }
+
+    // sort and consolidate faces
+    sort_rects(num_faces, total_rects, false);
+
+    // apply transformations
+    for(int i = 0; i < num_faces; ++i)
+    {
+        Rect r = total_rects[i];
+        LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
+        Color c = {(u8)(rand() % 255),(u8)(rand() % 255),(u8)(rand() % 255),255};
+        transform_draw_rect(&image, r, c, true, 0.8);
     }
 
     LOGI("%d faces detected", num_faces);

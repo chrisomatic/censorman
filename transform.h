@@ -1,68 +1,67 @@
 #include "base.h"
 
-void transform_draw_rect(Image* image, Rect r, Color c, bool filled)
+Color get_blended_color(u8* data, Color c, float opacity)
 {
-    int step = image->w*image->n;
+    u8 r = data[0];
+    u8 g = data[1];
+    u8 b = data[2];
 
-    // draw first line
-    for(int k = r.x; k < r.x + r.w; ++k)
-    {
-        image->data[k*image->n+0] = c.r;
-        image->data[k*image->n+1] = c.g;
-        image->data[k*image->n+2] = c.b;
-    }
+    Color ret_color = {0};
 
-    for(int j = r.y; j < r.y + r.h; ++j)
-    {
-        if(filled)
-        {
-            for(int k = r.x; k < r.x + r.w; ++k)
-            {
-                int kn = k*image->n;
+    ret_color.r = opacity*c.r + (1.0 - opacity)*r;
+    ret_color.g = opacity*c.g + (1.0 - opacity)*g;
+    ret_color.b = opacity*c.b + (1.0 - opacity)*b;
 
-                image->data[j*step+kn+0] = 0x00;
-                image->data[j*step+kn+1] = 0x00;
-                image->data[j*step+kn+2] = 0x00;
-            }
-        }
-        else
-        {
-            // left pixel
-            int idx = r.x*image->n + j*step;
-            image->data[idx+0] = c.r;
-            image->data[idx+1] = c.g;
-            image->data[idx+2] = c.b;
-            
-            // right pixel
-            image->data[j*step+r.w+0] = c.r;
-            image->data[j*step+r.w+1] = c.g;
-            image->data[j*step+r.w+2] = c.b;
-        }
-    }
-    
-    // draw last line
-    for(int k = r.x; k < r.x + r.w; ++k)
-    {
-        image->data[(r.y+r.h)*step + k*image->n+0] = c.r;
-        image->data[(r.y+r.h)*step + k*image->n+1] = c.g;
-        image->data[(r.y+r.h)*step + k*image->n+2] = c.b;
-    }
+    return ret_color;
 }
 
-void transform_black_out(Image* image, Rect r)
+void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opacity)
 {
-    int step = image->w*image->n;
+    u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
+    u8* curr = start;
 
-    for(int j = r.y; j < r.y + r.h; ++j)
+    int n = image->n;
+    int step = image->w * n;
+
+    // draw first line
+    for(int i = 0; i < r.w; ++i)
     {
-        for(int k = r.x; k < r.x + r.w; ++k)
-        {
-            int kn = k*image->n;
+        Color r = opacity == 1.0 ? c : get_blended_color(curr+i*n,c,opacity);
+        memcpy(curr + i*n, &r, 3);
+    }
 
-            image->data[j*step+kn+0] = 0x00;
-            image->data[j*step+kn+1] = 0x00;
-            image->data[j*step+kn+2] = 0x00;
+    curr += step;
+
+    if(filled)
+    {
+        for(int j = 0; j < r.h-1; ++j)
+        {
+            for(int i = 0; i < r.w; ++i)
+            {
+                Color r = opacity == 1.0 ? c : get_blended_color(curr+i*n,c,opacity);
+                memcpy(curr+i*n, &r, 3);
+            }
+            curr += step;
         }
+    }
+    else
+    {
+        for(int i = 0; i < r.h-1; ++i)
+        {
+            Color cl = opacity == 1.0 ? c : get_blended_color(curr,c,opacity);
+            Color cr = opacity == 1.0 ? c : get_blended_color(curr+r.w*n,c,opacity);
+
+            memcpy(curr,&cl, 3);         // left pixel
+            memcpy(curr + r.w*n,&cr, 3); // right pixel
+
+            curr += step;
+        }
+    }
+
+    for(int i = 0; i < r.w; ++i)
+    {
+        Color r = opacity == 1.0 ? c : get_blended_color(curr+i*n,c,opacity);
+        memcpy(curr + i*n, &r, 3);
     }
 }
 

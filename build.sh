@@ -9,7 +9,8 @@ echo "Creating new bin directory"
 mkdir bin
 
 srcs="main.cpp models/facedetectcnn-data.cpp models/facedetectcnn-model.cpp models/facedetectcnn.cpp"
-opts="-march=native -O3"
+opts="-march=native -Ofast"
+# -mavx2
 includes="-Iinclude"
 libs="-lm -lz"
 #includes="-I./include -I./ffmpeg/include"
