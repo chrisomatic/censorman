@@ -34,7 +34,7 @@ int main(int argc, char** args)
     timer_init();
     log_init(0);
 
-    const int num_threads = 8;
+    const int num_threads = 7;
     pthread_t* threads = (pthread_t*)calloc(num_threads,sizeof(pthread_t));
 
     Image image = {0};
@@ -92,9 +92,13 @@ int main(int argc, char** args)
 
     LOGI("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
 
+    Image* sub_images[num_threads] = {0};
+    u8 detect_buffers[num_threads][0x9000] = {0};
+
     for(int i = 0; i < num_threads; ++i)
     {
         arenas[i] = arena_create(ARENA_SIZE_MEDIUM);
+        sub_images[i] = (Image*)arena_alloc(arenas[i], sizeof(Image));
     }
 
     int actual_thread_count = 0;
@@ -105,26 +109,26 @@ int main(int argc, char** args)
 
     for(int i = 0; i < num_threads; ++i)
     {
+        Arena* arena = arenas[actual_thread_count];
+        pthread_t* thread = &threads[actual_thread_count];
+        Image* sub_image = sub_images[actual_thread_count];
+
         int offset = (y*image.w*sub_height*image.n) + x*sub_width*image.n;
 
-        u8* detect_buf = (u8*)arena_alloc(arenas[i], 0x9000 * sizeof(u8));
-        Image* sub_image = (Image*)arena_alloc(arenas[i], sizeof(Image));
-
-        sub_image->detect_buffer = detect_buf;
+        sub_image->detect_buffer = detect_buffers[actual_thread_count];
         sub_image->data = image.data + offset;
         sub_image->w = sub_width;
         sub_image->h = sub_height;
         sub_image->n = image.n;
         sub_image->step = image.w*image.n;
-        sub_image->arena = arenas[i];
+        sub_image->arena = arena;
         sub_image->subx = x;
         sub_image->suby = y;
 
-        LOGI("Starting thread %d (%d, %d) @ offset=%d", i, x, y, offset);
 
-        if(pthread_create(&threads[actual_thread_count], NULL, detect_faces, (void*)sub_image) == 0)
+        if(pthread_create(thread, NULL, detect_faces, (void*)sub_image) == 0)
         {
-            LOGI("Thread %d started.", i);
+            LOGI("Thread %d started (%d, %d)", i, x, y);
             actual_thread_count++;
         }
         else
@@ -142,25 +146,30 @@ int main(int argc, char** args)
 
     int num_faces = 0;
 
+    for(int i = 0; i < num_threads; ++i)
+    {
+        LOGI("Thread %d joined", i);
+        pthread_join(threads[i], NULL);
+    }
+
     for(int i = 0; i < actual_thread_count; ++i)
     {
-        void* returned_rects = NULL;
-        pthread_join(threads[i], &returned_rects);
-
-        if(returned_rects)
+        Image* sub_image = sub_images[i];
+        if(sub_image && sub_image->result)
         {
-            u8* ret_rects = (u8*)returned_rects;
+            u8* ret_rects = sub_image->result;
             int offset = 0;
-            DEBUG();
-            int sub_faces_found = *((int*)(ret_rects+offset));
-            DEBUG();
+            int sub_faces_found = *((int*)(ret_rects));
             num_faces += sub_faces_found;
             offset += sizeof(int);
 
-            for(int j = 0; j < num_faces; ++j)
+            for(int j = 0; j < sub_faces_found; ++j)
             {
                 Rect* r = (Rect*)(ret_rects+offset);
+                Color c = {0,255,255,255};
+                //transform_draw_rect(&image, *r, c, false);
                 transform_black_out(&image, *r);
+                LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r->x, r->y, r->w, r->h, r->confidence);
                 offset += sizeof(Rect);
             }
         }

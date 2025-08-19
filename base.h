@@ -6,10 +6,13 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
-#include <unistd.h> // for usleep
 #if _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <profileapi.h>
+#include <handleapi.h>
 #else
+#include <unistd.h> // for usleep
 #include <sys/time.h>
 #endif
 
@@ -59,6 +62,7 @@ typedef struct
     u8 subx; // position in larger image
     u8 suby; // position in larger image
     void* arena;
+    u8* result;
 } Image;
 
 typedef struct
@@ -77,25 +81,16 @@ typedef struct
     float  spf;
     double time_start;
     double time_last;
-    double frame_fps;
-    double frame_fps_hist[60];
-    double frame_fps_avg;
 } Timer;
 
 void timer_init(void);
 
 void timer_begin(Timer* timer);
-void timer_set_fps(Timer* timer, float fps);
 void timer_wait_for_frame(Timer* timer);
-double timer_get_prior_frame_fps(Timer* timer);
 
 double timer_get_elapsed(Timer* timer);
 void timer_delay_us(int us);
 double timer_get_time();
-
-void stopwatch_start();
-double stopwatch_capture(char* str);
-void stopwatch_reset();
 
 static struct
 {
@@ -103,15 +98,6 @@ static struct
     uint64_t  frequency;
     uint64_t  offset;
 } _timer;
-
-static double _fps_hist[60] = {0};
-static int _fps_hist_count = 0;
-static int _fps_hist_max_count = 0;
-
-// used for profiling
-double _stopwatch_start = 0.0;
-double _stopwatch_time = 0.0;
-double _stopwatch_time_prior  = 0.0;
 
 #if _WIN32
 void usleep(__int64 usec)
@@ -121,7 +107,7 @@ void usleep(__int64 usec)
 
     ft.QuadPart = -(10 * usec); // Convert to 100 nanosecond interval, negative value indicates relative time
 
-    timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    timer = CreateWaitableTimer(NULL, 1, NULL);
     SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
     WaitForSingleObject(timer, INFINITE);
     CloseHandle(timer);
@@ -184,7 +170,6 @@ void timer_init(void)
 
 }
 
-
 static double get_time()
 {
     return (double) (get_timer_value() - _timer.offset) / (double)_timer.frequency;
@@ -194,19 +179,11 @@ void timer_begin(Timer* timer)
 {
     timer->time_start = get_time();
     timer->time_last = timer->time_start;
-    timer->frame_fps = 0.0f;
-    timer->frame_fps_avg = 0.0f;
 }
 
 double timer_get_time()
 {
     return get_time();
-}
-
-void timer_set_fps(Timer* timer, float fps)
-{
-    timer->fps = fps;
-    timer->spf = 1.0f / fps;
 }
 
 void timer_wait_for_frame(Timer* timer)
@@ -219,34 +196,13 @@ void timer_wait_for_frame(Timer* timer)
             break;
     }
 
-    timer->frame_fps = 1.0f / (now - timer->time_last);
     timer->time_last = now;
-
-    // calculate average FPS
-    _fps_hist[_fps_hist_count++] = timer->frame_fps;
-
-    if(_fps_hist_count >= 60)
-        _fps_hist_count = 0;
-
-    if(_fps_hist_max_count < 60)
-        _fps_hist_max_count++;
-
-    double fps_sum = 0.0;
-    for(int i = 0; i < _fps_hist_max_count; ++i)
-        fps_sum += _fps_hist[i];
-
-    timer->frame_fps_avg = (fps_sum / _fps_hist_max_count);
 }
 
 double timer_get_elapsed(Timer* timer)
 {
     double time_curr = get_time();
     return time_curr - timer->time_start;
-}
-
-double timer_get_prior_frame_fps(Timer* timer)
-{
-    return timer->frame_fps;
 }
 
 void timer_delay_us(int us)
