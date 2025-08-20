@@ -195,8 +195,10 @@ int main(int argc, char** args)
     double detection_time = timer_get_elapsed(&timer);
     LOGI("detection time: %.3f ms", detection_time*1000.0f);
 
-    Rect total_rects[32] = {0};
+    Rect total_rects[1024] = {0};
     int num_faces = 0;
+
+    const u16 confidence_threshold = 60; // @IMPORTANT
 
     // collect face box results
     for(int i = 0; i < actual_thread_count; ++i)
@@ -212,6 +214,9 @@ int main(int argc, char** args)
             for(int j = 0; j < sub_faces_found; ++j)
             {
                 Rect* r = (Rect*)(ret_rects+offset);
+                if(r->confidence < confidence_threshold) // filter out low-confidence regions
+                    continue;
+
                 memcpy(&total_rects[num_faces],r,sizeof(Rect));
                 offset += sizeof(Rect);
                 num_faces++;
@@ -219,16 +224,52 @@ int main(int argc, char** args)
         }
     }
 
-    // sort and consolidate faces
+    // sort and filter out detected boxes
     sort_rects(num_faces, total_rects, false);
+
+    // NMS (Non-Maximum Suppression)
+    // Conlidate detection regions
+
+    bool removed_rects[1024] = {0};
+    int num_removed = 0;
+
+    const float iou_threshold = 0.5; // @IMPORTANT
+
+    for(int i = 0; i < num_faces; ++i)
+    {
+        if(removed_rects[i])
+            continue;
+
+        Rect* a = &total_rects[i];
+
+        for(int j = i+1; j < num_faces; ++j)
+        {
+            Rect* b = &total_rects[j];
+            float iou = calc_iou(a,b);
+
+            if(iou > iou_threshold)
+            {
+                // remove the less confidence box
+                int idx = (a->confidence < b->confidence ? i : j);
+                removed_rects[idx] = true;
+                num_removed++;
+            }
+        }
+    }
+
+    LOGI("NMS removed %d rects", num_removed);
 
     // apply transformations
     for(int i = 0; i < num_faces; ++i)
     {
+        if(removed_rects[i])
+            continue;
+
         Rect r = total_rects[i];
         LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
         Color c = {(u8)(rand() % 255),(u8)(rand() % 255),(u8)(rand() % 255),255};
-        transform_draw_rect(&image, r, c, true, 0.8);
+        //transform_draw_rect(&image, r, c, true, 0.8);
+        transform_pixelate(&image, r, 0.25);
     }
 
     LOGI("%d faces detected", num_faces);

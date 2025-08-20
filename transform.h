@@ -15,13 +15,34 @@ Color get_blended_color(u8* data, Color c, float opacity)
     return ret_color;
 }
 
+float calc_iou(Rect* a, Rect* b)
+{
+    u16 inter_x1 = MAX(a->x, b->x);
+    u16 inter_y1 = MAX(a->y, b->y);
+    u16 inter_x2 = MIN(a->x + a->w, b->x + b->w);
+    u16 inter_y2 = MIN(a->y + a->h, b->y + b->h);
+
+    u16 inter_width = MAX(0, inter_x2 - inter_x1);
+    u16 inter_height = MAX(0, inter_y2 - inter_y1);
+    u16 inter_area = inter_width * inter_height;
+
+    int area1 = a->w * a->h;
+    int area2 = b->w * b->h;
+
+    int union_area = area1 + area2 - inter_area;
+
+    if (union_area == 0) return 0.0;
+
+    return inter_area / (float)union_area;
+}
+
 void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opacity)
 {
     u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
     u8* curr = start;
 
     int n = image->n;
-    int step = image->w * n;
+    int step = image->w*n;
 
     // draw first line
     for(int i = 0; i < r.w; ++i)
@@ -62,6 +83,70 @@ void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opaci
     {
         Color r = opacity == 1.0 ? c : get_blended_color(curr+i*n,c,opacity);
         memcpy(curr + i*n, &r, 3);
+    }
+}
+
+void transform_pixelate(Image* image, Rect r, float block_scale)
+{
+    u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
+    u8* curr = start;
+
+    int n = image->n;
+    int step = image->w*n;
+
+    int block_size_x = (int)(r.w * block_scale);
+    int block_size_y = (int)(r.h * block_scale);
+    int block_size = MIN(block_size_x, block_size_y);
+
+    if(block_size == 0 || block_size == 1)
+        return; // block_size match to pixel size
+
+    int total_block_size = block_size * block_size;
+
+    float avg_r = 0.0;
+    float avg_g = 0.0;
+    float avg_b = 0.0;
+
+    int num_blocks_x = ceil(r.w / (float)block_size);
+    int num_blocks_y = ceil(r.h / (float)block_size);
+
+    for(int y = 0; y < num_blocks_y; ++y)
+    {
+        for(int x = 0; x < num_blocks_x; ++x)
+        {
+            avg_r = 0.0;
+            avg_g = 0.0;
+            avg_b = 0.0;
+
+            curr = start + y*block_size*step + x*block_size*n;
+            for(int j = 0; j < block_size; ++j)
+            {
+                for(int i = 0; i < block_size; ++i)
+                {
+                    avg_r += curr[i*n+0];
+                    avg_g += curr[i*n+1];
+                    avg_b += curr[i*n+2];
+                }
+                curr += step;
+            }
+
+            avg_r /= total_block_size;
+            avg_g /= total_block_size;
+            avg_b /= total_block_size;
+
+            Color sc = {(u8)avg_r, (u8)avg_g, (u8)avg_b};
+
+            // apply avgcolor to range
+            curr = start + y*block_size*step + x*block_size*n;
+            for(int j = 0; j < block_size; ++j)
+            {
+                for(int i = 0; i < block_size; ++i)
+                {
+                    memcpy(curr+i*n, &sc, 3);
+                }
+                curr += step;
+            }
+        }
     }
 }
 
