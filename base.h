@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <time.h>
+#include <math.h>
 #if _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -46,15 +47,91 @@ extern "C" {
 // Types
 // 
 
-typedef unsigned char  u8;
-typedef unsigned short u16;
-typedef unsigned int   u32;
-typedef unsigned long  u64;
+typedef uint8_t   u8;
+typedef uint16_t  u16;
+typedef uint32_t  u32;
+typedef uint64_t  u64;
+typedef int8_t    i8;
+typedef int16_t   i16;
+typedef int32_t   i32;
+typedef int64_t   i64;
+typedef float     f32;
+typedef double    f64;
+typedef int8_t    b8;
+typedef int16_t   b16;
+typedef int32_t   b32;
+typedef int64_t   b64;
+typedef wchar_t   wchar;
 
-typedef signed char  s8;
-typedef signed short s16;
-typedef signed int   s32;
-typedef signed long  s64;
+//
+// Program-specific types
+//
+
+typedef enum
+{
+    MODE_LOCAL = 0,
+    MODE_SERVER,
+    MODE_TESTER,
+} Mode;
+
+typedef enum
+{
+    TYPE_IMAGE = 0,
+    TYPE_VIDEO,
+} AssetType;
+
+typedef enum
+{
+    CLASS_FACE = 0,
+} DetectClass;
+
+typedef enum
+{
+    TRANSFORM_TYPE_NONE = 0,
+    TRANSFORM_TYPE_BLACKOUT,
+    TRANSFORM_TYPE_BLUR,
+    TRANSFORM_TYPE_PIXELATE,
+    TRANSFORM_TYPE_SCRAMBLE,
+    TRANSFORM_TYPE_SCRAMBLE_FIXED,
+} TransformType;
+
+inline const char* transform_type_to_str(TransformType t)
+{
+    switch(t)
+    {
+        case TRANSFORM_TYPE_NONE: return "None";
+        case TRANSFORM_TYPE_BLACKOUT: return "Black Out";
+        case TRANSFORM_TYPE_BLUR: return "Blur";
+        case TRANSFORM_TYPE_PIXELATE: return "Pixelate";
+        case TRANSFORM_TYPE_SCRAMBLE: return "Scramble";
+        case TRANSFORM_TYPE_SCRAMBLE_FIXED: return "Scramble (Fixed Seed)";
+        default: return "Unknown";
+    }
+}
+
+typedef struct
+{
+    TransformType type;
+    // ...
+} Transform;
+
+typedef struct
+{
+    Mode mode;
+    AssetType asset_type;
+    DetectClass classification;
+
+    Transform transforms[10];
+    int transform_count;
+
+    char input_file[256];
+    int num_threads;
+
+    u16 confidence_threshold;
+    float nms_iou_threshold;
+
+    bool debug;
+} ProgramState;
 
 typedef struct
 {
@@ -86,6 +163,17 @@ typedef struct
     u8 b;
     u8 a;
 } Color;
+
+//
+// Arrays
+//
+
+#define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
+
+//
+// Strings
+//
+
 
 //
 // Timer 

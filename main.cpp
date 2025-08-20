@@ -1,65 +1,100 @@
 #include <stdio.h>
 #include <pthread.h>
+
 #include "base.h"
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
-
 #include "detect.h"
 #include "transform.h"
+#include "util.h"
+
+// TODO
+//
+// [x] Add scramble transform
+// [ ] Add padding to sub-images
+// [ ] Add blur transform
+// [ ] Add image scaling function
+// [ ] Add lots of test images and --tester mode
+// [ ] Implement thread pool (spin-lock)
+// [ ] Open a video file and read image frames
+// [ ] Write output video file
 
 #define MAX_ARENAS 64
 Arena* arenas[MAX_ARENAS] = {0};
 Timer timer = {0};
+ProgramState state = {};
+pthread_t *threads = NULL;
 
-// -> image -> division -> detect faces -> consolidate results -> apply transforms
-
-void reverse_rgb_order(Image *image)
-{
-    LOGI("Reversing RGB Order... pixel count: %d", image->w*image->h);
-    for(int i = 0; i < image->w*image->h; ++i)
-    {
-        int n = i*image->n;
-        u8 temp = image->data[n+0];
-        image->data[n+0] = image->data[i*3+2]; // R -> B
-        image->data[n+2] = temp;               // B -> R
-    }
-}
-
-void sort_rects(int num_rects, Rect* rects, bool asc)
-{
-    // insertion sort
-    int i, j;
-    Rect key;
-
-    for (i = 1; i < num_rects; ++i)
-    {
-        memcpy(&key, &rects[i], sizeof(Rect));
-        j = i - 1;
-
-        if(asc)
-        {
-            while (j >= 0 && rects[j].confidence > key.confidence)
-            {
-                memcpy(&rects[j+1], &rects[j], sizeof(Rect));
-                j = j - 1;
-            }
-        }
-        else
-        {
-            while (j >= 0 && rects[j].confidence < key.confidence)
-            {
-                memcpy(&rects[j+1], &rects[j], sizeof(Rect));
-                j = j - 1;
-            }
-        }
-        memcpy(&rects[j+1], &key, sizeof(Rect));
-    }
-}
+bool init();
+bool parse_args(ProgramState* state, int argc, char* argv[]);
+int process_image(Image* image,Rect* ret_rects);
+void apply_transform(Image* image, int num_rects, Rect* rects, TransformType transform);
 
 int main(int argc, char** args)
+{
+    bool initialized = init();
+    if(!initialized)
+    {
+        LOGE("Failed to initialize");
+        return 1;
+    }
+
+    // initialize default program state
+    state.mode = MODE_LOCAL;
+    memset(state.input_file,0,256);
+    state.num_threads = MAX(1, util_get_core_count()); // default to num_cores
+    state.asset_type = TYPE_IMAGE; // @TODO
+    state.classification = CLASS_FACE;
+    state.transform_count = 0;
+    state.debug = false;
+    state.confidence_threshold = 80;
+    state.nms_iou_threshold = 0.6;
+
+    bool parse = parse_args(&state, argc, args);
+    if(!parse) return 1;
+
+    if(state.debug)
+    {
+        LOGI(" === DEBUGGING: ON === ");
+    }
+
+    // initialize threads
+    threads = (pthread_t *)calloc(state.num_threads,sizeof(pthread_t));
+    
+    if(state.mode == MODE_LOCAL)
+    {
+        if(state.asset_type == TYPE_IMAGE)
+        {
+            Image image = {};
+            bool loaded = util_load_image(state.input_file, &image);
+            if(!loaded) return 1;
+
+            Rect rects[256] = {0};
+            int num_rects = process_image(&image, rects);
+            LOGI("Found %d rects", num_rects);
+
+            for(int i = 0; i < state.transform_count; ++i)
+            {
+                Transform* t = &state.transforms[i];
+                LOGI("Applying %s transform...", transform_type_to_str(t->type));
+                apply_transform(&image, num_rects, rects,t->type);
+            }
+
+            if(state.debug)
+            {
+                // draw debugging info on image
+                for(int i = 0 ; i < num_rects; ++i)
+                {
+                    transform_draw_rect(&image, rects[i],(Color){255,0,255,255}, false, 1.0);
+                }
+            }
+
+            util_write_output(&image, "output/out.png");
+        }
+    }
+
+    return 0;
+}
+
+bool init()
 {
     // init
     timer_init();
@@ -68,37 +103,24 @@ int main(int argc, char** args)
     time_t t;
     srand((unsigned) time(&t));
 
-    const int num_threads = 8;
-    pthread_t* threads = (pthread_t*)calloc(num_threads,sizeof(pthread_t));
+    return true;
+}
 
-    Image image = {0};
+// Returns number of rects
+int process_image(Image* image,Rect* ret_rects)
+{
+    if(!threads) return 0;
 
-    image.data = stbi_load("images/test1.jpg", &image.w, &image.h, &image.n, 0);
-
-    if(!image.data)
-    {
-        LOGE("Failed to load image");
-        return 1;
-    }
-
-    LOGI("Loaded image! w: %d h: %d n: %d", image.w,image.h,image.n);
-
-    if(image.n < 3)
-    {
-        LOGE("Not enough channels on image");
-        return 1;
-    }
-
-    reverse_rgb_order(&image);
+    reverse_rgb_order(image);
 
     // Determine image subdivision
 
-    bool is_horiz = (image.w >= image.h);
+    bool is_horiz = (image->w >= image->h);
 
     int rows = 0;
     int cols = 0;
 
-    switch(num_threads)
+    switch(state.num_threads)
     {
         case 1:  rows = 1; cols = 1; break;
         case 2:  rows = is_horiz ? 1 : 2; cols = is_horiz ? 2 : 1; break;
@@ -117,19 +139,19 @@ int main(int argc, char** args)
         case 15: rows = is_horiz ? 3 : 5;  cols = is_horiz ? 5  : 3; break;
         case 16: rows = 4; cols = 4; break;
         default:
-            rows = is_horiz ? 1 : num_threads;
-            cols = is_horiz ? num_threads : 1;
+            rows = is_horiz ? 1 : state.num_threads;
+            cols = is_horiz ? state.num_threads : 1;
     }
 
-    int sub_width  = ceil(image.w / cols);
-    int sub_height = ceil(image.h / rows);
+    int sub_width  = ceil(image->w / cols);
+    int sub_height = ceil(image->h / rows);
 
     LOGI("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
 
-    Image* sub_images[num_threads] = {0};
-    u8 detect_buffers[num_threads][0x9000] = {0};
+    Image* sub_images[state.num_threads] = {0};
+    u8 detect_buffers[state.num_threads][0x9000] = {0};
 
-    for(int i = 0; i < num_threads; ++i)
+    for(int i = 0; i < state.num_threads; ++i)
     {
         arenas[i] = arena_create(ARENA_SIZE_MEDIUM);
         sub_images[i] = (Image*)arena_alloc(arenas[i], sizeof(Image));
@@ -139,7 +161,7 @@ int main(int argc, char** args)
     int x = 0;
     int y = 0;
 
-    LOGI("Detecting faces... (threads: %d)", num_threads);
+    LOGI("Detecting faces... (threads: %d)", state.num_threads);
 
     facedetect_init();
 
@@ -148,21 +170,21 @@ int main(int argc, char** args)
 
     timer_begin(&timer);
 
-    for(int i = 0; i < num_threads; ++i)
+    for(int i = 0; i < state.num_threads; ++i)
     {
         Arena* arena = arenas[actual_thread_count];
         pthread_t* thread = &threads[actual_thread_count];
         Image* sub_image = sub_images[actual_thread_count];
 
         // calculate offset into base image
-        int offset = (y*image.w*sub_height*image.n) + x*sub_width*image.n;
+        int offset = (y*image->w*sub_height*image->n) + x*sub_width*image->n;
 
         sub_image->detect_buffer = detect_buffers[actual_thread_count];
-        sub_image->data = image.data + offset;
+        sub_image->data = image->data + offset;
         sub_image->w = sub_width;
         sub_image->h = sub_height;
-        sub_image->n = image.n;
-        sub_image->step = image.w*image.n;
+        sub_image->n = image->n;
+        sub_image->step = image->w*image->n;
         sub_image->arena = arena;
         sub_image->subx = x;
         sub_image->suby = y;
@@ -185,8 +207,7 @@ int main(int argc, char** args)
         }
     }
 
-
-    for(int i = 0; i < num_threads; ++i)
+    for(int i = 0; i < state.num_threads; ++i)
     {
         //LOGI("Thread %d joined", i);
         pthread_join(threads[i], NULL);
@@ -197,8 +218,6 @@ int main(int argc, char** args)
 
     Rect total_rects[1024] = {0};
     int num_faces = 0;
-
-    const u16 confidence_threshold = 60; // @IMPORTANT
 
     // collect face box results
     for(int i = 0; i < actual_thread_count; ++i)
@@ -214,7 +233,7 @@ int main(int argc, char** args)
             for(int j = 0; j < sub_faces_found; ++j)
             {
                 Rect* r = (Rect*)(ret_rects+offset);
-                if(r->confidence < confidence_threshold) // filter out low-confidence regions
+                if(r->confidence < state.confidence_threshold) // filter out low-confidence regions
                     continue;
 
                 memcpy(&total_rects[num_faces],r,sizeof(Rect));
@@ -224,16 +243,16 @@ int main(int argc, char** args)
         }
     }
 
+    reverse_rgb_order(image);
+
     // sort and filter out detected boxes
-    sort_rects(num_faces, total_rects, false);
+    util_sort_rects(num_faces, total_rects, false);
 
     // NMS (Non-Maximum Suppression)
     // Conlidate detection regions
 
     bool removed_rects[1024] = {0};
     int num_removed = 0;
-
-    const float iou_threshold = 0.5; // @IMPORTANT
 
     for(int i = 0; i < num_faces; ++i)
     {
@@ -247,7 +266,7 @@ int main(int argc, char** args)
             Rect* b = &total_rects[j];
             float iou = calc_iou(a,b);
 
-            if(iou > iou_threshold)
+            if(iou > state.nms_iou_threshold)
             {
                 // remove the less confidence box
                 int idx = (a->confidence < b->confidence ? i : j);
@@ -259,31 +278,134 @@ int main(int argc, char** args)
 
     LOGI("NMS removed %d rects", num_removed);
 
-    // apply transformations
-    for(int i = 0; i < num_faces; ++i)
+    int ret_rects_count = 0;
+    for(int i  = 0; i < num_faces; ++i)
     {
         if(removed_rects[i])
             continue;
 
-        Rect r = total_rects[i];
-        LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
-        Color c = {(u8)(rand() % 255),(u8)(rand() % 255),(u8)(rand() % 255),255};
-        //transform_draw_rect(&image, r, c, true, 0.8);
-        transform_pixelate(&image, r, 0.25);
+        memcpy(&ret_rects[ret_rects_count++], &total_rects[i], sizeof(Rect));
     }
 
-    LOGI("%d faces detected", num_faces);
+    return ret_rects_count;
+}
 
-    reverse_rgb_order(&image);
-
-    LOGI("Writing output file...\n");
-    int step = image.w*image.n;
-    int res = stbi_write_png("output/out.png", image.w, image.h, image.n, image.data, step);
-    if(res == 0)
+void apply_transform(Image* image, int num_rects, Rect* rects, TransformType transform)
+{
+    // apply transformation
+    for(int i = 0; i < num_rects; ++i)
     {
-        LOGE("Failed to write output");
-        return 1;
+        Rect r = rects[i];
+        LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
+
+        switch(transform)
+        {
+            case TRANSFORM_TYPE_BLACKOUT:       transform_draw_rect(image, r,(Color){0,0,0,255}, true, 1.0); break;
+            case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, 0.25); break;
+            case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
+            case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO
+            case TRANSFORM_TYPE_BLUR: break;
+            default: break;
+        }
+    }
+}
+
+void print_help()
+{
+    printf("censorman <file> -o <output> -d {class_list} -t {transform_list} [-k num_threads] [--debug]\n");
+}
+
+bool parse_args(ProgramState* state, int argc, char* argv[])
+{
+    if(argc <= 1)
+    {
+        print_help();
+        return false;
     }
 
-    return 0;
+    bool input_file_needed = true;
+
+    for(int i = 1; i < argc; ++i)
+    {
+        if(argv[i][0] == '-')
+        {
+            switch(argv[i][1])
+            {
+                case '-':
+                    if(STR_EQUAL(&argv[i][2],"debug"))
+                        state->debug = true;
+                    break;
+                case 'o':
+                    break;
+                case 'd':
+                    break;
+                case 't':
+                {
+                    if(i < argc-1)
+                    {
+                        // parse transforms
+                        char* p = argv[i+1];
+                        int len = strlen(p);
+                        char buf[256] = {0};
+                        int bufi = 0;
+                        bool process = false;
+
+                        for(int i = 0; i < len; ++i)
+                        {
+                            int c = *p++;
+                            if(c == ',')
+                            {
+                                process = true;
+                            }
+                            else
+                            {
+                                buf[bufi++] = c;
+                            }
+
+                            if(i == len -1)
+                                process = true;
+
+                            if(process)
+                            {
+                                process = false;
+
+                                TransformType type = TRANSFORM_TYPE_NONE;
+
+                                if(STR_EQUAL(buf, "blackout")) type = TRANSFORM_TYPE_BLACKOUT;
+                                else if(STR_EQUAL(buf, "blur")) type = TRANSFORM_TYPE_BLUR;
+                                else if(STR_EQUAL(buf, "pixelate")) type = TRANSFORM_TYPE_PIXELATE;
+                                else if(STR_EQUAL(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
+
+                                memset(buf,256,0);
+                                bufi = 0;
+
+                                if(type != TRANSFORM_TYPE_NONE)
+                                {
+                                    Transform *t = &state->transforms[state->transform_count++];
+                                    t->type = type;
+                                }
+                            }
+                        }
+                    }
+                } break;
+                case 'k': {
+                    if(i < argc-1)
+                    {
+                        int n = atoi(argv[i+1]);
+                        state->num_threads = n == 0 ? state->num_threads : n;
+                    }
+                }   break;
+                default:
+                    break;
+            }
+        }
+        else if(input_file_needed)
+        {
+            // assume input file
+            strncpy(state->input_file, argv[i], 255);
+            input_file_needed = false;
+        }
+    }
+
+    return true;
 }

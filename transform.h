@@ -1,4 +1,18 @@
+#pragma once
+
 #include "base.h"
+
+void reverse_rgb_order(Image *image)
+{
+    LOGI("Reversing RGB Order... pixel count: %d", image->w*image->h);
+    for(int i = 0; i < image->w*image->h; ++i)
+    {
+        int n = i*image->n;
+        u8 temp = image->data[n+0];
+        image->data[n+0] = image->data[i*3+2]; // R -> B
+        image->data[n+2] = temp;               // B -> R
+    }
+}
 
 Color get_blended_color(u8* data, Color c, float opacity)
 {
@@ -34,6 +48,54 @@ float calc_iou(Rect* a, Rect* b)
     if (union_area == 0) return 0.0;
 
     return inter_area / (float)union_area;
+}
+
+void transform_scramble(Image* image, Rect r, u32 seed)
+{
+    u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
+
+    if(seed > 0)
+    {
+        // seed of 0 means "don't seed"
+        srand(seed);
+    }
+
+    // initialize unprocessed list
+    int num_pixels = r.w*r.h;
+    int unprocessed[num_pixels] = {0};
+    int unprocessed_count = num_pixels;
+
+    for(int i = 0; i < num_pixels; ++i)
+        unprocessed[i] = i;
+
+    for(;;)
+    {
+        if(unprocessed_count <= 1)
+            break;
+
+        int idx1 = rand() % unprocessed_count;
+        int idx2 = rand() % unprocessed_count;
+
+        // swap two pixels
+
+        int u1 = unprocessed[idx1];
+        int u2 = unprocessed[idx2];
+
+        int offset1 = image->w*image->n*(u1/r.w) + image->n*(u1%r.w);
+        int offset2 = image->w*image->n*(u2/r.w) + image->n*(u2%r.w);
+
+        Color tmp = {0};
+        memcpy(&tmp, start+offset1, 3);
+        memcpy(start+offset1,start+offset2,3);
+        memcpy(start+offset2, &tmp, 3);
+
+        // remove both indices from unprocessed
+        memcpy(&unprocessed[idx1],&unprocessed[unprocessed_count-1], sizeof(int));
+        unprocessed_count--;
+        memcpy(&unprocessed[idx2],&unprocessed[unprocessed_count-1], sizeof(int));
+        unprocessed_count--;
+    }
+    
 }
 
 void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opacity)
@@ -94,9 +156,7 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
     int n = image->n;
     int step = image->w*n;
 
-    int block_size_x = (int)(r.w * block_scale);
-    int block_size_y = (int)(r.h * block_scale);
-    int block_size = MIN(block_size_x, block_size_y);
+    int block_size = MIN(r.w, r.h)*block_scale;
 
     if(block_size == 0 || block_size == 1)
         return; // block_size match to pixel size
@@ -110,6 +170,9 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
     int num_blocks_x = ceil(r.w / (float)block_size);
     int num_blocks_y = ceil(r.h / (float)block_size);
 
+    int block_size_x = block_size;
+    int block_size_y = block_size;
+
     for(int y = 0; y < num_blocks_y; ++y)
     {
         for(int x = 0; x < num_blocks_x; ++x)
@@ -118,10 +181,11 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
             avg_g = 0.0;
             avg_b = 0.0;
 
-            curr = start + y*block_size*step + x*block_size*n;
-            for(int j = 0; j < block_size; ++j)
+            curr = start + y*block_size_y*step + x*block_size_x*n;
+
+            for(int j = 0; j < block_size_y; ++j)
             {
-                for(int i = 0; i < block_size; ++i)
+                for(int i = 0; i < block_size_x; ++i)
                 {
                     avg_r += curr[i*n+0];
                     avg_g += curr[i*n+1];
@@ -136,11 +200,14 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
 
             Color sc = {(u8)avg_r, (u8)avg_g, (u8)avg_b};
 
+            int offset_x = x == num_blocks_x - 1 ? r.w % block_size_x : 0;
+            int offset_y = y == num_blocks_y - 1 ? r.h % block_size_y : 0;
+
             // apply avgcolor to range
-            curr = start + y*block_size*step + x*block_size*n;
-            for(int j = 0; j < block_size; ++j)
+            curr = start + y*block_size_y*step + x*block_size_x*n;
+            for(int j = 0; j < block_size_y - offset_y; ++j)
             {
-                for(int i = 0; i < block_size; ++i)
+                for(int i = 0; i < block_size_x - offset_x; ++i)
                 {
                     memcpy(curr+i*n, &sc, 3);
                 }
