@@ -28,8 +28,10 @@ extern "C" {
 //
 // Math
 //
+#define PI 3.14159265358979323846
 #define MIN(x,y) ((x)  < (y) ? (x) : (y))
 #define MAX(x,y) ((x) >= (y) ? (x) : (y))
+#define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
 
 //
 // Strings
@@ -125,13 +127,13 @@ typedef struct
     int transform_count;
 
     char input_file[256];
-    int num_threads;
+    int thread_count;
 
     u16 confidence_threshold;
     float nms_iou_threshold;
 
     bool debug;
-} ProgramState;
+} ProgramSettings;
 
 typedef struct
 {
@@ -144,12 +146,14 @@ typedef struct
 
 typedef struct
 {
-    u8 *detect_buffer;
     u8 *data;
     int w;
     int h;
     int n; // channels
-    int step; // number of bytes to advance to next row of box
+    int step; // number of bytes to advance to next row
+
+    // used for sub-image thread processing
+    u8 *detect_buffer;
     u8 subx; // position in larger image
     u8 suby; // position in larger image
     void* arena;

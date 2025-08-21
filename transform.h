@@ -2,6 +2,18 @@
 
 #include "base.h"
 
+inline Color get_pixel(Image* image, int x, int y)
+{
+    Color c = {0};
+    memcpy(&c, &image->data[y*image->w*image->n + x*image->n], 3);
+    return c;
+}
+
+inline void set_pixel(Image* image, int x, int y, Color c)
+{
+    memcpy(&image->data[y*image->w*image->n + x*image->n], &c, 3);
+}
+
 void reverse_rgb_order(Image *image)
 {
     LOGI("Reversing RGB Order... pixel count: %d", image->w*image->h);
@@ -343,5 +355,104 @@ static inline void fast_gaussian_blur_c(const float *in, float *out,
 
     free(boxes);
     free(temp);
+}
+
+
+
+// Down Scaling
+
+#define KERNEL_TABLE_SIZE 1024
+
+double lanczos_table[KERNEL_TABLE_SIZE];
+
+void precompute_lanczos_table(int a) {
+    for (int i = 0; i < KERNEL_TABLE_SIZE; ++i) {
+        double x = ((double)i / (KERNEL_TABLE_SIZE - 1)) * a;
+        if (x == 0.0)
+            lanczos_table[i] = 1.0;
+        else if (x < a)
+            lanczos_table[i] = (sin(PI*x) / (PI*x)) * (sin(PI*x/a) / (PI*x/a));
+        else
+            lanczos_table[i] = 0.0;
+    }
+}
+
+inline double fast_lanczos(double x, int a) {
+    x = fabs(x);
+    if (x >= a) return 0.0;
+
+    int idx = (int)(x * (KERNEL_TABLE_SIZE - 1) / a);
+    return lanczos_table[idx];
+}
+
+double lanczos_kernel(double x, int a)
+{
+    if (x == 0.0)
+        return 1.0;
+
+    if (x > -a && x < a)
+    {
+        return (sin(PI*x) / (PI*x)) * (sin(PI*x/a) / (PI*x/a));
+    }
+    return 0.0;
+}
+
+void lanczos_downscale(Image *in, Image *out, int a)
+{
+    double x_scale = (double)in->w / out->w;
+    double y_scale = (double)in->h / out->h;
+
+    for (int y = 0; y < out->h; ++y)
+    {
+        for (int x = 0; x < out->w; ++x)
+        {
+            double source_x = (x + 0.5) * x_scale;
+            double source_y = (y + 0.5) * y_scale;
+
+            double sum_red = 0.0;
+            double sum_green = 0.0;
+            double sum_blue = 0.0;
+            double sum_weights = 0.0;
+
+            // Determine the contributing input pixel region based on 'a'
+            // and the downscaling ratio
+
+            int x_start = floor(source_x - a);
+            int x_end   = floor(source_x + a);
+            int y_start = floor(source_y - a);
+            int y_end   = floor(source_y + a);
+
+            for (int j = y_start; j <= y_end; ++j)
+            {
+                for (int i = x_start; i <= x_end; ++i)
+                {
+                    // Calculate weights using the Lanczos kernel
+                    double weight_x = fast_lanczos((i - source_x) / x_scale, a);
+                    double weight_y = fast_lanczos((j - source_y) / y_scale, a);
+                    double weight = weight_x * weight_y;
+
+                    // Clamp input coordinates to stay within image bounds
+                    int clamped_i = CLAMP(in->w - 1, 0, i);
+                    int clamped_j = CLAMP(in->h -1, 0, j);
+
+                    int offset = clamped_j*in->w*in->n + clamped_i*in->n;
+                    sum_red   += in->data[offset+0] * weight;
+                    sum_green += in->data[offset+1] * weight;
+                    sum_blue  += in->data[offset+2] * weight;
+
+                    sum_weights += weight;
+                }
+            }
+
+            // Normalize and set the output pixel
+
+            Color out_pixel;
+            out_pixel.r = (u8)CLAMP(sum_red / sum_weights, 0, 255);
+            out_pixel.g = (u8)CLAMP(sum_green / sum_weights, 0, 255);
+            out_pixel.b = (u8)CLAMP(sum_blue / sum_weights, 0, 255);
+
+            set_pixel(out, x, y, out_pixel);
+        }
+    }
 }
 

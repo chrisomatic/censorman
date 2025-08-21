@@ -24,6 +24,9 @@ bool util_load_image(char* input_file, Image* image)
         LOGE("Not enough channels on image");
         return false;
     }
+    
+    image->step = image->w*image->n;
+
     return true;
 }
 
@@ -74,7 +77,13 @@ void util_sort_rects(int num_rects, Rect* rects, bool asc)
 
 int util_get_core_count()
 {
+#if _WIN32
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    return sysinfo.dwNumberOfProcessors;
+#else
     long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
     if(nprocs < 1) nprocs = 8;
     return nprocs;
+#endif
 }

@@ -20,11 +20,11 @@
 #define MAX_ARENAS 64
 Arena* arenas[MAX_ARENAS] = {0};
 Timer timer = {0};
-ProgramState state = {};
+ProgramSettings settings = {};
 pthread_t *threads = NULL;
 
 bool init();
-bool parse_args(ProgramState* state, int argc, char* argv[]);
+bool parse_args(ProgramSettings* settings, int argc, char* argv[]);
 int process_image(Image* image,Rect* ret_rects);
 void apply_transform(Image* image, int num_rects, Rect* rects, TransformType transform);
 
@@ -37,48 +37,105 @@ int main(int argc, char** args)
         return 1;
     }
 
-    // initialize default program state
-    state.mode = MODE_LOCAL;
-    memset(state.input_file,0,256);
-    state.num_threads = MAX(1, util_get_core_count()); // default to num_cores
-    state.asset_type = TYPE_IMAGE; // @TODO
-    state.classification = CLASS_FACE;
-    state.transform_count = 0;
-    state.debug = false;
-    state.confidence_threshold = 80;
-    state.nms_iou_threshold = 0.6;
+    // set default settings
+    settings.mode = MODE_LOCAL;
+    memset(settings.input_file,0,256);
+    settings.thread_count = MAX(1, util_get_core_count()); // default to num_cores
+    settings.asset_type = TYPE_IMAGE; // @TODO
+    settings.classification = CLASS_FACE;
+    settings.transform_count = 0;
+    settings.debug = false;
+    settings.confidence_threshold = 60;
+    settings.nms_iou_threshold = 0.6;
 
-    bool parse = parse_args(&state, argc, args);
+    bool parse = parse_args(&settings, argc, args);
     if(!parse) return 1;
 
-    if(state.debug)
-    {
-        LOGI(" === DEBUGGING: ON === ");
-    }
+    // print settings
+    LOGI("=== Settings ===");
+    LOGI("  Thread Count: %d", settings.thread_count);
+    LOGI("  Confidence Threshold: %d", settings.confidence_threshold);
+    LOGI("  NMS IOU Threshold: %f", settings.nms_iou_threshold);
+    LOGI("  Debug: %s", settings.debug ? "ON" : "OFF");
 
     // initialize threads
-    threads = (pthread_t *)calloc(state.num_threads,sizeof(pthread_t));
+    threads = (pthread_t *)calloc(settings.thread_count,sizeof(pthread_t));
     
-    if(state.mode == MODE_LOCAL)
+    if(settings.mode == MODE_LOCAL)
     {
-        if(state.asset_type == TYPE_IMAGE)
+        if(settings.asset_type == TYPE_IMAGE)
         {
             Image image = {};
-            bool loaded = util_load_image(state.input_file, &image);
+            bool loaded = util_load_image(settings.input_file, &image);
             if(!loaded) return 1;
 
+            Image image_scaled = {};
+            const int scaled_size = 320;
+            bool use_scaled_image = image.w > scaled_size || image.h > scaled_size;
+
+            if(use_scaled_image)
+            {
+                double t0 = timer_get_time();
+
+                const int a = 1;
+                precompute_lanczos_table(a);
+
+                // downscale largest dimension 
+                float aspect = image.w / (float)image.h;
+
+                int width_scaled = 0;
+                int height_scaled = 0;
+
+                if(aspect > 1.0)
+                {
+                    // width is larger than height (most common)
+                    width_scaled = scaled_size;
+                    height_scaled = width_scaled / aspect;
+                }
+                else
+                {
+                    height_scaled = scaled_size;
+                    width_scaled = height_scaled * aspect;
+                }
+
+                image_scaled.w = width_scaled;
+                image_scaled.h = height_scaled;
+                image_scaled.n = image.n;
+                image_scaled.step = width_scaled*image_scaled.n;
+                image_scaled.data = (u8*)malloc(width_scaled*height_scaled*image.n);
+
+                lanczos_downscale(&image, &image_scaled, a);
+                double elapsed = timer_get_time() - t0;
+                LOGI("Downscale took %.3f ms", elapsed*1000.0);
+                util_write_output(&image_scaled, "output/out_scaled.png");
+            }
+
             Rect rects[256] = {0};
-            int num_rects = process_image(&image, rects);
+            int num_rects = use_scaled_image ? process_image(&image_scaled, rects) : process_image(&image, rects);
             LOGI("Found %d rects", num_rects);
 
-            for(int i = 0; i < state.transform_count; ++i)
+            if(use_scaled_image)
             {
-                Transform* t = &state.transforms[i];
+                // correct rects positions / sizes
+                const float scale = image.w > image.h ? image.w / (float)image_scaled.w : image.h / (float)image_scaled.h;
+                for(int i = 0; i < num_rects; ++i)
+                {
+                    Rect* r = &rects[i];
+                    r->x = (u16)round(r->x * scale);
+                    r->y = (u16)round(r->y * scale);
+                    r->w = (u16)round(r->w * scale);
+                    r->h = (u16)round(r->h * scale);
+                }
+            }
+
+            for(int i = 0; i < settings.transform_count; ++i)
+            {
+                Transform* t = &settings.transforms[i];
                 LOGI("Applying %s transform...", transform_type_to_str(t->type));
                 apply_transform(&image, num_rects, rects,t->type);
             }
 
-            if(state.debug)
+            if(settings.debug)
             {
                 // draw debugging info on image
                 for(int i = 0 ; i < num_rects; ++i)
@@ -120,7 +177,7 @@ int process_image(Image* image,Rect* ret_rects)
     int rows = 0;
     int cols = 0;
 
-    switch(state.num_threads)
+    switch(settings.thread_count)
     {
         case 1:  rows = 1; cols = 1; break;
         case 2:  rows = is_horiz ? 1 : 2; cols = is_horiz ? 2 : 1; break;
@@ -139,8 +196,8 @@ int process_image(Image* image,Rect* ret_rects)
         case 15: rows = is_horiz ? 3 : 5;  cols = is_horiz ? 5  : 3; break;
         case 16: rows = 4; cols = 4; break;
         default:
-            rows = is_horiz ? 1 : state.num_threads;
-            cols = is_horiz ? state.num_threads : 1;
+            rows = is_horiz ? 1 : settings.thread_count;
+            cols = is_horiz ? settings.thread_count : 1;
     }
 
     int sub_width  = ceil(image->w / cols);
@@ -148,10 +205,10 @@ int process_image(Image* image,Rect* ret_rects)
 
     LOGI("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
 
-    Image* sub_images[state.num_threads] = {0};
-    u8 detect_buffers[state.num_threads][0x9000] = {0};
+    Image* sub_images[settings.thread_count] = {0};
+    u8 detect_buffers[settings.thread_count][0x9000] = {0};
 
-    for(int i = 0; i < state.num_threads; ++i)
+    for(int i = 0; i < settings.thread_count; ++i)
     {
         arenas[i] = arena_create(ARENA_SIZE_MEDIUM);
         sub_images[i] = (Image*)arena_alloc(arenas[i], sizeof(Image));
@@ -161,7 +218,7 @@ int process_image(Image* image,Rect* ret_rects)
     int x = 0;
     int y = 0;
 
-    LOGI("Detecting faces... (threads: %d)", state.num_threads);
+    LOGI("Detecting faces... (threads: %d)", settings.thread_count);
 
     facedetect_init();
 
@@ -170,7 +227,7 @@ int process_image(Image* image,Rect* ret_rects)
 
     timer_begin(&timer);
 
-    for(int i = 0; i < state.num_threads; ++i)
+    for(int i = 0; i < settings.thread_count; ++i)
     {
         Arena* arena = arenas[actual_thread_count];
         pthread_t* thread = &threads[actual_thread_count];
@@ -207,7 +264,7 @@ int process_image(Image* image,Rect* ret_rects)
         }
     }
 
-    for(int i = 0; i < state.num_threads; ++i)
+    for(int i = 0; i < settings.thread_count; ++i)
     {
         //LOGI("Thread %d joined", i);
         pthread_join(threads[i], NULL);
@@ -233,7 +290,7 @@ int process_image(Image* image,Rect* ret_rects)
             for(int j = 0; j < sub_faces_found; ++j)
             {
                 Rect* r = (Rect*)(ret_rects+offset);
-                if(r->confidence < state.confidence_threshold) // filter out low-confidence regions
+                if(r->confidence < settings.confidence_threshold) // filter out low-confidence regions
                     continue;
 
                 memcpy(&total_rects[num_faces],r,sizeof(Rect));
@@ -266,7 +323,7 @@ int process_image(Image* image,Rect* ret_rects)
             Rect* b = &total_rects[j];
             float iou = calc_iou(a,b);
 
-            if(iou > state.nms_iou_threshold)
+            if(iou > settings.nms_iou_threshold)
             {
                 // remove the less confidence box
                 int idx = (a->confidence < b->confidence ? i : j);
@@ -312,10 +369,10 @@ void apply_transform(Image* image, int num_rects, Rect* rects, TransformType tra
 
 void print_help()
 {
-    printf("censorman <file> -o <output> -d {class_list} -t {transform_list} [-k num_threads] [--debug]\n");
+    printf("censorman <file> -o <output> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug]\n");
 }
 
-bool parse_args(ProgramState* state, int argc, char* argv[])
+bool parse_args(ProgramSettings* settings, int argc, char* argv[])
 {
     if(argc <= 1)
     {
@@ -333,12 +390,17 @@ bool parse_args(ProgramState* state, int argc, char* argv[])
             {
                 case '-':
                     if(STR_EQUAL(&argv[i][2],"debug"))
-                        state->debug = true;
+                        settings->debug = true;
                     break;
                 case 'o':
                     break;
                 case 'd':
                     break;
+                case 'c':
+                {
+                    int n = atoi(argv[i+1]);
+                    settings->confidence_threshold = n == 0 ? settings->confidence_threshold : n;
+                }   break;
                 case 't':
                 {
                     if(i < argc-1)
@@ -381,7 +443,7 @@ bool parse_args(ProgramState* state, int argc, char* argv[])
 
                                 if(type != TRANSFORM_TYPE_NONE)
                                 {
-                                    Transform *t = &state->transforms[state->transform_count++];
+                                    Transform *t = &settings->transforms[settings->transform_count++];
                                     t->type = type;
                                 }
                             }
@@ -392,7 +454,7 @@ bool parse_args(ProgramState* state, int argc, char* argv[])
                     if(i < argc-1)
                     {
                         int n = atoi(argv[i+1]);
-                        state->num_threads = n == 0 ? state->num_threads : n;
+                        settings->thread_count = n == 0 ? settings->thread_count : n;
                     }
                 }   break;
                 default:
@@ -402,7 +464,7 @@ bool parse_args(ProgramState* state, int argc, char* argv[])
         else if(input_file_needed)
         {
             // assume input file
-            strncpy(state->input_file, argv[i], 255);
+            strncpy(settings->input_file, argv[i], 255);
             input_file_needed = false;
         }
     }
