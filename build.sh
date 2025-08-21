@@ -11,10 +11,8 @@ mkdir bin
 srcs="main.cpp models/facedetectcnn-data.cpp models/facedetectcnn-model.cpp models/facedetectcnn.cpp"
 opts="-march=native -Ofast"
 # -mavx2
-includes="-Iinclude"
-libs="-lm -lz"
-#includes="-I./include -I./ffmpeg/include"
-#libs="-L./ffmpeg/lib -lavformat -lavcodec -lavutil -lswscale -lm -lz"
+includes="-Iinclude -Iffmpeg/include"
+libs="-Lffmpeg/lib -lavformat -lavcodec -lavutil -lswscale -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11"
 
 cmd="g++ ${srcs} ${includes} ${libs} ${opts} -o ./bin/censorman"
 echo "${cmd}"

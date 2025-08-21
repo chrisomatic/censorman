@@ -5,7 +5,7 @@ set -e
 PREFIX="$PWD/ffmpeg_build"
 
 # Cleanup
-rm -rf ffmpeg_build ffmpeg_source
+rm -rf ffmpeg ffmpeg_build ffmpeg_source
 mkdir -p ffmpeg_build ffmpeg_source
 cd ffmpeg_source
 
@@ -16,7 +16,6 @@ cd ffmpeg-6.1.1
 # Configure for minimal static build: MP4 container + H.264 decoder only
 ./configure \
   --prefix="$PREFIX" \
-  --toolchain=msvc \
   --disable-everything \
   --enable-static \
   --disable-shared \
@@ -33,6 +32,7 @@ cd ffmpeg-6.1.1
   --enable-demuxer=mov \
   --enable-decoder=h264 \
   --enable-parser=h264 \
+  --enable-libx264 \
   --enable-bsfs \
   --cc=gcc \
   --extra-cflags="-Os -ffunction-sections -fdata-sections" \
@@ -40,3 +40,8 @@ cd ffmpeg-6.1.1
 
 make -j8
 make install
+
+rm -rf ffmpeg_source
+rm -rf ffmpeg_build/share
+mv ffmpeg_build ffmpeg
+

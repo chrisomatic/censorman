@@ -29,6 +29,8 @@ extern "C" {
 // Math
 //
 #define PI 3.14159265358979323846
+#define ABS(x)   ((x) < 0 ? -(x) : (x))
+#define ABSF(x)  ((x) < 0.0 ? -(x) : (x))
 #define MIN(x,y) ((x)  < (y) ? (x) : (y))
 #define MAX(x,y) ((x) >= (y) ? (x) : (y))
 #define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
@@ -65,108 +67,6 @@ typedef int32_t   b32;
 typedef int64_t   b64;
 typedef wchar_t   wchar;
 
-//
-// Program-specific types
-//
-
-typedef enum
-{
-    MODE_LOCAL = 0,
-    MODE_SERVER,
-    MODE_TESTER,
-} Mode;
-
-typedef enum
-{
-    TYPE_IMAGE = 0,
-    TYPE_VIDEO,
-} AssetType;
-
-typedef enum
-{
-    CLASS_FACE = 0,
-} DetectClass;
-
-typedef enum
-{
-    TRANSFORM_TYPE_NONE = 0,
-    TRANSFORM_TYPE_BLACKOUT,
-    TRANSFORM_TYPE_BLUR,
-    TRANSFORM_TYPE_PIXELATE,
-    TRANSFORM_TYPE_SCRAMBLE,
-    TRANSFORM_TYPE_SCRAMBLE_FIXED,
-} TransformType;
-
-inline const char* transform_type_to_str(TransformType t)
-{
-    switch(t)
-    {
-        case TRANSFORM_TYPE_NONE: return "None";
-        case TRANSFORM_TYPE_BLACKOUT: return "Black Out";
-        case TRANSFORM_TYPE_BLUR: return "Blur";
-        case TRANSFORM_TYPE_PIXELATE: return "Pixelate";
-        case TRANSFORM_TYPE_SCRAMBLE: return "Scramble";
-        case TRANSFORM_TYPE_SCRAMBLE_FIXED: return "Scramble (Fixed Seed)";
-        default: return "Unknown";
-    }
-}
-
-typedef struct
-{
-    TransformType type;
-    // ...
-} Transform;
-
-typedef struct
-{
-    Mode mode;
-    AssetType asset_type;
-    DetectClass classification;
-
-    Transform transforms[10];
-    int transform_count;
-
-    char input_file[256];
-    int thread_count;
-
-    u16 confidence_threshold;
-    float nms_iou_threshold;
-
-    bool debug;
-} ProgramSettings;
-
-typedef struct
-{
-    u16 x;
-    u16 y;
-    u16 w;
-    u16 h;
-    u16 confidence;
-} Rect;
-
-typedef struct
-{
-    u8 *data;
-    int w;
-    int h;
-    int n; // channels
-    int step; // number of bytes to advance to next row
-
-    // used for sub-image thread processing
-    u8 *detect_buffer;
-    u8 subx; // position in larger image
-    u8 suby; // position in larger image
-    void* arena;
-    u8* result;
-} Image;
-
-typedef struct
-{
-    u8 r;
-    u8 g;
-    u8 b;
-    u8 a;
-} Color;
 
 //
 // Arrays
@@ -478,3 +378,112 @@ void arena_reset(Arena* arena)
 }
 #endif
 
+//
+// Program-specific types
+//
+
+typedef enum
+{
+    MODE_LOCAL = 0,
+    MODE_SERVER,
+    MODE_TESTER,
+} Mode;
+
+typedef enum
+{
+    TYPE_IMAGE = 0,
+    TYPE_VIDEO,
+} AssetType;
+
+typedef enum
+{
+    CLASS_FACE = 0,
+} DetectClass;
+
+typedef enum
+{
+    TRANSFORM_TYPE_NONE = 0,
+    TRANSFORM_TYPE_BLACKOUT,
+    TRANSFORM_TYPE_BLUR,
+    TRANSFORM_TYPE_PIXELATE,
+    TRANSFORM_TYPE_SCRAMBLE,
+    TRANSFORM_TYPE_SCRAMBLE_FIXED,
+} TransformType;
+
+inline const char* transform_type_to_str(TransformType t)
+{
+    switch(t)
+    {
+        case TRANSFORM_TYPE_NONE: return "None";
+        case TRANSFORM_TYPE_BLACKOUT: return "Black Out";
+        case TRANSFORM_TYPE_BLUR: return "Blur";
+        case TRANSFORM_TYPE_PIXELATE: return "Pixelate";
+        case TRANSFORM_TYPE_SCRAMBLE: return "Scramble";
+        case TRANSFORM_TYPE_SCRAMBLE_FIXED: return "Scramble (Fixed Seed)";
+        default: return "Unknown";
+    }
+}
+
+typedef struct
+{
+    TransformType type;
+    // ...
+} Transform;
+
+typedef struct
+{
+    Mode mode;
+    AssetType asset_type;
+    DetectClass classification;
+
+    Transform transforms[10];
+    int transform_count;
+
+    char input_file[256];
+    int thread_count;
+
+    u16 confidence_threshold;
+    float nms_iou_threshold;
+
+    bool debug;
+} ProgramSettings;
+
+#define MAX_ARENAS 64
+
+extern ProgramSettings settings;
+extern pthread_t *threads;
+extern Timer timer;
+extern Arena* arenas[MAX_ARENAS];
+
+typedef struct
+{
+    u16 x;
+    u16 y;
+    u16 w;
+    u16 h;
+    u16 confidence;
+} Rect;
+
+typedef struct
+{
+    u8 *data;
+    int w;
+    int h;
+    int n; // channels
+    int step; // number of bytes to advance to next row
+
+    // used for sub-image thread processing
+    u8 *detect_buffer;
+    u8 subx; // position in larger image
+    u8 suby; // position in larger image
+    void* arena;
+    u8* result;
+} Image;
+
+typedef struct
+{
+    u8 r;
+    u8 g;
+    u8 b;
+    u8 a;
+} Color;

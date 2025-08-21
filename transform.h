@@ -9,11 +9,6 @@ inline Color get_pixel(Image* image, int x, int y)
     return c;
 }
 
-inline void set_pixel(Image* image, int x, int y, Color c)
-{
-    memcpy(&image->data[y*image->w*image->n + x*image->n], &c, 3);
-}
-
 void reverse_rgb_order(Image *image)
 {
     LOGI("Reversing RGB Order... pixel count: %d", image->w*image->h);
@@ -362,12 +357,13 @@ static inline void fast_gaussian_blur_c(const float *in, float *out,
 // Down Scaling
 
 #define KERNEL_TABLE_SIZE 1024
+float lanczos_table[KERNEL_TABLE_SIZE];
+float inv_a_scale = 0.0;
 
-double lanczos_table[KERNEL_TABLE_SIZE];
-
-void precompute_lanczos_table(int a) {
+// performs pre-computations to make things fast
+void lanczos_init(int a) {
     for (int i = 0; i < KERNEL_TABLE_SIZE; ++i) {
-        double x = ((double)i / (KERNEL_TABLE_SIZE - 1)) * a;
+        float x = ((float)i / (KERNEL_TABLE_SIZE - 1)) * a;
         if (x == 0.0)
             lanczos_table[i] = 1.0;
         else if (x < a)
@@ -375,26 +371,18 @@ void precompute_lanczos_table(int a) {
         else
             lanczos_table[i] = 0.0;
     }
+
+    inv_a_scale = (KERNEL_TABLE_SIZE - 1) / (float)a;
 }
 
-inline double fast_lanczos(double x, int a) {
-    x = fabs(x);
-    if (x >= a) return 0.0;
+static inline float fast_lanczos(double x, int a) {
 
-    int idx = (int)(x * (KERNEL_TABLE_SIZE - 1) / a);
+    x = ABSF(x);
+    if (x >= a)
+        return 0.0;
+
+    int idx = (int)(x*inv_a_scale);
     return lanczos_table[idx];
-}
-
-double lanczos_kernel(double x, int a)
-{
-    if (x == 0.0)
-        return 1.0;
-
-    if (x > -a && x < a)
-    {
-        return (sin(PI*x) / (PI*x)) * (sin(PI*x/a) / (PI*x/a));
-    }
-    return 0.0;
 }
 
 void lanczos_downscale(Image *in, Image *out, int a)
@@ -404,10 +392,16 @@ void lanczos_downscale(Image *in, Image *out, int a)
 
     for (int y = 0; y < out->h; ++y)
     {
+        double source_y = (y + 0.5) * y_scale;
+        int y_start = floor(source_y - a);
+        int y_end   = floor(source_y + a);
+
         for (int x = 0; x < out->w; ++x)
         {
             double source_x = (x + 0.5) * x_scale;
-            double source_y = (y + 0.5) * y_scale;
+            int x_start = floor(source_x - a);
+            int x_end   = floor(source_x + a);
+
 
             double sum_red = 0.0;
             double sum_green = 0.0;
@@ -417,25 +411,21 @@ void lanczos_downscale(Image *in, Image *out, int a)
             // Determine the contributing input pixel region based on 'a'
             // and the downscaling ratio
 
-            int x_start = floor(source_x - a);
-            int x_end   = floor(source_x + a);
-            int y_start = floor(source_y - a);
-            int y_end   = floor(source_y + a);
-
             for (int j = y_start; j <= y_end; ++j)
             {
+                double weight_y = fast_lanczos((j - source_y) / y_scale, a);
+                int clamped_j = j < 0 ? 0 : (j >= in->h ? in->h-1 : j);
+                float row_off = clamped_j*in->w*in->n;
+
                 for (int i = x_start; i <= x_end; ++i)
                 {
                     // Calculate weights using the Lanczos kernel
                     double weight_x = fast_lanczos((i - source_x) / x_scale, a);
-                    double weight_y = fast_lanczos((j - source_y) / y_scale, a);
                     double weight = weight_x * weight_y;
 
-                    // Clamp input coordinates to stay within image bounds
-                    int clamped_i = CLAMP(in->w - 1, 0, i);
-                    int clamped_j = CLAMP(in->h -1, 0, j);
+                    int clamped_i = i < 0 ? 0 : (i >= in->w ? in->w-1 : i);
+                    int offset = row_off + clamped_i*in->n;
 
-                    int offset = clamped_j*in->w*in->n + clamped_i*in->n;
                     sum_red   += in->data[offset+0] * weight;
                     sum_green += in->data[offset+1] * weight;
                     sum_blue  += in->data[offset+2] * weight;
@@ -447,11 +437,82 @@ void lanczos_downscale(Image *in, Image *out, int a)
             // Normalize and set the output pixel
 
             Color out_pixel;
-            out_pixel.r = (u8)CLAMP(sum_red / sum_weights, 0, 255);
-            out_pixel.g = (u8)CLAMP(sum_green / sum_weights, 0, 255);
-            out_pixel.b = (u8)CLAMP(sum_blue / sum_weights, 0, 255);
+            out_pixel.r = (u8)(sum_red / sum_weights + 0.5);
+            out_pixel.g = (u8)(sum_green / sum_weights + 0.5);
+            out_pixel.b = (u8)(sum_blue / sum_weights + 0.5);
 
-            set_pixel(out, x, y, out_pixel);
+            u8* curr = &out->data[y*out->w*out->n + x*out->n];
+            memset(curr+0,out_pixel.r,1);
+            memset(curr+1,out_pixel.g,1);
+            memset(curr+2,out_pixel.b,1);
+        }
+    }
+}
+
+bool transform_downscale_image(Arena* arena, Image* source, Image* result, int scaled_size)
+{
+    bool use_scaled_image = source->w > scaled_size || source->h > scaled_size;
+
+    if(use_scaled_image)
+    {
+        const int a = 2;
+        lanczos_init(a);
+
+        // downscale largest dimension 
+        float aspect = source->w / (float)source->h;
+
+        int width_scaled = 0;
+        int height_scaled = 0;
+
+        if(aspect > 1.0)
+        {
+            // width is larger than height (most common)
+            width_scaled = scaled_size;
+            height_scaled = width_scaled / aspect;
+        }
+        else
+        {
+            height_scaled = scaled_size;
+            width_scaled = height_scaled * aspect;
+        }
+
+        result->w = width_scaled;
+        result->h = height_scaled;
+        result->n = source->n;
+        result->step = width_scaled*result->n;
+
+        if(arena == NULL)
+        {
+
+            result->data = (u8*)malloc(width_scaled*height_scaled*result->n);
+        }
+        else
+        {
+            result->data = (u8*)arena_alloc(arena, width_scaled*height_scaled*result->n);
+        }
+
+        lanczos_downscale(source, result, a);
+    }
+
+    return use_scaled_image;
+}
+
+void transform_apply(Image* image, int num_rects, Rect* rects, TransformType transform)
+{
+    // apply transformation
+    for(int i = 0; i < num_rects; ++i)
+    {
+        Rect r = rects[i];
+        LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
+
+        switch(transform)
+        {
+            case TRANSFORM_TYPE_BLACKOUT:       transform_draw_rect(image, r,(Color){0,0,0,255}, true, 1.0); break;
+            case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, 0.16); break;
+            case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
+            case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO
+            case TRANSFORM_TYPE_BLUR: break;
+            default: break;
         }
     }
 }
