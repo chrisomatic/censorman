@@ -382,6 +382,7 @@ void arena_reset(Arena* arena)
 // Program-specific types
 //
 
+
 typedef enum
 {
     MODE_LOCAL = 0,
@@ -408,6 +409,7 @@ typedef enum
     TRANSFORM_TYPE_PIXELATE,
     TRANSFORM_TYPE_SCRAMBLE,
     TRANSFORM_TYPE_SCRAMBLE_FIXED,
+    TRANSFORM_TYPE_TEXTURE,
 } TransformType;
 
 inline const char* transform_type_to_str(TransformType t)
@@ -420,6 +422,7 @@ inline const char* transform_type_to_str(TransformType t)
         case TRANSFORM_TYPE_PIXELATE: return "Pixelate";
         case TRANSFORM_TYPE_SCRAMBLE: return "Scramble";
         case TRANSFORM_TYPE_SCRAMBLE_FIXED: return "Scramble (Fixed Seed)";
+        case TRANSFORM_TYPE_TEXTURE: return "Texture";
         default: return "Unknown";
     }
 }
@@ -445,15 +448,13 @@ typedef struct
     u16 confidence_threshold;
     float nms_iou_threshold;
 
+    bool has_texture;
+    char texture_image_path[256];
+
+    float block_scale;
+
     bool debug;
 } ProgramSettings;
-
-#define MAX_ARENAS 64
-
-extern ProgramSettings settings;
-extern pthread_t *threads;
-extern Timer timer;
-extern Arena* arenas[MAX_ARENAS];
 
 typedef struct
 {
@@ -487,3 +488,12 @@ typedef struct
     u8 b;
     u8 a;
 } Color;
+
+#define MAX_ARENAS 64
+
+extern ProgramSettings settings;
+extern pthread_t *threads;
+extern Timer timer;
+extern Arena* arenas[MAX_ARENAS];
+extern Image texture_image;
+

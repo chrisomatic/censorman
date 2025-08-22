@@ -3,7 +3,7 @@
 
 #include "base.h"
 #include "detect.h"
-#include "ffmpeg.h"
+//#include "ffmpeg.h"
 #include "transform.h"
 #include "util.h"
 
@@ -22,6 +22,7 @@ Arena* arenas[MAX_ARENAS] = {0};
 Timer timer = {0};
 ProgramSettings settings = {};
 pthread_t *threads = NULL;
+Image texture_image = {};
 
 bool init();
 bool parse_args(ProgramSettings* settings, int argc, char* argv[]);
@@ -44,8 +45,10 @@ int main(int argc, char** args)
     settings.classification = CLASS_FACE;
     settings.transform_count = 0;
     settings.debug = false;
-    settings.confidence_threshold = 32;
+    settings.confidence_threshold = 30;
     settings.nms_iou_threshold = 0.6;
+    settings.has_texture = false;
+    settings.block_scale = 0.20;
 
     bool parse = parse_args(&settings, argc, args);
     if(!parse) return 1;
@@ -55,13 +58,23 @@ int main(int argc, char** args)
     LOGI("  Thread Count: %d", settings.thread_count);
     LOGI("  Confidence Threshold: %d", settings.confidence_threshold);
     LOGI("  NMS IOU Threshold: %f", settings.nms_iou_threshold);
+    LOGI("  Texture: %s", settings.has_texture ? settings.texture_image_path : "(None)");
+    LOGI("  Block Scale: %f", settings.block_scale);
     LOGI("  Debug: %s", settings.debug ? "ON" : "OFF");
 
     // initialize threads
     threads = (pthread_t *)calloc(settings.thread_count,sizeof(pthread_t));
 
-    //ffmpeg_init("assets/output.mp4");
-    
+    if(settings.has_texture)
+    {
+        bool loaded = util_load_image(settings.texture_image_path, &texture_image);
+        if(!loaded)
+        {
+            LOGW("Failed to load texture image %s", settings.texture_image_path);
+            settings.has_texture = false;
+        }
+    }
+
     if(settings.mode == MODE_LOCAL)
     {
         if(settings.asset_type == TYPE_IMAGE)
@@ -117,7 +130,7 @@ int main(int argc, char** args)
     }
 
     // @TEMP
-    bool result = ffmpeg_process_video("assets/vid1.mp4", "output/out.mp4");
+    // bool result = ffmpeg_process_video("assets/vid1.mp4", "output/out.mp4");
 
     return 0;
 }
@@ -137,7 +150,18 @@ bool init()
 
 void print_help()
 {
-    printf("censorman <file> -o <output> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug]\n");
+    printf("\ncensorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>]\n");
+    printf("\nDESCRIPTION:\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes pack an output image file");
+    printf("\nARGUMENTS:\n");
+    printf("  in_file: path to input image file (.jpg, .png, .bmp)\n");
+    printf("  out_file: path to output image file (.jpg, .png, .bmp)\n");
+    printf("  class_list: face\n");
+    printf("  transform_list: pixelate, blur, blackout, scramble, texture\n");
+    printf("  confidence_threshold: discard any boxes lower than this (0 - 100)");
+    printf("  thread_count: How many threads to use to detect (default to number of cores)");
+    printf("  debug: Print debug info and draw boxes on output image");
+    printf("  texture_image_path: Used with 'texture' transform");
+    printf("  block_scale: Value between 0.0 and 1.0. Used to scale blocks in pixelate transform");
 }
 
 bool parse_args(ProgramSettings* settings, int argc, char* argv[])
@@ -157,9 +181,29 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
             switch(argv[i][1])
             {
                 case '-':
+                {
                     if(STR_EQUAL(&argv[i][2],"debug"))
                         settings->debug = true;
-                    break;
+                    else if(STR_EQUAL(&argv[i][2],"block_scale"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            float f = atof(argv[i]);
+                            CLAMP(f, 0.0, 1.0);
+                            settings->block_scale = f;
+                        }
+                    }
+                    else if(STR_EQUAL(&argv[i][2],"image"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            strncpy(settings->texture_image_path, argv[i], 255);
+                            settings->has_texture = true;
+                        }
+                    }
+                }   break;
                 case 'o':
                     break;
                 case 'd':
@@ -205,6 +249,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                                 else if(STR_EQUAL(buf, "blur")) type = TRANSFORM_TYPE_BLUR;
                                 else if(STR_EQUAL(buf, "pixelate")) type = TRANSFORM_TYPE_PIXELATE;
                                 else if(STR_EQUAL(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
+                                else if(STR_EQUAL(buf, "texture")) type = TRANSFORM_TYPE_TEXTURE;
 
                                 memset(buf,256,0);
                                 bufi = 0;

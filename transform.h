@@ -9,7 +9,7 @@ inline Color get_pixel(Image* image, int x, int y)
     return c;
 }
 
-void reverse_rgb_order(Image *image)
+inline void reverse_rgb_order(Image *image)
 {
     LOGI("Reversing RGB Order... pixel count: %d", image->w*image->h);
     for(int i = 0; i < image->w*image->h; ++i)
@@ -207,8 +207,8 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
 
             Color sc = {(u8)avg_r, (u8)avg_g, (u8)avg_b};
 
-            int offset_x = x == num_blocks_x - 1 ? r.w % block_size_x : 0;
-            int offset_y = y == num_blocks_y - 1 ? r.h % block_size_y : 0;
+            int offset_x = x == num_blocks_x - 1 ? block_size_x - (r.w % block_size_x) : 0;
+            int offset_y = y == num_blocks_y - 1 ? block_size_y - (r.h % block_size_y) : 0;
 
             // apply avgcolor to range
             curr = start + y*block_size_y*step + x*block_size_x*n;
@@ -223,6 +223,39 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
         }
     }
 }
+
+void transform_stretch_image(Image *dst, Image *src, Rect r)
+{
+    // Scaling factors
+    float scaleX = (float)src->w / r.w;
+    float scaleY = (float)src->h / r.h;
+
+    // Iterate through the destination rectangle
+    for (int dy = 0; dy < r.h; ++dy)
+    {
+        for (int dx = 0; dx < r.w; ++dx)
+        {
+            // Compute the corresponding position in the source image
+            int sx = (int)(dx * scaleX);
+            int sy = (int)(dy * scaleY);
+
+            // Ensure we're within bounds for the source image
+            if (sx >= src->w) sx = src->w - 1;
+            if (sy >= src->h) sy = src->h - 1;
+
+            // Get the source pixel's starting index
+            u8 *src_pixel = src->data + sy * src->step + sx * src->n;
+
+            // Get the destination pixel's starting index
+            u8 *dst_pixel = dst->data + (r.y + dy) * dst->step + (r.x + dx) * dst->n;
+
+            // Copy pixel data (assume both images have the same number of channels)
+            for (int c = 0; c < src->n; c++)
+                dst_pixel[c] = src_pixel[c];
+        }
+    }
+}
+
 
 // gaussian blur
 
@@ -508,9 +541,10 @@ void transform_apply(Image* image, int num_rects, Rect* rects, TransformType tra
         switch(transform)
         {
             case TRANSFORM_TYPE_BLACKOUT:       transform_draw_rect(image, r,(Color){0,0,0,255}, true, 1.0); break;
-            case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, 0.16); break;
+            case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, settings.block_scale); break;
             case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
             case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO
+            case TRANSFORM_TYPE_TEXTURE:        if(settings.has_texture) transform_stretch_image(image, &texture_image, r); break;
             case TRANSFORM_TYPE_BLUR: break;
             default: break;
         }

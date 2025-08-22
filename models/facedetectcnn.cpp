@@ -822,6 +822,7 @@ std::vector<FaceRect> detection_output(const CDataBlob<float>& cls,
         }
     }
 
+#if 1
     //Sort the score pair according to the scores in descending order
     std::stable_sort(score_bbox_vec.begin(), score_bbox_vec.end(), SortScoreBBoxPairDescend);
 
@@ -856,6 +857,7 @@ std::vector<FaceRect> detection_output(const CDataBlob<float>& cls,
     if (keep_top_k > -1 && size_t(keep_top_k) < final_score_bbox_vec.size()) {
         final_score_bbox_vec.resize(keep_top_k);
     }
+#endif
 
     //copy the results to the output blob
     int num_faces = (int)final_score_bbox_vec.size();

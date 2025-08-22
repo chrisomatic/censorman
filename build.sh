@@ -12,7 +12,8 @@ srcs="main.cpp models/facedetectcnn-data.cpp models/facedetectcnn-model.cpp mode
 opts="-march=native -Ofast"
 # -mavx2
 includes="-Iinclude -Iffmpeg/include"
-libs="-Lffmpeg/lib -lavformat -lavcodec -lavutil -lswscale -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11"
+#libs="-Lffmpeg/lib -lavformat -lavcodec -lavutil -lswscale -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11"
+libs="-lm -lz"
 
 cmd="g++ ${srcs} ${includes} ${libs} ${opts} -o ./bin/censorman"
 echo "${cmd}"
