@@ -39,16 +39,18 @@ int main(int argc, char** args)
 
     // set default settings
     settings.mode = MODE_LOCAL;
-    memset(settings.input_file,0,256);
+    memset(settings.input_file_text,0,256);
     settings.thread_count = MAX(1, util_get_core_count()); // default to num_cores
-    settings.asset_type = TYPE_IMAGE; // @TODO
+    settings.asset_type = TYPE_IMAGE;
     settings.classification = CLASS_FACE;
     settings.transform_count = 0;
     settings.debug = false;
     settings.confidence_threshold = 30;
     settings.nms_iou_threshold = 0.6;
     settings.has_texture = false;
+    settings.no_scale = false;
     settings.block_scale = 0.20;
+    settings.input_file_count = 0;
 
     bool parse = parse_args(&settings, argc, args);
     if(!parse) return 1;
@@ -61,6 +63,23 @@ int main(int argc, char** args)
     LOGI("  Texture: %s", settings.has_texture ? settings.texture_image_path : "(None)");
     LOGI("  Block Scale: %f", settings.block_scale);
     LOGI("  Debug: %s", settings.debug ? "ON" : "OFF");
+
+    // check input file
+    char ext[10] = {0};
+    int ext_len = str_get_extension(settings.input_file_text, ext, 10);
+    if(ext_len == 0)
+    {
+        printf("folder!\n");
+        // load up images from folder
+    }
+    else
+    {
+        printf("file!\n");
+        printf("ext: %s\n", ext);
+        settings.input_file_count = 1;
+        strncpy(settings.input_files[0].filename,settings.input_file_text,100);
+
+    }
 
     // initialize threads
     threads = (pthread_t *)calloc(settings.thread_count,sizeof(pthread_t));
@@ -80,15 +99,21 @@ int main(int argc, char** args)
         if(settings.asset_type == TYPE_IMAGE)
         {
             Image image = {};
-            bool loaded = util_load_image(settings.input_file, &image);
+            bool loaded = util_load_image(settings.input_files[0].filename, &image);
             if(!loaded) return 1;
 
             Image image_scaled = {};
-            const int scaled_size = 320;
-            double t0 = timer_get_time();
-            bool use_scaled_image = transform_downscale_image(NULL, &image,&image_scaled,scaled_size);
-            double elapsed = timer_get_time() - t0;
-            LOGI("Downscale took %.3f ms", elapsed*1000.0);
+            const int scaled_size = 640;
+            bool use_scaled_image = false;
+
+            if(!settings.no_scale)
+            {
+                double t0 = timer_get_time();
+                use_scaled_image = transform_downscale_image(NULL, &image,&image_scaled,scaled_size);   
+                double elapsed = timer_get_time() - t0;
+                LOGI("Downscale took %.3f ms", elapsed*1000.0);
+            }
+
             //util_write_output(&image_scaled, "output/out_scaled.png");
 
             Rect rects[256] = {0};
@@ -147,21 +172,22 @@ bool init()
     return true;
 }
 
-
 void print_help()
 {
-    printf("\ncensorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>]\n");
-    printf("\nDESCRIPTION:\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes pack an output image file");
-    printf("\nARGUMENTS:\n");
-    printf("  in_file: path to input image file (.jpg, .png, .bmp)\n");
-    printf("  out_file: path to output image file (.jpg, .png, .bmp)\n");
-    printf("  class_list: face\n");
-    printf("  transform_list: pixelate, blur, blackout, scramble, texture\n");
-    printf("  confidence_threshold: discard any boxes lower than this (0 - 100)");
-    printf("  thread_count: How many threads to use to detect (default to number of cores)");
-    printf("  debug: Print debug info and draw boxes on output image");
-    printf("  texture_image_path: Used with 'texture' transform");
-    printf("  block_scale: Value between 0.0 and 1.0. Used to scale blocks in pixelate transform");
+    printf("\n[USAGE]\n");
+    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>]\n");
+    printf("\n[DESCRIPTION]\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
+    printf("\n[ARGUMENTS]\n");
+    printf("  in_file:              Path to input image file (or folder) (.jpg, .png, .bmp)\n");
+    printf("  out_file:             Path to output image file (.jpg, .png, .bmp)\n");
+    printf("  class_list:           {face}\n");
+    printf("  transform_list:       {pixelate, blur, blackout, scramble, texture}\n");
+    printf("  confidence_threshold: Discard any boxes lower than this (0 - 100)\n");
+    printf("  thread_count:         How many threads to use to detect (default to number of cores)\n");
+    printf("  debug:                Print debug info and draw boxes on output image\n");
+    printf("  texture_image_path:   Used with 'texture' transform\n");
+    printf("  block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform\n");
+    printf("\n");
 }
 
 bool parse_args(ProgramSettings* settings, int argc, char* argv[])
@@ -184,6 +210,8 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                 {
                     if(STR_EQUAL(&argv[i][2],"debug"))
                         settings->debug = true;
+                    if(STR_EQUAL(&argv[i][2],"no_scale"))
+                        settings->no_scale = true;
                     else if(STR_EQUAL(&argv[i][2],"block_scale"))
                     {
                         if(i < argc-1)
@@ -245,11 +273,11 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
 
                                 TransformType type = TRANSFORM_TYPE_NONE;
 
-                                if(STR_EQUAL(buf, "blackout")) type = TRANSFORM_TYPE_BLACKOUT;
-                                else if(STR_EQUAL(buf, "blur")) type = TRANSFORM_TYPE_BLUR;
+                                if(STR_EQUAL(buf, "blackout"))      type = TRANSFORM_TYPE_BLACKOUT;
+                                else if(STR_EQUAL(buf, "blur"))     type = TRANSFORM_TYPE_BLUR;
                                 else if(STR_EQUAL(buf, "pixelate")) type = TRANSFORM_TYPE_PIXELATE;
                                 else if(STR_EQUAL(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
-                                else if(STR_EQUAL(buf, "texture")) type = TRANSFORM_TYPE_TEXTURE;
+                                else if(STR_EQUAL(buf, "texture"))  type = TRANSFORM_TYPE_TEXTURE;
 
                                 memset(buf,256,0);
                                 bufi = 0;
@@ -277,7 +305,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
         else if(input_file_needed)
         {
             // assume input file
-            strncpy(settings->input_file, argv[i], 255);
+            strncpy(settings->input_file_text, argv[i], 255);
             input_file_needed = false;
         }
     }

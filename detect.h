@@ -166,6 +166,12 @@ int process_image(Image* image,Rect* ret_rects)
                 if(r->confidence < settings.confidence_threshold) // filter out low-confidence regions
                     continue;
 
+                if(r->x >= image->w || r->y >= image->h)
+                    continue;
+
+                if(r->x + r->w > image->w) r->w = image->w - r->x - 1;
+                if(r->y + r->h > image->h) r->h = image->h - r->y - 1;
+
                 memcpy(&total_rects[num_faces],r,sizeof(Rect));
                 offset += sizeof(Rect);
                 num_faces++;

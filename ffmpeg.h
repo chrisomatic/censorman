@@ -104,7 +104,7 @@ bool ffmpeg_process_video(const char* infile, const char* outfile)
     enc_ctx->framerate = fr;
     enc_ctx->gop_size = 2 * fr.num / fr.den;   // ~2 seconds GOP
     enc_ctx->max_b_frames = 2;
-    enc_ctx->bit_rate = 2'000'000;         // modest default
+    enc_ctx->bit_rate = 2000000;         // modest default
 
     if (out_fmt->oformat->flags & AVFMT_GLOBALHEADER)
         enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;

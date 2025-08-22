@@ -102,7 +102,6 @@ void transform_scramble(Image* image, Rect r, u32 seed)
         memcpy(&unprocessed[idx2],&unprocessed[unprocessed_count-1], sizeof(int));
         unprocessed_count--;
     }
-    
 }
 
 void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opacity)
@@ -117,7 +116,7 @@ void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opaci
     for(int i = 0; i < r.w; ++i)
     {
         Color r = opacity == 1.0 ? c : get_blended_color(curr+i*n,c,opacity);
-        memcpy(curr + i*n, &r, 3);
+        memcpy(curr+i*n, &r, 3);
     }
 
     curr += step;
@@ -173,6 +172,9 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
     float avg_r = 0.0;
     float avg_g = 0.0;
     float avg_b = 0.0;
+
+    if(r.x + r.w + block_size > image->w) r.w = image->w - r.x - block_size -1;
+    if(r.y + r.h + block_size > image->h) r.h = image->h - r.y - block_size -1;
 
     int num_blocks_x = ceil(r.w / (float)block_size);
     int num_blocks_y = ceil(r.h / (float)block_size);
@@ -488,7 +490,7 @@ bool transform_downscale_image(Arena* arena, Image* source, Image* result, int s
 
     if(use_scaled_image)
     {
-        const int a = 2;
+        const int a = 1;
         lanczos_init(a);
 
         // downscale largest dimension 

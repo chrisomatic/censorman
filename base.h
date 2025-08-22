@@ -42,6 +42,31 @@ extern "C" {
 #define STR_EQUAL(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
 #define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
 
+int str_get_extension(const char *source, char *buf, int buf_len)
+{
+    if (!source || !buf) return 0;
+
+    int len = strlen(source);
+    if (len == 0) return 0;
+
+    // Start from the end and move backward
+    for (int i = len - 1; i >= 0; i--) {
+        if (source[i] == '.')
+        {
+            // If '.' is the last character, no extension
+            if (i == len - 1) return 0;
+
+            // Copy extension
+            int copy_len = MIN(len-i-1,buf_len-1);
+            strncpy(buf, &source[i+1], copy_len);
+            buf[copy_len] = '\0';
+            return strlen(buf);
+        }
+    }
+
+    return 0;
+}
+
 //
 // Util
 //
@@ -427,34 +452,6 @@ inline const char* transform_type_to_str(TransformType t)
     }
 }
 
-typedef struct
-{
-    TransformType type;
-    // ...
-} Transform;
-
-typedef struct
-{
-    Mode mode;
-    AssetType asset_type;
-    DetectClass classification;
-
-    Transform transforms[10];
-    int transform_count;
-
-    char input_file[256];
-    int thread_count;
-
-    u16 confidence_threshold;
-    float nms_iou_threshold;
-
-    bool has_texture;
-    char texture_image_path[256];
-
-    float block_scale;
-
-    bool debug;
-} ProgramSettings;
 
 typedef struct
 {
@@ -488,6 +485,44 @@ typedef struct
     u8 b;
     u8 a;
 } Color;
+
+typedef struct
+{
+    TransformType type;
+    // ...
+} Transform;
+
+typedef struct
+{
+    char filename[101];
+    Image image;
+} InputFile;
+
+typedef struct
+{
+    Mode mode;
+    AssetType asset_type;
+    DetectClass classification;
+
+    Transform transforms[10];
+    int transform_count;
+
+    char      input_file_text[256];
+    InputFile input_files[100];
+    int input_file_count;
+    int thread_count;
+
+    u16 confidence_threshold;
+    float nms_iou_threshold;
+
+    bool has_texture;
+    char texture_image_path[256];
+
+    float block_scale;
+
+    bool no_scale;
+    bool debug;
+} ProgramSettings;
 
 #define MAX_ARENAS 64
 
