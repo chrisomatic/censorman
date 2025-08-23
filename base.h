@@ -1,5 +1,17 @@
 #pragma once
 
+#define PLATFORM_WINDOWS  1
+#define PLATFORM_MAC      2
+#define PLATFORM_UNIX     3
+
+#if defined(_WIN32)
+#define PLATFORM PLATFORM_WINDOWS
+#elif defined(__APPLE__)
+#define PLATFORM PLATFORM_MAC
+#else
+#define PLATFORM PLATFORM_UNIX
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -8,7 +20,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include <math.h>
-#if _WIN32
+#if PLATFORM == PLATFORM_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <profileapi.h>
@@ -16,6 +28,8 @@
 #else
 #include <unistd.h> // for usleep
 #include <sys/time.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #endif
 
 #include <assert.h>
@@ -24,6 +38,137 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+//
+// Types
+// 
+
+typedef uint8_t   u8;
+typedef uint16_t  u16;
+typedef uint32_t  u32;
+typedef uint64_t  u64;
+typedef int8_t    i8;
+typedef int16_t   i16;
+typedef int32_t   i32;
+typedef int64_t   i64;
+typedef float     f32;
+typedef double    f64;
+typedef int8_t    b8;
+typedef int16_t   b16;
+typedef int32_t   b32;
+typedef int64_t   b64;
+typedef wchar_t   wchar;
+
+// Arenas
+
+#define ARENA_SIZE_TINY        16*1024 //  16K
+#define ARENA_SIZE_SMALL      128*1024 // 128K
+#define ARENA_SIZE_MEDIUM  1*1024*1024 //   1M
+#define ARENA_SIZE_LARGE  16*1024*1024 //  16M
+
+#define ARENA_GROWTH_SIZE ARENA_SIZE_MEDIUM
+
+typedef struct Arena
+{
+    u8* base;
+    size_t capacity;
+    size_t offset;
+    struct Arena *next; // used for chaining arenas together
+} Arena;
+
+Arena *arena_create(size_t capacity)
+{
+    Arena *a = (Arena*)malloc(sizeof(Arena));
+    if(!a) return NULL;
+
+    a->base = (u8*)malloc(capacity * sizeof(u8));
+    a->capacity = capacity;
+    a->offset = 0;
+    a->next = NULL;
+
+    return a;
+}
+
+void arena_destroy(Arena* arena)
+{
+    if(!arena) return;
+
+    Arena* a = arena;
+
+    for(;;)
+    {
+        if(a->base) free(a->base);
+
+        a->base = NULL;
+        a->capacity = 0;
+        a->offset = 0;
+
+        if(a->next)
+        {
+            Arena* tmp = a;
+            a = a->next;
+            free(tmp);
+            continue;
+        }
+
+        break;
+    }
+
+    arena = NULL;
+}
+
+void* arena_alloc(Arena* arena, size_t size)
+{
+    assert(arena);
+
+    Arena* a = arena;
+
+    for(;;)
+    {
+        if(a->offset + size <= a->capacity)
+            break; // enough space, we're good
+
+        // can't fit data on current arena
+        // check for a next arena
+        if(a->next)
+        {
+            a = a->next;
+            continue;
+        }
+
+        // allocate a new arena that doubles the arena base capacity
+        // or more to accommodate a large allocation
+        
+        size_t new_arena_size = (a->capacity >= size ? a->capacity : size);
+
+        a->next = (Arena*)malloc(sizeof(Arena));
+        a->next->base = (u8*)malloc(new_arena_size * sizeof(u8));
+        a->next->offset = 0;
+        a->next->capacity = new_arena_size;
+    }
+
+    void* ptr = a->base+a->offset;
+    a->offset += size;
+
+    return ptr;
+}
+
+void arena_reset(Arena* arena)
+{
+    assert(arena);
+
+    Arena* a = arena;
+    for(;;)
+    {
+        a->offset = 0;
+        if(a->next)
+        {
+            a = a->next;   
+            continue;
+        }
+        break;
+    }
+}
 
 //
 // Math
@@ -41,6 +186,50 @@ extern "C" {
 #define STR_EMPTY(x)      (x == 0 || strlen(x) == 0)
 #define STR_EQUAL(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
 #define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
+
+#define S(literal) (String){ .len = sizeof(literal) - 1, .data = (char*)(literal) }
+
+typedef struct
+{
+    u64 len;
+    char* data;
+} String;
+
+String str_from_cstr(const char* cstr)
+{
+    return (String){ .len = (u32)strlen(cstr), .data = (char*)cstr };
+}
+
+b32 str_ends_with(String str, String suffix) {
+    if (suffix.len > str.len) return 0;
+    return (strncmp(str.data + (str.len - suffix.len), suffix.data, suffix.len) == 0);
+}
+
+String StringFormat(Arena* arena, const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int required_len = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    if (required_len < 0)
+    {
+        return (String){ .len = 0, .data = NULL };
+    }
+
+    // Allocate from arena (+1 for null terminator)
+    char* buffer = (char*)arena_alloc(arena, required_len + 1);
+    if (!buffer)
+    {
+        return (String){ .len = 0, .data = NULL };
+    }
+
+    va_start(args, format);
+    vsnprintf(buffer, required_len + 1, format, args);
+    va_end(args);
+
+    return (String){ .len = (u32)required_len, .data = buffer };
+}
 
 int str_get_extension(const char *source, char *buf, int buf_len)
 {
@@ -72,25 +261,6 @@ int str_get_extension(const char *source, char *buf, int buf_len)
 //
 #define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
 
-//
-// Types
-// 
-
-typedef uint8_t   u8;
-typedef uint16_t  u16;
-typedef uint32_t  u32;
-typedef uint64_t  u64;
-typedef int8_t    i8;
-typedef int16_t   i16;
-typedef int32_t   i32;
-typedef int64_t   i64;
-typedef float     f32;
-typedef double    f64;
-typedef int8_t    b8;
-typedef int16_t   b16;
-typedef int32_t   b32;
-typedef int64_t   b64;
-typedef wchar_t   wchar;
 
 
 //
@@ -288,121 +458,6 @@ static void print_log(const char* fmt, ...)
 #define LOGV(format,...) LOG(LOG_FMT(V, format), ##__VA_ARGS__) // verbose
 #define LOGN(format,...) LOG(LOG_FMT(N, format), ##__VA_ARGS__) // network
 
-// Arenas
-
-#define ARENA_SIZE_TINY        16*1024 //  16K
-#define ARENA_SIZE_SMALL      128*1024 // 128K
-#define ARENA_SIZE_MEDIUM  1*1024*1024 //   1M
-#define ARENA_SIZE_LARGE  16*1024*1024 //  16M
-
-#define ARENA_GROWTH_SIZE ARENA_SIZE_MEDIUM
-
-typedef struct Arena
-{
-    u8* base;
-    size_t capacity;
-    size_t offset;
-    struct Arena *next; // used for chaining arenas together
-} Arena;
-
-Arena *arena_create(size_t capacity)
-{
-    Arena *a = (Arena*)malloc(sizeof(Arena));
-    if(!a) return NULL;
-
-    a->base = (u8*)malloc(capacity * sizeof(u8));
-    a->capacity = capacity;
-    a->offset = 0;
-    a->next = NULL;
-
-    return a;
-}
-
-void arena_destroy(Arena* arena)
-{
-    if(!arena) return;
-
-    Arena* a = arena;
-
-    for(;;)
-    {
-        if(a->base) free(a->base);
-
-        a->base = NULL;
-        a->capacity = 0;
-        a->offset = 0;
-
-        if(a->next)
-        {
-            Arena* tmp = a;
-            a = a->next;
-            free(tmp);
-            continue;
-        }
-
-        break;
-    }
-
-    arena = NULL;
-}
-
-void* arena_alloc(Arena* arena, size_t size)
-{
-    assert(arena);
-
-    Arena* a = arena;
-
-    for(;;)
-    {
-        if(a->offset + size <= a->capacity)
-            break; // enough space, we're good
-
-        // can't fit data on current arena
-        // check for a next arena
-        if(a->next)
-        {
-            a = a->next;
-            continue;
-        }
-
-        // allocate a new arena that doubles the arena base capacity
-        // or more to accommodate a large allocation
-        
-        size_t new_arena_size = (a->capacity >= size ? a->capacity : size);
-
-        a->next = (Arena*)malloc(sizeof(Arena));
-        a->next->base = (u8*)malloc(new_arena_size * sizeof(u8));
-        a->next->offset = 0;
-        a->next->capacity = new_arena_size;
-    }
-
-    void* ptr = a->base+a->offset;
-    a->offset += size;
-
-    return ptr;
-}
-
-void arena_reset(Arena* arena)
-{
-    assert(arena);
-
-    Arena* a = arena;
-    for(;;)
-    {
-        a->offset = 0;
-        if(a->next)
-        {
-            a = a->next;   
-            continue;
-        }
-        break;
-    }
-}
-                                                          
-#ifdef __cplusplus
-}
-#endif
-
 //
 // Program-specific types
 //
@@ -531,4 +586,9 @@ extern pthread_t *threads;
 extern Timer timer;
 extern Arena* arenas[MAX_ARENAS];
 extern Image texture_image;
+
+                                                          
+#ifdef __cplusplus
+}
+#endif
 

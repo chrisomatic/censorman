@@ -2,6 +2,7 @@
 #include <pthread.h>
 
 #include "base.h"
+#include "platform.h"
 #include "detect.h"
 //#include "ffmpeg.h"
 #include "transform.h"
@@ -18,6 +19,7 @@
 // [ ] Open a video file and read image frames
 // [ ] Write output video file
 
+Arena* scratch = {0};
 Arena* arenas[MAX_ARENAS] = {0};
 Timer timer = {0};
 ProgramSettings settings = {};
@@ -69,16 +71,31 @@ int main(int argc, char** args)
     int ext_len = str_get_extension(settings.input_file_text, ext, 10);
     if(ext_len == 0)
     {
-        printf("folder!\n");
         // load up images from folder
+        LOGI("Loading image from folder %s", settings.input_file_text);
+        String folder = S(settings.input_file_text);
+        String ext1 = S(".png");
+        String ext2 = S(".jpg");
+        String ext3 = S(".bmp");
+
+        String exts[] = {ext1, ext2, ext3};
+        
+        String* files;
+        int count = platform_get_files_in_folder(scratch, folder, exts, 3, &files);
+
+        for (int i = 0; i < count; ++i)
+        {
+            printf("File %d: %.*s\n", i + 1, files[i].len, files[i].data);
+            strncpy(settings.input_files[i].filename, files[i].data, files[i].len);
+        }
+        settings.input_file_count = count;
+
+        arena_reset(scratch);
     }
     else
     {
-        printf("file!\n");
-        printf("ext: %s\n", ext);
         settings.input_file_count = 1;
         strncpy(settings.input_files[0].filename,settings.input_file_text,100);
-
     }
 
     // initialize threads
@@ -99,58 +116,74 @@ int main(int argc, char** args)
         if(settings.asset_type == TYPE_IMAGE)
         {
             Image image = {};
-            bool loaded = util_load_image(settings.input_files[0].filename, &image);
-            if(!loaded) return 1;
 
-            Image image_scaled = {};
-            const int scaled_size = 640;
-            bool use_scaled_image = false;
-
-            if(!settings.no_scale)
+            for(int i = 0; i < settings.input_file_count; ++i)
             {
-                double t0 = timer_get_time();
-                use_scaled_image = transform_downscale_image(NULL, &image,&image_scaled,scaled_size);   
-                double elapsed = timer_get_time() - t0;
-                LOGI("Downscale took %.3f ms", elapsed*1000.0);
-            }
-
-            //util_write_output(&image_scaled, "output/out_scaled.png");
-
-            Rect rects[256] = {0};
-            int num_rects = use_scaled_image ? process_image(&image_scaled, rects) : process_image(&image, rects);
-            LOGI("Found %d rects", num_rects);
-
-            if(use_scaled_image)
-            {
-                // correct rects positions / sizes
-                const float scale = image.w > image.h ? image.w / (float)image_scaled.w : image.h / (float)image_scaled.h;
-                for(int i = 0; i < num_rects; ++i)
+                String infile;
+                if(settings.input_file_count > 1)
                 {
-                    Rect* r = &rects[i];
-                    r->x = (u16)round(r->x * scale);
-                    r->y = (u16)round(r->y * scale);
-                    r->w = (u16)round(r->w * scale);
-                    r->h = (u16)round(r->h * scale);
+                    infile = StringFormat(scratch, "%s/%s", settings.input_file_text, settings.input_files[i].filename);
                 }
-            }
-
-            for(int i = 0; i < settings.transform_count; ++i)
-            {
-                Transform* t = &settings.transforms[i];
-                LOGI("Applying %s transform...", transform_type_to_str(t->type));
-                transform_apply(&image, num_rects, rects,t->type);
-            }
-
-            if(settings.debug)
-            {
-                // draw debugging info on image
-                for(int i = 0 ; i < num_rects; ++i)
+                else
                 {
-                    transform_draw_rect(&image, rects[i],(Color){255,0,255,255}, false, 1.0);
+                    infile = StringFormat(scratch, "%s", settings.input_files[i].filename);
                 }
-            }
 
-            util_write_output(&image, "output/out.png");
+                bool loaded = util_load_image(infile.data, &image);
+                if(!loaded) return 1;
+
+                Image image_scaled = {};
+                const int scaled_size = 480;
+                bool use_scaled_image = false;
+
+                if(!settings.no_scale)
+                {
+                    double t0 = timer_get_time();
+                    use_scaled_image = transform_downscale_image(NULL, &image,&image_scaled,scaled_size);   
+                    double elapsed = timer_get_time() - t0;
+                    LOGI("Downscale took %.3f ms", elapsed*1000.0);
+                }
+
+                //util_write_output(&image_scaled, "output/out_scaled.png");
+
+                Rect rects[256] = {0};
+                int num_rects = use_scaled_image ? process_image(&image_scaled, rects) : process_image(&image, rects);
+                LOGI("Found %d rects", num_rects);
+
+                if(use_scaled_image)
+                {
+                    // correct rects positions / sizes
+                    const float scale = image.w > image.h ? image.w / (float)image_scaled.w : image.h / (float)image_scaled.h;
+                    for(int i = 0; i < num_rects; ++i)
+                    {
+                        Rect* r = &rects[i];
+                        r->x = (u16)round(r->x * scale);
+                        r->y = (u16)round(r->y * scale);
+                        r->w = (u16)round(r->w * scale);
+                        r->h = (u16)round(r->h * scale);
+                    }
+                }
+
+                for(int i = 0; i < settings.transform_count; ++i)
+                {
+                    Transform* t = &settings.transforms[i];
+                    LOGI("Applying %s transform...", transform_type_to_str(t->type));
+                    transform_apply(&image, num_rects, rects,t->type);
+                }
+
+                if(settings.debug)
+                {
+                    // draw debugging info on image
+                    for(int i = 0 ; i < num_rects; ++i)
+                    {
+                        transform_draw_rect(&image, rects[i],(Color){255,0,255,255}, false, 1.0);
+                    }
+                }
+
+                String outfile = StringFormat(scratch, "output/%s", settings.input_files[i].filename);
+                printf("outfile %d: %.*s\n", i, outfile.len, outfile.data);
+                util_write_output(&image, outfile.data);
+            }
         }
     }
 
@@ -168,6 +201,8 @@ bool init()
 
     time_t t;
     srand((unsigned) time(&t));
+
+    scratch = arena_create(1024*1024);
 
     return true;
 }
