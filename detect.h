@@ -3,6 +3,11 @@
 #include "util.h"
 #include "facedetectcnn.h"
 
+void detect_init()
+{
+    facedetect_init(); // copies model data to be used
+}
+
 void* detect_faces(void* arg)
 {
     Image* image = (Image*)arg;
@@ -83,7 +88,7 @@ int process_image(Image* image,Rect* ret_rects)
 
     for(int i = 0; i < settings.thread_count; ++i)
     {
-        arenas[i] = arena_create(ARENA_SIZE_MEDIUM);
+        arena_reset(arenas[i]);
         sub_images[i] = (Image*)arena_alloc(arenas[i], sizeof(Image));
     }
 
@@ -92,8 +97,6 @@ int process_image(Image* image,Rect* ret_rects)
     int y = 0;
 
     LOGI("Detecting faces... (threads: %d)", settings.thread_count);
-
-    facedetect_init();
 
     const float padding_factor = 0.1;
     int padding = MAX(sub_width, sub_height)*padding_factor;

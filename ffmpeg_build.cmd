@@ -41,3 +41,7 @@ cd ffmpeg-6.1.1
 
 make -j8
 make install
+
+rmdir /S /Q ffmpeg_source
+rmdir /S /Q "ffmpeg_build\\share"
+rename ffmpeg_build ffmpeg

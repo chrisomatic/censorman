@@ -195,7 +195,7 @@ typedef struct
     char* data;
 } String;
 
-String str_from_cstr(const char* cstr)
+String str_from_cstr(char* cstr)
 {
     return (String){ .len = (u32)strlen(cstr), .data = (char*)cstr };
 }
@@ -268,10 +268,6 @@ int str_get_extension(const char *source, char *buf, int buf_len)
 //
 
 #define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
-
-//
-// Strings
-//
 
 
 //
@@ -462,14 +458,6 @@ static void print_log(const char* fmt, ...)
 // Program-specific types
 //
 
-
-typedef enum
-{
-    MODE_LOCAL = 0,
-    MODE_SERVER,
-    MODE_TESTER,
-} Mode;
-
 typedef enum
 {
     TYPE_IMAGE = 0,
@@ -533,6 +521,13 @@ typedef struct
     u8* result;
 } Image;
 
+typedef struct {
+    u16 w;
+    u16 h;
+    u32 num_frames;
+    u8* data; // RGB
+} Video;
+
 typedef struct
 {
     u8 r;
@@ -555,14 +550,14 @@ typedef struct
 
 typedef struct
 {
-    Mode mode;
     AssetType asset_type;
     DetectClass classification;
 
     Transform transforms[10];
     int transform_count;
 
-    char      input_file_text[256];
+    char input_file_text[256];
+    char input_directory[256];
     InputFile input_files[100];
     int input_file_count;
     int thread_count;
@@ -579,6 +574,7 @@ typedef struct
     bool debug;
 } ProgramSettings;
 
+#define MAX_FRAMES 1000
 #define MAX_ARENAS 64
 
 extern ProgramSettings settings;
