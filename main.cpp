@@ -20,7 +20,7 @@
 // [ ] Write output video file
 
 Arena* scratch = {0};
-Arena* arenas[MAX_ARENAS] = {0};
+Arena* thread_arenas[MAX_ARENAS] = {0};
 Timer timer = {0};
 ProgramSettings settings = {};
 pthread_t *threads = NULL;
@@ -29,6 +29,8 @@ Image texture_image = {};
 bool init(int argc, char **args);
 bool parse_args(ProgramSettings* settings, int argc, char* argv[]);
 int process_image(Image* image,Rect* ret_rects);
+int handle_image();
+int handle_video();
 
 int main(int argc, char** args)
 {
@@ -67,7 +69,8 @@ int main(int argc, char** args)
     {
         // single input file, not a folder
 
-        bool is_video = (STR_EQUAL(ext, ".mp4") || STR_EQUAL(ext, ".mov") || STR_EQUAL(ext, ".MP4") || STR_EQUAL(ext, ".MOV"));
+        LOGI("File extension: %s", ext);
+        bool is_video = (STR_EQUAL(ext, "mp4") || STR_EQUAL(ext, "mov") || STR_EQUAL(ext, "MP4") || STR_EQUAL(ext, "MOV"));
         if(is_video) settings.asset_type = TYPE_VIDEO;
         settings.input_file_count = 1;
 
@@ -97,15 +100,20 @@ int main(int argc, char** args)
         }
     }
 
-    if(settings.asset_type == TYPE_VIDEO)
+    if(settings.asset_type == TYPE_IMAGE)
     {
-        Video vid = {};
-        double t0 = timer_get_time();
-        bool decode_result = true; //ffmpeg_decode("assets/vid1.mp4", &vid);
-        double elapsed = timer_get_time() - t0;
-        LOGI("Decode took %.3f ms", elapsed*1000.0);
+        handle_image();
+    }
+    else if(settings.asset_type == TYPE_VIDEO)
+    {
+        handle_video();
     }
 
+    return 0;
+}
+
+int handle_image()
+{
     Image image = {};
 
     for(int i = 0; i < settings.input_file_count; ++i)
@@ -125,7 +133,7 @@ int main(int argc, char** args)
         if(!settings.no_scale)
         {
             double t0 = timer_get_time();
-            use_scaled_image = transform_downscale_image(NULL, &image,&image_scaled,scaled_size);   
+            use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size);   
             double elapsed = timer_get_time() - t0;
             LOGI("Downscale took %.3f ms", elapsed*1000.0);
         }
@@ -170,6 +178,166 @@ int main(int argc, char** args)
         LOGI("outfile %d: %.*s", i, outfile.len, outfile.data);
         util_write_output(&image, outfile.data);
     }
+    return 0;
+}
+
+int handle_video()
+{
+    double t0 = timer_get_time();
+
+    LOGI("Decoding video file %s", settings.input_file_text);
+    
+    // decode video file
+    Video vid = {};
+    bool decoded = true; //ffmpeg_decode("assets/vid1.mp4", &vid);
+
+    if(!decoded)
+    {
+        LOGE("Failed to decode video %s", "");
+        return 1;
+    }
+
+    Arena *arena_results = arena_create(ARENA_SIZE_MEDIUM);
+
+    double elapsed = timer_get_time() - t0;
+    LOGI("Decode took %.3f ms", elapsed*1000.0);
+
+    Image* images = (Image*)calloc(settings.thread_count, sizeof(Image));
+
+    // run detections
+    int frame_counter = 0;
+    int actual_thread_count = 0;
+
+    for(;;)
+    {
+        if(frame_counter >= vid.frame_count)
+             break;
+
+        // Create threads
+        for(int i = 0; i < settings.thread_count; ++i)
+        {
+            Arena* arena = thread_arenas[actual_thread_count];
+            pthread_t* thread = &threads[actual_thread_count];
+            Image* image = &images[actual_thread_count];
+
+            // reset arena
+            arena_reset(arena);
+
+            // fill out the image object
+            image->frame_number = frame_counter;
+            image->data = &vid.data[frame_counter*vid.w*vid.h*3];
+            image->w = vid.w;
+            image->h = vid.h;
+            image->n = 3;
+            image->step = 3*image->w;
+
+            frame_counter++;
+            
+            
+#if 0
+            // @TODO: Image scaling
+            Image image_scaled = {};
+            bool use_scaled = false;
+            if(!settings.no_scale)
+            {
+                 // Scale down image
+                transform_downscale(&image_scaled, 640);
+            }
+#endif
+
+            // start detection thread
+            if(pthread_create(thread, NULL, detect_faces, (void*)image) == 0)
+            {
+                actual_thread_count++;
+            }
+            else
+            {
+                LOGW("Failed to start thread");
+            }
+        }
+        
+        // join all threads back
+        for(int i = 0; i < settings.thread_count; ++i)
+        {
+            pthread_join(threads[i], NULL);
+        }
+        
+        // Gather results
+        Rect total_rects[1024] = {0};
+        int num_faces = 0;
+
+        for(int i = 0; i < actual_thread_count; ++i)
+        {
+            Image* image = &images[i];
+            if(image && image->result)
+            {
+                u8* ret_rects = image->result;
+
+                int offset = 0;
+                int _faces_found = *((int*)(ret_rects));
+                offset += sizeof(int);
+
+                for(int j = 0; j < _faces_found; ++j)
+                {
+                    Rect* r = (Rect*)(ret_rects+offset);
+                    if(r->confidence < settings.confidence_threshold) // filter out low-confidence regions
+                        continue;
+
+#if 0
+                    // @TODO: if used scaling, scale up results
+                    const float scale = image.w > image.h ? image.w / (float)image_scaled.w : image.h / (float)image_scaled.h;
+                    for(int i = 0; i < num_rects; ++i)
+                    {
+                        Rect* r = &rects[i];
+                        r->x = (u16)round(r->x * scale);
+                        r->y = (u16)round(r->y * scale);
+                        r->w = (u16)round(r->w * scale);
+                        r->h = (u16)round(r->h * scale);
+                    }
+#endif
+
+                    // make sure rectangles are with bounds of image
+                    if(r->x >= image->w || r->y >= image->h)
+                        continue;
+
+                    if(r->x + r->w > image->w) r->w = image->w - r->x - 1;
+                    if(r->y + r->h > image->h) r->h = image->h - r->y - 1;
+
+
+                    memcpy(&total_rects[num_faces],r,sizeof(Rect));
+                    offset += sizeof(Rect);
+                    num_faces++;
+                }
+            }
+        }
+
+        // add image rects to output
+        u8 *x = (u8 *)arena_alloc(arena_results, sizeof(u32)+(num_faces*sizeof(Rect)));
+
+        memcpy(x,&num_faces, sizeof(u32));
+        x += sizeof(u32);
+        for(int i = 0; i < num_faces; ++i)
+        {
+            memcpy(x,&total_rects[i], sizeof(Rect));
+            x += sizeof(Rect);
+        }
+    }
+
+    // Apply transformations
+    for(int i = 0; i < settings.transform_count; ++i)
+    {
+        Image image = {};
+        int num_rects = 0;
+        Rect rects[256] = {};
+
+        // @TODO
+        Transform* t = &settings.transforms[i];
+        LOGI("Applying %s transform...", transform_type_to_str(t->type));
+        transform_apply(&image, num_rects, rects,t->type);
+    }
+
+    // Encode output video
+    //ffmpeg_encode(&vid, "output/out.mp4");
 
     return 0;
 }
@@ -213,7 +381,7 @@ bool init(int argc, char **args)
     // initialize memory arenas used in program
     for(int i = 0; i < settings.thread_count; ++i)
     {
-        arenas[i] = arena_create(ARENA_SIZE_MEDIUM);
+        thread_arenas[i] = arena_create(ARENA_SIZE_MEDIUM);
     }
     scratch = arena_create(1024*1024);
 

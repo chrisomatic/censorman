@@ -484,7 +484,7 @@ void lanczos_downscale(Image *in, Image *out, int a)
     }
 }
 
-bool transform_downscale_image(Arena* arena, Image* source, Image* result, int scaled_size)
+bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_size)
 {
     bool use_scaled_image = source->w > scaled_size || source->h > scaled_size;
 

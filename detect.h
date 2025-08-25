@@ -13,7 +13,6 @@ void* detect_faces(void* arg)
     Image* image = (Image*)arg;
 
     int *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step); 
-
     int num_faces = (results ? *results : 0);
 
     image->result = (u8*)arena_alloc((Arena*)image->arena, sizeof(int) + num_faces*sizeof(Rect));
@@ -88,8 +87,8 @@ int process_image(Image* image,Rect* ret_rects)
 
     for(int i = 0; i < settings.thread_count; ++i)
     {
-        arena_reset(arenas[i]);
-        sub_images[i] = (Image*)arena_alloc(arenas[i], sizeof(Image));
+        arena_reset(thread_arenas[i]);
+        sub_images[i] = (Image*)arena_alloc(thread_arenas[i], sizeof(Image));
     }
 
     int actual_thread_count = 0;
@@ -105,7 +104,7 @@ int process_image(Image* image,Rect* ret_rects)
 
     for(int i = 0; i < settings.thread_count; ++i)
     {
-        Arena* arena = arenas[actual_thread_count];
+        Arena* arena = thread_arenas[actual_thread_count];
         pthread_t* thread = &threads[actual_thread_count];
         Image* sub_image = sub_images[actual_thread_count];
 

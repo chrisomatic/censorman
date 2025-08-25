@@ -518,13 +518,15 @@ typedef struct
     u8 subx; // position in larger image
     u8 suby; // position in larger image
     void* arena;
+    bool scaled; // determine if image was scaled
+    u32 frame_number; // used for video reconstruction
     u8* result;
 } Image;
 
 typedef struct {
     u16 w;
     u16 h;
-    u32 num_frames;
+    u32 frame_count;
     u8* data; // RGB
 } Video;
 
@@ -580,7 +582,7 @@ typedef struct
 extern ProgramSettings settings;
 extern pthread_t *threads;
 extern Timer timer;
-extern Arena* arenas[MAX_ARENAS];
+extern Arena* thread_arenas[MAX_ARENAS];
 extern Image texture_image;
 
                                                           
