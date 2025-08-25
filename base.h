@@ -40,6 +40,11 @@ extern "C" {
 #endif
 
 //
+// Util
+//
+#define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
+
+//
 // Types
 // 
 
@@ -255,11 +260,6 @@ int str_get_extension(const char *source, char *buf, int buf_len)
 
     return 0;
 }
-
-//
-// Util
-//
-#define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
 
 
 
@@ -495,7 +495,6 @@ inline const char* transform_type_to_str(TransformType t)
     }
 }
 
-
 typedef struct
 {
     u16 x;
@@ -576,7 +575,7 @@ typedef struct
     bool debug;
 } ProgramSettings;
 
-#define MAX_FRAMES 1000
+#define MAX_FRAMES 1500
 #define MAX_ARENAS 64
 
 extern ProgramSettings settings;

@@ -4,7 +4,7 @@
 #include "base.h"
 #include "platform.h"
 #include "detect.h"
-//#include "ffmpeg.h"
+#include "ffmpeg.h"
 #include "transform.h"
 #include "util.h"
 
@@ -127,7 +127,7 @@ int handle_image()
         if(!loaded) return 1;
 
         Image image_scaled = {};
-        const int scaled_size = 480;
+        const int scaled_size = 640;
         bool use_scaled_image = false;
 
         if(!settings.no_scale)
@@ -189,7 +189,7 @@ int handle_video()
     
     // decode video file
     Video vid = {};
-    bool decoded = true; //ffmpeg_decode("assets/vid1.mp4", &vid);
+    bool decoded = ffmpeg_decode(settings.input_file_text, &vid);
 
     if(!decoded)
     {
@@ -200,53 +200,68 @@ int handle_video()
     Arena *arena_results = arena_create(ARENA_SIZE_MEDIUM);
 
     double elapsed = timer_get_time() - t0;
-    LOGI("Decode took %.3f ms", elapsed*1000.0);
+    LOGI("Decode took %.3f ms (frame count: %d), output: %p", elapsed*1000.0, vid.frame_count, vid.data);
 
     Image* images = (Image*)calloc(settings.thread_count, sizeof(Image));
+    Image* images_scaled = (Image*)calloc(settings.thread_count, sizeof(Image));
+
+    bool use_scaled[settings.thread_count] = {};
+
+    u8 detect_buffers[settings.thread_count][0x9000] = {0};
+
+    u32 output_count = 0;
+    u8* output_ptrs[MAX_FRAMES] = {};
 
     // run detections
     int frame_counter = 0;
-    int actual_thread_count = 0;
+
+    int actual_thread_count;
 
     for(;;)
     {
         if(frame_counter >= vid.frame_count)
              break;
 
+        for(int i = 0; i < settings.thread_count; ++i)
+        {
+            memset(&images_scaled[i], 0, sizeof(Image));
+            use_scaled[i] = false;
+        }
+
+        actual_thread_count = 0;
+
         // Create threads
         for(int i = 0; i < settings.thread_count; ++i)
         {
             Arena* arena = thread_arenas[actual_thread_count];
             pthread_t* thread = &threads[actual_thread_count];
+
             Image* image = &images[actual_thread_count];
+            Image* image_scaled = &images_scaled[actual_thread_count];
 
             // reset arena
             arena_reset(arena);
 
             // fill out the image object
+            image->detect_buffer = detect_buffers[actual_thread_count];
             image->frame_number = frame_counter;
-            image->data = &vid.data[frame_counter*vid.w*vid.h*3];
+            image->data = &vid.data[(u64)frame_counter*vid.w*vid.h*3];
             image->w = vid.w;
             image->h = vid.h;
             image->n = 3;
             image->step = 3*image->w;
+            image->arena = arena;
 
             frame_counter++;
             
-            
-#if 0
-            // @TODO: Image scaling
-            Image image_scaled = {};
-            bool use_scaled = false;
             if(!settings.no_scale)
             {
                  // Scale down image
-                transform_downscale(&image_scaled, 640);
+                use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,640);
             }
-#endif
 
             // start detection thread
-            if(pthread_create(thread, NULL, detect_faces, (void*)image) == 0)
+            if(pthread_create(thread, NULL, detect_faces, (void*)(use_scaled[i] ? image_scaled : image)) == 0)
             {
                 actual_thread_count++;
             }
@@ -263,12 +278,13 @@ int handle_video()
         }
         
         // Gather results
-        Rect total_rects[1024] = {0};
         int num_faces = 0;
 
         for(int i = 0; i < actual_thread_count; ++i)
         {
-            Image* image = &images[i];
+            Image* image = use_scaled[i] ? &images_scaled[i] : &images[i];
+            num_faces = 0;
+
             if(image && image->result)
             {
                 u8* ret_rects = image->result;
@@ -277,67 +293,100 @@ int handle_video()
                 int _faces_found = *((int*)(ret_rects));
                 offset += sizeof(int);
 
+                output_ptrs[image->frame_number] = (u8 *)arena_alloc(arena_results, sizeof(u32)+(_faces_found*sizeof(Rect)));
+
                 for(int j = 0; j < _faces_found; ++j)
                 {
                     Rect* r = (Rect*)(ret_rects+offset);
                     if(r->confidence < settings.confidence_threshold) // filter out low-confidence regions
                         continue;
 
-#if 0
-                    // @TODO: if used scaling, scale up results
-                    const float scale = image.w > image.h ? image.w / (float)image_scaled.w : image.h / (float)image_scaled.h;
-                    for(int i = 0; i < num_rects; ++i)
+                    if(use_scaled[i])
                     {
-                        Rect* r = &rects[i];
+                        float scale = vid.w > vid.h ? vid.w / (float)image->w : vid.h / (float)image->h;
+                        scale *= 1.15;
+                        printf("scale: %f\n", scale);
+                        printf("r_before: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+
                         r->x = (u16)round(r->x * scale);
                         r->y = (u16)round(r->y * scale);
                         r->w = (u16)round(r->w * scale);
                         r->h = (u16)round(r->h * scale);
+
+                        printf("r_after: %u %u %u %u\n", r->x, r->y, r->w, r->h);
                     }
-#endif
 
-                    // make sure rectangles are with bounds of image
-                    if(r->x >= image->w || r->y >= image->h)
-                        continue;
+                    // make sure rectangles are within bounds of image
+                    if(r->x >= image->w || r->y >= image->h) continue;
 
-                    if(r->x + r->w > image->w) r->w = image->w - r->x - 1;
-                    if(r->y + r->h > image->h) r->h = image->h - r->y - 1;
+                    if(r->x + r->w > image->w) r->w = MAX(0, image->w - r->x - 1);
+                    if(r->y + r->h > image->h) r->h = MAX(0, image->h - r->y - 1);
 
-
-                    memcpy(&total_rects[num_faces],r,sizeof(Rect));
+                    memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Rect));
                     offset += sizeof(Rect);
                     num_faces++;
                 }
+
+                memcpy(output_ptrs[image->frame_number], &num_faces, sizeof(u32));
+                output_count += num_faces;
             }
         }
 
-        // add image rects to output
-        u8 *x = (u8 *)arena_alloc(arena_results, sizeof(u32)+(num_faces*sizeof(Rect)));
+        LOGI("[Frame %d]: num_faces: %d", frame_counter, num_faces);
+    }
 
-        memcpy(x,&num_faces, sizeof(u32));
-        x += sizeof(u32);
-        for(int i = 0; i < num_faces; ++i)
+    frame_counter = 0;
+
+    LOGI("Applying transformation...");
+    for(int i = 0; i < vid.frame_count; ++i)
+    {
+        // Get frame
+        Image image = {};
+
+        image.frame_number = frame_counter;
+        image.data = &vid.data[(u64)frame_counter*vid.w*vid.h*3];
+        image.w = vid.w;
+        image.h = vid.h;
+        image.n = 3;
+        image.step = 3*image.w;
+
+        // Get Rects
+        u8 *ptr = output_ptrs[frame_counter++];
+
+        if(!ptr)
         {
-            memcpy(x,&total_rects[i], sizeof(Rect));
-            x += sizeof(Rect);
+            LOGW("No output at this frame");
+            continue;
+        }
+
+        u32 num_rects = 0;
+        memcpy((u8*)&num_rects, ptr, sizeof(u32));
+        ptr += sizeof(u32);
+        Rect *rects = (Rect *)(ptr); 
+
+        // Apply transformations
+        for(int j = 0; j < settings.transform_count; ++j)
+        {
+            Transform* t = &settings.transforms[j];
+            transform_apply(&image, num_rects, rects,t->type);
         }
     }
 
-    // Apply transformations
-    for(int i = 0; i < settings.transform_count; ++i)
-    {
-        Image image = {};
-        int num_rects = 0;
-        Rect rects[256] = {};
-
-        // @TODO
-        Transform* t = &settings.transforms[i];
-        LOGI("Applying %s transform...", transform_type_to_str(t->type));
-        transform_apply(&image, num_rects, rects,t->type);
-    }
+    LOGI("Transformations done!");
 
     // Encode output video
-    //ffmpeg_encode(&vid, "output/out.mp4");
+    double _t0 = timer_get_time();
+    bool encoded = ffmpeg_encode("output/out.mp4", &vid);
+    if(!encoded)
+    {
+        LOGE("Failed to write output file");
+        return 1;
+    }
+
+    double _elapsed = timer_get_time() - _t0;
+    LOGI("Encode took %.3f ms", _elapsed*1000.0);
+
+    LOGI("Complete!");
 
     return 0;
 }
@@ -381,9 +430,9 @@ bool init(int argc, char **args)
     // initialize memory arenas used in program
     for(int i = 0; i < settings.thread_count; ++i)
     {
-        thread_arenas[i] = arena_create(ARENA_SIZE_MEDIUM);
+        thread_arenas[i] = arena_create(ARENA_SIZE_LARGE);
     }
-    scratch = arena_create(1024*1024);
+    scratch = arena_create(ARENA_SIZE_MEDIUM);
 
     // initialize model data
     detect_init();

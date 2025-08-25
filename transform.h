@@ -437,7 +437,6 @@ void lanczos_downscale(Image *in, Image *out, int a)
             int x_start = floor(source_x - a);
             int x_end   = floor(source_x + a);
 
-
             double sum_red = 0.0;
             double sum_green = 0.0;
             double sum_blue = 0.0;
@@ -468,7 +467,6 @@ void lanczos_downscale(Image *in, Image *out, int a)
                     sum_weights += weight;
                 }
             }
-
             // Normalize and set the output pixel
 
             Color out_pixel;
@@ -515,10 +513,12 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
         result->h = height_scaled;
         result->n = source->n;
         result->step = width_scaled*result->n;
+        result->arena = source->arena;
+        result->frame_number = source->frame_number;
+        result->detect_buffer = source->detect_buffer;
 
         if(arena == NULL)
         {
-
             result->data = (u8*)malloc(width_scaled*height_scaled*result->n);
         }
         else
@@ -535,10 +535,11 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
 void transform_apply(Image* image, int num_rects, Rect* rects, TransformType transform)
 {
     // apply transformation
+    //printf("num rects; %d\n", num_rects);
     for(int i = 0; i < num_rects; ++i)
     {
         Rect r = rects[i];
-        LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
+        //LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
 
         switch(transform)
         {

@@ -1,0 +1,14 @@
+prefix=/home/chris/git/censorman/ffmpeg_build
+exec_prefix=${prefix}
+libdir=/home/chris/git/censorman/ffmpeg_build/lib
+includedir=/home/chris/git/censorman/ffmpeg_build/include
+
+Name: libavcodec
+Description: FFmpeg codec library
+Version: 60.31.102
+Requires: libavutil >= 58.29.100
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavcodec -pthread -lm -latomic -lx264 -lpthread -lm -ldl
+Libs.private: 
+Cflags: -I${includedir}
