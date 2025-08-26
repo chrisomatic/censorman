@@ -10,14 +10,18 @@
 
 // TODO
 //
-// [x] Add scramble transform
+// [ ] Lerping rects in video
+// [ ] Thread the transformations
+// [ ] Fix builds for MacOS
 // [ ] Add padding to sub-images
-// [ ] Add blur transform
-// [x] Add image scaling function
 // [ ] Add lots of test images and --tester mode
-// [ ] Implement thread pool (spin-lock)
-// [ ] Open a video file and read image frames
-// [ ] Write output video file
+// [ ] Implement thread pool (mutex vs spin-lock)
+// [ ] Add raster font for debug output
+// [x] Add scramble transform
+// [x] Add blur transform
+// [x] Add image scaling function
+// [x] Open a video file and read image frames
+// [x] Write output video file
 
 Arena* scratch = {0};
 Arena* thread_arenas[MAX_ARENAS] = {0};
@@ -271,8 +275,7 @@ int handle_video()
                 LOGW("Failed to start thread");
             }
 
-            frame_counter++;
-            
+            frame_counter += (MIN(3, vid.frame_count - frame_counter)); // always want to evaluate final frame
         }
         
         // join all threads back
@@ -315,7 +318,7 @@ int handle_video()
                         r->h = (u16)round(r->h * scale);
                     }
                     
-                    /*
+                    /* not sure if needed?
                     // make sure rectangles are within bounds of image
                     if(r->x >= image->w || r->y >= image->h) continue;
 
@@ -323,8 +326,7 @@ int handle_video()
                     if(r->y + r->h > image->h) r->h = MAX(0, image->h - r->y - 1);
                     */
 
-                    memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Rect));
-                    offset += sizeof(Rect);
+                    memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Rect)); offset += sizeof(Rect);
                     num_faces++;
                 }
 
@@ -338,7 +340,110 @@ int handle_video()
         LOGI("[Frame %d]: num_faces: %d", frame_counter, num_faces);
     }
 
-    frame_counter = 0;
+    // fill in detection gaps (lerp)
+
+    RectList rl0 = {};
+    RectList rl1 = {};
+
+    //  
+    //  |------|------|------|
+    // rl0     x      x     rl1
+    //
+    
+    for(int i = 0; i < vid.frame_count; ++i)
+    {
+        // Get Rects
+        u8 *ptr = output_ptrs[i];
+
+        if(ptr)
+        {
+            // rl0
+            memcpy(&rl0, &rl1, sizeof(RectList));
+
+            // rl1
+            memcpy(&rl1.rect_count, ptr, sizeof(u32));
+            rl1.rects = (Rect*)(ptr+sizeof(u32));
+        }
+        else
+        {
+            // gap frame
+            // set rl0
+            memcpy(&rl0, &rl1, sizeof(RectList));
+
+            // look forward to find next valid frame to lerp to
+            rl1.rect_count = 0;
+            rl1.rects = NULL;
+
+            int j = i;
+            for(;;)
+            {
+                j++;
+                if(j >= vid.frame_count)
+                    break;
+
+                if(output_ptrs[j])
+                {
+                    // valid frame
+                    // set rl1
+                    memcpy(&rl1.rect_count,output_ptrs[j], sizeof(u32));
+                    rl1.rects = (Rect*)(output_ptrs[j]+sizeof(u32));
+                    break;
+                }
+            }
+
+            int frames_in_between = j - i;
+
+            if(frames_in_between == 0)
+            {
+                // TODO
+                // there is no filled out frame ahead
+                // so just copy the results of rl0 forward
+                LOGW("TODO: No valid frames ahead! Copying forward");
+            }
+
+            for(int f = 0; f < frames_in_between; ++f)
+            {
+                // allocate space for frame
+                output_ptrs[i+f] = (u8 *)arena_alloc(arena_results, sizeof(u32)+(rl0.rect_count*sizeof(Rect)));
+                memcpy(output_ptrs[i+f], &rl0.rect_count, sizeof(u32));
+
+                if(rl0.rects && rl1.rects)
+                {
+                    // for each rect from rl0
+                    int _offset = sizeof(u32);
+                    for(int k = 0; k < rl0.rect_count; ++k)
+                    {
+                        if(k >= rl1.rect_count)
+                            break;
+
+                        Rect* ra = &rl0.rects[k];
+                        Rect* rb = &rl1.rects[k];
+
+                        // gap rect
+                        Rect* rg = (Rect*)((output_ptrs[i+f]+_offset));
+
+                        // lerp
+                        float t = (f+1)/(float)(frames_in_between+1);
+
+                        rg->x = (u16)lerp((float)ra->x, (float)rb->x, t);
+                        rg->y = (u16)lerp((float)ra->y, (float)rb->y, t);
+                        rg->w = (u16)lerp((float)ra->w, (float)rb->w, t);
+                        rg->h = (u16)lerp((float)ra->h, (float)rb->h, t);
+                        rg->confidence = (u16)lerp((float)ra->confidence, (float)rb->confidence, t);
+
+                        // printf("  Lerping Rect %d (a: %u %u %u %u (%u), b: %u %u %u %u (%u), gap: %u %u %u %u (%u)\n", k, ra->x, ra->y, ra->w, ra->h, ra->confidence, rb->x, rb->y, rb->w, rb->h, rb->confidence, rg->x, rg->y, rg->w, rg->h, rg->confidence);
+                        _offset += sizeof(Rect);
+                    }
+                }
+                else
+                {
+                    LOGI("Why am I here?");
+                }
+            }
+
+            i += MAX(0,(frames_in_between-1));
+        }
+    }
 
     LOGI("Applying transformation...");
     for(int i = 0; i < vid.frame_count; ++i)
@@ -346,19 +451,19 @@ int handle_video()
         // Get frame
         Image image = {};
 
-        image.frame_number = frame_counter;
-        image.data = &vid.data[(u64)frame_counter*vid.w*vid.h*3];
+        image.frame_number = i;
+        image.data = &vid.data[(u64)i*vid.w*vid.h*3];
         image.w = vid.w;
         image.h = vid.h;
         image.n = 3;
         image.step = 3*image.w;
         
         // Get Rects
-        u8 *ptr = output_ptrs[frame_counter++];
+        u8 *ptr = output_ptrs[i];
 
         if(!ptr)
         {
-            LOGW("No output at this frame");
+            //LOGW("No output at Frame %d", i);
             continue;
         }
 
@@ -366,6 +471,35 @@ int handle_video()
         memcpy((u8*)&num_rects, ptr, sizeof(u32));
         ptr += sizeof(u32);
         Rect *rects = (Rect *)(ptr); 
+
+        // increase rect size for clarity
+        const float rect_pad_pct = 0.15;
+        for(int j = 0; j < num_rects; ++j)
+        {
+            float sw = (float)rects[j].w * rect_pad_pct;
+            float sh = (float)rects[j].h * rect_pad_pct;
+
+            rects[j].x -= (u16)(sw/2.0);
+            rects[j].y -= (u16)(sw/2.0);
+            rects[j].w += sw;
+            rects[j].h += sh;
+
+            if(rects[j].x < 0) rects[j].x = 0;
+            if(rects[j].x >= image.w) rects[j].x = image.w-1;
+            if(rects[j].y < 0) rects[j].y = 0;
+            if(rects[j].y >= image.h) rects[j].y = image.h-1;
+            if(rects[j].x+rects[j].w >=image.w) rects[j].w = (image.w-rects[j].x-1);
+            if(rects[j].y+rects[j].h >=image.h) rects[j].h = (image.h-rects[j].y-1);
+        }
+
+        if(num_rects == 0)
+        {
+            printf("Zero rects at Frame %d!!\n", i);
+        }
+        else
+        {
+            //printf("[Frame %d][Rect %d] %u %u %u %u (%u)\n", i, 0, rects[0].x, rects[0].y, rects[0].w, rects[0].h, rects[0].confidence);
+        }
 
         // Apply transformations
         for(int j = 0; j < settings.transform_count; ++j)
@@ -377,9 +511,9 @@ int handle_video()
         if(settings.debug)
         {
             // draw debugging info on image
-            for(int i = 0 ; i < num_rects; ++i)
+            for(int j = 0 ; j < num_rects; ++j)
             {
-                transform_draw_rect(&image, rects[i],(Color){0,255,0,255}, false, 1.0);
+                transform_draw_rect(&image, rects[j],(Color){0,255,0,255}, false, 1.0);
             }
         }
     }

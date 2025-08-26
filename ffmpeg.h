@@ -55,6 +55,10 @@ bool ffmpeg_decode(const char *filename, Video *output)
         return false;
     }
 
+    AVRational frame_rate = fmt_ctx->streams[video_stream_index]->r_frame_rate;
+    double fps = (double)frame_rate.num / frame_rate.den;
+    output->seconds_per_frame = 1.0 / fps;
+
     enum AVCodecID codec_id = fmt_ctx->streams[video_stream_index]->codecpar->codec_id;
     LOGI("Video codec id: %d (%s)\n", codec_id, avcodec_get_name(codec_id));
 
@@ -234,18 +238,22 @@ bool ffmpeg_encode(const char *filename, Video *video)
         return false;
     }
 
+    int fps = (int)(1.0/video->seconds_per_frame);
+
     // Basic encoding settings
     codec_ctx->codec_id = codec->id;
     codec_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
     codec_ctx->width = width;
     codec_ctx->height = height;
-    codec_ctx->time_base = (AVRational){1, 30};   // 30 fps
-    codec_ctx->framerate = (AVRational){30, 1};
+    codec_ctx->time_base = (AVRational){1, fps};
+    codec_ctx->framerate = (AVRational){fps, 1};
     codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;      // encoder wants YUV420P
     codec_ctx->gop_size = 12;
-    codec_ctx->max_b_frames = 2;
-    codec_ctx->thread_count = 0; // 0 = auto-detect cores
+    codec_ctx->max_b_frames = 0;
+    codec_ctx->thread_count = 1; // 0 = auto-detect cores
     codec_ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
+
+    video_st->time_base  = codec_ctx->time_base;
 
     if (fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
         codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -322,6 +330,11 @@ bool ffmpeg_encode(const char *filename, Video *video)
     for (int i = 0; i < video->frame_count; i++) {
         const uint8_t *rgb_data[1] = { video->data + i * rgb_stride * height };
         int rgb_linesize[1] = { rgb_stride };
+
+        if(i == 0)
+        {
+            frame->pict_type = AV_PICTURE_TYPE_I;
+        }
 
         av_frame_make_writable(frame);
         sws_scale(sws_ctx, rgb_data, rgb_linesize, 0, height, frame->data, frame->linesize);

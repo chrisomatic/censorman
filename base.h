@@ -185,6 +185,19 @@ void arena_reset(Arena* arena)
 #define MAX(x,y) ((x) >= (y) ? (x) : (y))
 #define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
 
+float exp_decay(float a, float b, float decay, float dt)
+{
+    return b + (a - b)*exp(-decay*dt);
+}
+
+float lerp(float a, float b, float t)
+{
+    t = CLAMP(t,0.0,1.0);
+    float r = (1.0-t)*a+(t*b);
+    return r;
+}
+
+
 //
 // Strings
 //
@@ -506,6 +519,12 @@ typedef struct
 
 typedef struct
 {
+    u32 rect_count;
+    Rect* rects;
+} RectList;
+
+typedef struct
+{
     u8 *data;
     int w;
     int h;
@@ -526,6 +545,7 @@ typedef struct {
     u16 w;
     u16 h;
     u32 frame_count;
+    float seconds_per_frame;
     u8* data; // RGB
 } Video;
 
