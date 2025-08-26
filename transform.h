@@ -498,10 +498,13 @@ void transform_apply(Image* image, int num_rects, Rect* rects, TransformType tra
             case TRANSFORM_TYPE_BLACKOUT:       transform_draw_rect(image, r,(Color){0,0,0,255}, true, 1.0); break;
             case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, settings.block_scale); break;
             case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
-            case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO
-            case TRANSFORM_TYPE_TEXTURE:        if(settings.has_texture) transform_stretch_image(image, &texture_image, r); break;
-    
+            case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO: seed
             case TRANSFORM_TYPE_BLUR:           transform_gaussian_blur(image, &r); break;
+            case TRANSFORM_TYPE_TEXTURE: {
+               if(settings.has_texture) {
+                   transform_stretch_image(image, &texture_image, r);
+               }
+            }break;
             default: break;
         }
     }

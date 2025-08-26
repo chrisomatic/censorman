@@ -60,7 +60,7 @@ bool ffmpeg_decode(const char *filename, Video *output)
     output->seconds_per_frame = 1.0 / fps;
 
     enum AVCodecID codec_id = fmt_ctx->streams[video_stream_index]->codecpar->codec_id;
-    LOGI("Video codec id: %d (%s)\n", codec_id, avcodec_get_name(codec_id));
+    LOGI("Video codec id: %d (%s)", codec_id, avcodec_get_name(codec_id));
 
     codec = avcodec_find_decoder(fmt_ctx->streams[video_stream_index]->codecpar->codec_id);
     if (!codec)
