@@ -138,9 +138,9 @@ int handle_image()
             LOGI("Downscale took %.3f ms", elapsed*1000.0);
         }
 
-        //util_write_output(&image_scaled, "output/out_scaled.png");
+        util_write_output(&image_scaled, "output/out_scaled.png");
 
-        Rect rects[256] = {0};
+        Rect rects[256] = {};
         int num_rects = use_scaled_image ? process_image(&image_scaled, rects) : process_image(&image, rects);
         LOGI("Found %d rects", num_rects);
 
@@ -170,7 +170,7 @@ int handle_image()
             // draw debugging info on image
             for(int i = 0 ; i < num_rects; ++i)
             {
-                transform_draw_rect(&image, rects[i],(Color){255,0,255,255}, false, 1.0);
+                transform_draw_rect(&image, rects[i],(Color){0,255,0,255}, false, 1.0);
             }
         }
 
@@ -225,6 +225,7 @@ int handle_video()
         for(int i = 0; i < settings.thread_count; ++i)
         {
             memset(&images_scaled[i], 0, sizeof(Image));
+            memset(detect_buffers[i], 0, 0x9000);
             use_scaled[i] = false;
         }
 
@@ -252,13 +253,13 @@ int handle_video()
             image->step = 3*image->w;
             image->arena = arena;
 
-            frame_counter++;
-            
             if(!settings.no_scale)
             {
                  // Scale down image
-                use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,640);
+                use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,320);
             }
+
+            reverse_rgb_order(use_scaled[i] ? image_scaled : image);
 
             // start detection thread
             if(pthread_create(thread, NULL, detect_faces, (void*)(use_scaled[i] ? image_scaled : image)) == 0)
@@ -269,6 +270,9 @@ int handle_video()
             {
                 LOGW("Failed to start thread");
             }
+
+            frame_counter++;
+            
         }
         
         // join all threads back
@@ -283,6 +287,7 @@ int handle_video()
         for(int i = 0; i < actual_thread_count; ++i)
         {
             Image* image = use_scaled[i] ? &images_scaled[i] : &images[i];
+
             num_faces = 0;
 
             if(image && image->result)
@@ -304,23 +309,19 @@ int handle_video()
                     if(use_scaled[i])
                     {
                         float scale = vid.w > vid.h ? vid.w / (float)image->w : vid.h / (float)image->h;
-                        scale *= 1.15;
-                        printf("scale: %f\n", scale);
-                        printf("r_before: %u %u %u %u\n", r->x, r->y, r->w, r->h);
-
                         r->x = (u16)round(r->x * scale);
                         r->y = (u16)round(r->y * scale);
                         r->w = (u16)round(r->w * scale);
                         r->h = (u16)round(r->h * scale);
-
-                        printf("r_after: %u %u %u %u\n", r->x, r->y, r->w, r->h);
                     }
-
+                    
+                    /*
                     // make sure rectangles are within bounds of image
                     if(r->x >= image->w || r->y >= image->h) continue;
 
                     if(r->x + r->w > image->w) r->w = MAX(0, image->w - r->x - 1);
                     if(r->y + r->h > image->h) r->h = MAX(0, image->h - r->y - 1);
+                    */
 
                     memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Rect));
                     offset += sizeof(Rect);
@@ -329,6 +330,8 @@ int handle_video()
 
                 memcpy(output_ptrs[image->frame_number], &num_faces, sizeof(u32));
                 output_count += num_faces;
+
+                reverse_rgb_order(image);
             }
         }
 
@@ -349,7 +352,7 @@ int handle_video()
         image.h = vid.h;
         image.n = 3;
         image.step = 3*image.w;
-
+        
         // Get Rects
         u8 *ptr = output_ptrs[frame_counter++];
 
@@ -369,6 +372,15 @@ int handle_video()
         {
             Transform* t = &settings.transforms[j];
             transform_apply(&image, num_rects, rects,t->type);
+        }
+
+        if(settings.debug)
+        {
+            // draw debugging info on image
+            for(int i = 0 ; i < num_rects; ++i)
+            {
+                transform_draw_rect(&image, rects[i],(Color){0,255,0,255}, false, 1.0);
+            }
         }
     }
 
@@ -411,7 +423,7 @@ bool init(int argc, char **args)
     settings.nms_iou_threshold = 0.6;
     settings.has_texture = false;
     settings.no_scale = false;
-    settings.block_scale = 0.20;
+    settings.block_scale = 0.16;
     settings.input_file_count = 0;
 
     bool parse = parse_args(&settings, argc, args);

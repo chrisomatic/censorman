@@ -9,9 +9,10 @@
 
 bool util_load_image(char* input_file, Image* image)
 {
-    image->data = stbi_load(input_file, &image->w, &image->h, &image->n, 0);
+    int w,h,n;
+    u8* data = stbi_load(input_file, &w, &h, &n, 0);
 
-    if(!image->data)
+    if(!data)
     {
         LOGE("Failed to load image");
         return false;
@@ -19,13 +20,28 @@ bool util_load_image(char* input_file, Image* image)
 
     LOGI("Loaded image! w: %d h: %d n: %d", image->w,image->h,image->n);
 
-    if(image->n < 3)
+    if(n < 3)
     {
         LOGE("Not enough channels on image");
         return false;
     }
+
+    // pack RGB (remove alpha channel if needed)
+    image->data = (u8*)malloc(w*h*3*sizeof(u8));
+
+    for(int i = 0; i < w*h; ++i)
+    {
+        image->data[i*3+0] = data[i*n+0];
+        image->data[i*3+1] = data[i*n+1];
+        image->data[i*3+2] = data[i*n+2];
+    }
     
+    image->w = w;
+    image->h = h;
+    image->n = 3;
     image->step = image->w*image->n;
+
+    stbi_image_free(data);
 
     return true;
 }

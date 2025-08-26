@@ -11,12 +11,11 @@ inline Color get_pixel(Image* image, int x, int y)
 
 inline void reverse_rgb_order(Image *image)
 {
-    LOGI("Reversing RGB Order... pixel count: %d", image->w*image->h);
     for(int i = 0; i < image->w*image->h; ++i)
     {
         int n = i*image->n;
         u8 temp = image->data[n+0];
-        image->data[n+0] = image->data[i*3+2]; // R -> B
+        image->data[n+0] = image->data[n+2]; // R -> B
         image->data[n+2] = temp;               // B -> R
     }
 }
@@ -258,137 +257,6 @@ void transform_stretch_image(Image *dst, Image *src, Rect r)
     }
 }
 
-
-// gaussian blur
-
-typedef enum {
-    BORDER_EXTEND,
-    BORDER_MIRROR,
-    BORDER_CROP,
-    BORDER_WRAP
-} BorderPolicy;
-
-// Compute box radii from sigma and number of passes (Ivan Kutskir method)
-static inline void compute_box_radii(int *boxes, float sigma, int n) {
-    float wi = sqrtf((12.0f * sigma * sigma / n) + 1.0f);
-    int wl = (int)floorf(wi);
-    if (wl % 2 == 0) wl--;
-    int wu = wl + 2;
-    float mi = (12.0f * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) /
-               (float)(-4 * wl - 4);
-    int m = (int)(mi + 0.5f);
-    for (int i = 0; i < n; i++) {
-        boxes[i] = ((i < m ? wl : wu) - 1) / 2;
-    }
-}
-
-static inline int remap_index(int begin, int end, int idx, BorderPolicy p) {
-    int len = end - begin;
-    if (idx >= begin && idx < end) return idx;
-    switch (p) {
-    case BORDER_WRAP: {
-        int v = (idx - begin) % len;
-        if (v < 0) v += len;
-        return begin + v;
-    }
-    case BORDER_MIRROR: {
-        int off = idx - begin;
-        if (off < 0) off = -off - 1;
-        int period = off / len;
-        int m = off % len;
-        if (period % 2) return begin + (len - 1 - m);
-        else return begin + m;
-    }
-    case BORDER_EXTEND:
-        if (idx < begin) return begin;
-        if (idx >= end) return end - 1;
-        return idx;
-    case BORDER_CROP:
-    default:
-        return -1; // indicates invalid, to be skipped
-    }
-}
-
-static void horizontal_blur_c(const float *in, float *out, int w, int h, int channels,
-                              int r, BorderPolicy p) {
-    float iarr = 1.0f / (r + r + 1);
-    for (int y = 0; y < h; y++) {
-        int row = y * w;
-        for (int c = 0; c < channels; c++) {
-            float acc = 0.0f;
-            for (int dx = -r; dx <= r; dx++) {
-                int x0 = remap_index(0, w, dx, p);
-                acc += (x0 >= 0) ? in[(row + x0) * channels + c] : 0;
-            }
-            for (int x = 0; x < w; x++) {
-                out[(row + x) * channels + c] = acc * iarr;
-                // Slide window
-                int x_out = remap_index(0, w, x - r, p);
-                int x_in = remap_index(0, w, x + r + 1, p);
-                float val_out = (x_out >= 0) ? in[(row + x_out) * channels + c] : 0;
-                float val_in = (x_in >= 0) ? in[(row + x_in) * channels + c] : 0;
-                acc += (val_in - val_out);
-            }
-        }
-    }
-}
-
-static void vertical_blur_c(const float *in, float *out, int w, int h, int channels,
-                            int r, BorderPolicy p) {
-    float iarr = 1.0f / (r + r + 1);
-    for (int x = 0; x < w; x++) {
-        for (int c = 0; c < channels; c++) {
-            float acc = 0.0f;
-            for (int dy = -r; dy <= r; dy++) {
-                int y0 = remap_index(0, h, dy, p);
-                acc += (y0 >= 0) ? in[(y0 * w + x) * channels + c] : 0;
-            }
-            for (int y = 0; y < h; y++) {
-                out[(y * w + x) * channels + c] = acc * iarr;
-                int y_out = remap_index(0, h, y - r, p);
-                int y_in = remap_index(0, h, y + r + 1, p);
-                float val_out = (y_out >= 0) ? in[(y_out * w + x) * channels + c] : 0;
-                float val_in = (y_in >= 0) ? in[(y_in * w + x) * channels + c] : 0;
-                acc += (val_in - val_out);
-            }
-        }
-    }
-}
-
-// Public API: blur with N passes (horizontal + vertical each)
-static inline void fast_gaussian_blur_c(const float *in, float *out,
-                                        int w, int h, int channels,
-                                        float sigma, int passes,
-                                        BorderPolicy p) {
-    if (passes < 1) passes = 1;
-    int *boxes = (int *)malloc(passes * sizeof(int));
-    if (!boxes) return;
-    compute_box_radii(boxes, sigma, passes);
-
-    float *temp = (float *)malloc(w * h * channels * sizeof(float));
-    if (!temp) { free(boxes); return; }
-
-    const float *src = in;
-    float *dst = temp;
-
-    for (int i = 0; i < passes; i++) {
-        horizontal_blur_c(src, dst, w, h, channels, boxes[i], p);
-        vertical_blur_c(dst, dst /* in-place vertical */, w, h, channels, boxes[i], p);
-        src = dst;
-    }
-
-    // If result not in 'out', copy
-    if (src != out) {
-        size_t sz = (size_t)w * h * channels * sizeof(float);
-        memcpy(out, src, sz);
-    }
-
-    free(boxes);
-    free(temp);
-}
-
-
-
 // Down Scaling
 
 #define KERNEL_TABLE_SIZE 1024
@@ -532,6 +400,90 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
     return use_scaled_image;
 }
 
+// Generate 1D Gaussian kernel
+static void generate_kernel(float sigma, float **kernel, int *k_size) {
+    int radius = (int)ceilf(3 * sigma);
+    *k_size = 2 * radius + 1;
+    *kernel = (float *)malloc((*k_size) * sizeof(float));
+
+    float sum = 0.0f;
+    for (int i = 0; i < *k_size; i++) {
+        int x = i - radius;
+        (*kernel)[i] = expf(-(x * x) / (2 * sigma * sigma));
+        sum += (*kernel)[i];
+    }
+    for (int i = 0; i < *k_size; i++) {
+        (*kernel)[i] /= sum;
+    }
+}
+
+// Convolution pass in horizontal or vertical direction, restricted to ROI
+static void convolve_roi(
+    Image *src, Image *dst,
+    Rect *roi, float *kernel, int k_size,
+    int horizontal
+) {
+    int radius = k_size / 2;
+
+    for (int y = roi->y; y < roi->y + roi->h; y++) {
+        u8 *src_row = src->data + y * src->step;
+        u8 *dst_row = dst->data + y * dst->step;
+
+        for (int x = roi->x; x < roi->x + roi->w; x++) {
+            for (int c = 0; c < src->n; c++) {
+                float sum = 0.0f;
+
+                for (int k = -radius; k <= radius; k++) {
+                    int xx = x + (horizontal ? k : 0);
+                    int yy = y + (horizontal ? 0 : k);
+
+                    // clamp to border of the ROI (or image if you prefer)
+                    if (xx < roi->x) xx = roi->x;
+                    if (xx >= roi->x + roi->w) xx = roi->x + roi->w - 1;
+                    if (yy < roi->y) yy = roi->y;
+                    if (yy >= roi->y + roi->h) yy = roi->y + roi->h - 1;
+
+                    u8 *p = src->data + yy * src->step + xx * src->n + c;
+                    sum += (*p) * kernel[k + radius];
+                }
+                dst_row[x * src->n + c] = (u8)fminf(fmaxf(sum, 0.0f), 255.0f);
+            }
+        }
+    }
+}
+
+void transform_gaussian_blur(Image *image, Rect *r) {
+    if (!image || !r) return;
+    if (r->x >= image->w || r->y >= image->h) return;
+
+    // Clamp ROI inside image
+    if (r->x + r->w > image->w) r->w = image->w - r->x;
+    if (r->y + r->h > image->h) r->h = image->h - r->y;
+
+    // sigma could be derived from Rect.confidence, or fixed
+    float base = (r->w < r->h ? r->w : r->h);
+    float sigma = 0.07f * base;   // tune multiplier to taste
+
+    if (sigma < 0.5f) sigma = 0.5f;  // clamp minimum
+
+    float *kernel;
+    int k_size;
+    generate_kernel(sigma, &kernel, &k_size);
+
+    // temp image buffer for intermediate result
+    Image tmp = *image;
+    tmp.data = (u8 *)malloc(image->step * image->h);
+    memcpy(tmp.data, image->data, image->step * image->h);
+
+    // horizontal pass
+    convolve_roi(image, &tmp, r, kernel, k_size, 1);
+    // vertical pass (write back into original image buffer)
+    convolve_roi(&tmp, image, r, kernel, k_size, 0);
+
+    free(tmp.data);
+    free(kernel);
+}
+
 void transform_apply(Image* image, int num_rects, Rect* rects, TransformType transform)
 {
     // apply transformation
@@ -548,7 +500,8 @@ void transform_apply(Image* image, int num_rects, Rect* rects, TransformType tra
             case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
             case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO
             case TRANSFORM_TYPE_TEXTURE:        if(settings.has_texture) transform_stretch_image(image, &texture_image, r); break;
-            case TRANSFORM_TYPE_BLUR: break;
+    
+            case TRANSFORM_TYPE_BLUR:           transform_gaussian_blur(image, &r); break;
             default: break;
         }
     }
