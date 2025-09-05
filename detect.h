@@ -49,32 +49,39 @@ int process_image(Image* image,Rect* ret_rects)
 
     // Determine image subdivision
 
-    bool is_horiz = (image->w >= image->h);
-
     int rows = 0;
     int cols = 0;
 
     switch(settings.thread_count)
     {
-        case 1:  rows = 1; cols = 1; break;
-        case 2:  rows = is_horiz ? 1 : 2; cols = is_horiz ? 2 : 1; break;
-        case 3:  rows = is_horiz ? 1 : 3; cols = is_horiz ? 3 : 1; break;
-        case 4:  rows = 2; cols = 2; break;
-        case 5:  rows = is_horiz ? 1 : 5; cols = is_horiz ? 5 : 1; break;
-        case 6:  rows = is_horiz ? 2 : 3; cols = is_horiz ? 3 : 2; break;
-        case 7:  rows = is_horiz ? 1 : 7; cols = is_horiz ? 7 : 1; break;
-        case 8:  rows = is_horiz ? 2 : 4; cols = is_horiz ? 4 : 2; break;
-        case 9:  rows = 3; cols = 3; break;
-        case 10: rows = is_horiz ? 2 : 5;  cols = is_horiz ? 5  : 2; break;
-        case 11: rows = is_horiz ? 1 : 11; cols = is_horiz ? 11 : 1; break;
-        case 12: rows = is_horiz ? 3 : 4;  cols = is_horiz ? 4  : 3; break;
-        case 13: rows = is_horiz ? 1 : 13; cols = is_horiz ? 13 : 1; break;
-        case 14: rows = is_horiz ? 2 : 7;  cols = is_horiz ? 7  : 2; break;
-        case 15: rows = is_horiz ? 3 : 5;  cols = is_horiz ? 5  : 3; break;
-        case 16: rows = 4; cols = 4; break;
-        default:
-            rows = is_horiz ? 1 : settings.thread_count;
-            cols = is_horiz ? settings.thread_count : 1;
+        case 1:  rows = 1; cols = 1;  break;
+        case 2:  rows = 1; cols = 2;  break;
+        case 3:  rows = 1; cols = 3;  break;
+        case 4:  rows = 2; cols = 2;  break;
+        case 5:  rows = 1; cols = 5;  break;
+        case 6:  rows = 2; cols = 3;  break;
+        case 7:  rows = 1; cols = 7;  break;
+        case 8:  rows = 2; cols = 4;  break;
+        case 9:  rows = 3; cols = 3;  break;
+        case 10: rows = 2; cols = 5;  break;
+        case 11: rows = 1; cols = 11; break;
+        case 12: rows = 3; cols = 4;  break;
+        case 13: rows = 1; cols = 13; break;
+        case 14: rows = 2; cols = 7;  break;
+        case 15: rows = 3; cols = 5;  break;
+        case 16: rows = 4; cols = 4;  break;
+        default: rows = 1; cols = settings.thread_count;
+            break;
+    }
+
+    bool is_vert = (image->h >= image->w);
+
+    if(is_vert)
+    {
+        // swap rows/cols
+        int tmp = rows;
+        rows = cols;
+        cols = tmp;
     }
 
     int sub_width  = ceil(image->w / cols);
