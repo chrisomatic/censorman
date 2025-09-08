@@ -64,6 +64,39 @@ typedef int32_t   b32;
 typedef int64_t   b64;
 typedef wchar_t   wchar;
 
+
+//
+// Math
+//
+#define PI 3.14159265358979323846
+#define ABS(x)   ((x) < 0 ? -(x) : (x))
+#define ABSF(x)  ((x) < 0.0 ? -(x) : (x))
+#define MIN(x,y) ((x)  < (y) ? (x) : (y))
+#define MAX(x,y) ((x) >= (y) ? (x) : (y))
+#define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
+
+float exp_decay(float a, float b, float decay, float dt)
+{
+    return b + (a - b)*exp(-decay*dt);
+}
+
+float lerp(float a, float b, float t)
+{
+    t = CLAMP(t,0.0,1.0);
+    float r = (1.0-t)*a+(t*b);
+    return r;
+}
+
+//
+// Memory
+//
+
+#define MemoryZero(p,z) memset((p), 0, (z))
+#define MemoryZeroStruct(p) MemoryZero((p), sizeof(*(p)))
+
+#define MemoryCopy(d,s,z) memmove((d), (s), (z))
+#define MemoryCopyStruct(d,s) MemoryCopy((d), (s), MIN(sizeof(*(d)), sizeof(*(s))))
+
 // Arenas
 
 #define ARENA_SIZE_TINY        16*1024 //  16K
@@ -173,28 +206,6 @@ void arena_reset(Arena* arena)
         }
         break;
     }
-}
-
-//
-// Math
-//
-#define PI 3.14159265358979323846
-#define ABS(x)   ((x) < 0 ? -(x) : (x))
-#define ABSF(x)  ((x) < 0.0 ? -(x) : (x))
-#define MIN(x,y) ((x)  < (y) ? (x) : (y))
-#define MAX(x,y) ((x) >= (y) ? (x) : (y))
-#define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
-
-float exp_decay(float a, float b, float decay, float dt)
-{
-    return b + (a - b)*exp(-decay*dt);
-}
-
-float lerp(float a, float b, float t)
-{
-    t = CLAMP(t,0.0,1.0);
-    float r = (1.0-t)*a+(t*b);
-    return r;
 }
 
 
@@ -545,8 +556,10 @@ typedef struct {
     u16 w;
     u16 h;
     u32 frame_count;
+    i64 total_frame_count;
     float seconds_per_frame;
     u8* data; // RGB
+    bool decode_complete;
 } Video;
 
 typedef struct
@@ -594,6 +607,12 @@ typedef struct
     bool no_scale;
     bool debug;
 } ProgramSettings;
+
+typedef struct
+{
+    bool success;
+    int err_code;
+} FunctionResult;
 
 #define MAX_FRAMES 1500
 #define MAX_ARENAS 64

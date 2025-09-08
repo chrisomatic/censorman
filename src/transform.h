@@ -462,9 +462,9 @@ void transform_gaussian_blur(Image *image, Rect *r) {
 
     // sigma could be derived from Rect.confidence, or fixed
     float base = (r->w < r->h ? r->w : r->h);
-    float sigma = 0.07f * base;   // tune multiplier to taste
+    float sigma = 0.09f * base;   // tune multiplier to taste
 
-    if (sigma < 0.5f) sigma = 0.5f;  // clamp minimum
+    if (sigma < 0.7f) sigma = 0.7f;  // clamp minimum
 
     float *kernel;
     int k_size;
