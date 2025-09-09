@@ -193,10 +193,10 @@ int handle_video()
     LOGI("Decoding video file %s", settings.input_file_text);
     
     Video vid = {};
-    FFMPEGCtx vid_ctx = {};
+    VideoCtx vid_ctx = {};
 
     // open
-    bool opened = ffmpeg_open(settings.input_file_text, &vid, &vid_ctx);
+    bool opened = ffmpeg_open(settings.input_file_text, "output/out.mp4", &vid, &vid_ctx);
     if(!opened)
     {
         LOGE("Failed to open stream for video %s", settings.input_file_text);
@@ -241,6 +241,9 @@ int handle_video()
                 memset(detect_buffers[i], 0, 0x9000);
                 use_scaled[i] = false;
             }
+
+            if(frame_counter >= vid.frame_count)
+                break;
 
             actual_thread_count = 0;
 
@@ -291,7 +294,7 @@ int handle_video()
             }
             
             // join all threads back
-            for(int i = 0; i < settings.thread_count; ++i)
+            for(int i = 0; i < actual_thread_count; ++i)
             {
                 pthread_join(threads[i], NULL);
             }
@@ -349,7 +352,7 @@ int handle_video()
                 }
             }
 
-            LOGI("[Frame %d]: num_faces: %d", frame_counter, num_faces);
+            LOGI("[Frame %d/%d]: num_faces: %d", frame_counter, vid.frame_count, num_faces);
         }
         
         // lerping
@@ -537,7 +540,7 @@ int handle_video()
 
         // encode data
         double _t0 = timer_get_time();
-        bool encoded = ffmpeg_encode("output/out.mp4", &vid);
+        bool encoded = ffmpeg_encode_ctx(&vid, &vid_ctx);
         if(!encoded)
         {
             LOGE("Failed to write output file");
@@ -547,10 +550,10 @@ int handle_video()
         double _elapsed = timer_get_time() - _t0;
         LOGI("Encode took %.3f ms", _elapsed*1000.0);
 
-
         // exit if video is done
         if(vid.decode_complete)
         {
+            ffmpeg_encode_done(&vid_ctx);
             LOGI("Complete!");
             break;
         }

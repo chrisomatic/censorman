@@ -557,6 +557,7 @@ typedef struct {
     u16 h;
     u32 frame_count;
     i64 total_frame_count;
+    u32 frames_processed;
     float seconds_per_frame;
     u8* data; // RGB
     bool decode_complete;
@@ -614,7 +615,7 @@ typedef struct
     int err_code;
 } FunctionResult;
 
-#define MAX_FRAMES 1500
+#define MAX_FRAMES 1600
 #define MAX_ARENAS 64
 
 extern ProgramSettings settings;

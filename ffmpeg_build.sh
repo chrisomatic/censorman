@@ -24,8 +24,8 @@ make install
 cd ../ffmpeg_source
 
 # Download FFmpeg source
-curl -L https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.bz2 | tar xj
-cd ffmpeg-6.1.1
+curl -L https://ffmpeg.org/releases/ffmpeg-8.0.tar.bz2 | tar xj
+cd ffmpeg-8.0
 
 # Configure for minimal static build: MP4 container + H.264 decoder only
 ./configure \
@@ -35,6 +35,7 @@ cd ffmpeg-6.1.1
   --extra-ldflags="-L$PREFIX/lib -Wl,--gc-sections" \
   --extra-libs="-lpthread -lm" \
   --disable-everything \
+  --disable-libdrm \
   --enable-static \
   --disable-shared \
   --disable-doc \

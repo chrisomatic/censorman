@@ -5,10 +5,10 @@ includedir=/home/chris/git/censorman/ffmpeg_build/include
 
 Name: libavutil
 Description: FFmpeg utility library
-Version: 58.29.100
+Version: 60.8.100
 Requires: 
 Requires.private: 
 Conflicts:
-Libs: -L${libdir}  -lavutil -pthread -lva-drm -lva -lva-x11 -lva -lvdpau -lX11 -lm -lva -latomic -lX11 -lpthread -lxcb -lXau -lXdmcp
+Libs: -L${libdir}  -lavutil -lva-drm -lva -lva-x11 -lva -lvdpau -lX11 -lm -lva -latomic -pthread -lX11 -lpthread -lxcb -lXau -lXdmcp
 Libs.private: 
 Cflags: -I${includedir}
