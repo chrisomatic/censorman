@@ -34,6 +34,17 @@ void* detect_faces(void* arg)
         r->w = p[3];
         r->h = p[4];
 
+        r->landmarks[0].x = p[5] + (image->subx*image->w);
+        r->landmarks[0].y = p[6] + (image->suby*image->h);
+        r->landmarks[1].x = p[7] + (image->subx*image->w);
+        r->landmarks[1].y = p[8] + (image->suby*image->h);
+        r->landmarks[2].x = p[9] + (image->subx*image->w);
+        r->landmarks[2].y = p[10] + (image->suby*image->h);
+        r->landmarks[3].x = p[11] + (image->subx*image->w);
+        r->landmarks[3].y = p[12] + (image->suby*image->h);
+        r->landmarks[4].x = p[13] + (image->subx*image->w);
+        r->landmarks[4].y = p[14] + (image->suby*image->h);
+
         offset += sizeof(Rect);
     }
 

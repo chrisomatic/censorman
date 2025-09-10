@@ -5,8 +5,8 @@ includedir=/home/chris/git/censorman/ffmpeg_build/include
 
 Name: libswscale
 Description: FFmpeg image rescaling library
-Version: 9.1.100
-Requires: libavutil >= 60.8.100
+Version: 9.3.100
+Requires: libavutil >= 60.13.100
 Requires.private: 
 Conflicts:
 Libs: -L${libdir}  -lswscale -lm -latomic

@@ -5,8 +5,8 @@ includedir=/home/chris/git/censorman/ffmpeg_build/include
 
 Name: libswresample
 Description: FFmpeg audio resampling library
-Version: 6.1.100
-Requires: libavutil >= 60.8.100
+Version: 6.2.100
+Requires: libavutil >= 60.13.100
 Requires.private: 
 Conflicts:
 Libs: -L${libdir}  -lswresample -lm -latomic

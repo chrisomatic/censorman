@@ -87,6 +87,12 @@ float lerp(float a, float b, float t)
     return r;
 }
 
+typedef struct
+{
+    u16 x;
+    u16 y;
+} PointU16;
+
 //
 // Memory
 //
@@ -526,6 +532,7 @@ typedef struct
     u16 w;
     u16 h;
     u16 confidence;
+    PointU16 landmarks[5];
 } Rect;
 
 typedef struct

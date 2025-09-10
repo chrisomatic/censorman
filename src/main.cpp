@@ -159,6 +159,12 @@ int handle_image()
                 r->y = (u16)round(r->y * scale);
                 r->w = (u16)round(r->w * scale);
                 r->h = (u16)round(r->h * scale);
+
+                for(int j = 0; j < 5; ++j)
+                {
+                    r->landmarks[j].x = (u16)round(r->landmarks[j].x * scale);
+                    r->landmarks[j].y = (u16)round(r->landmarks[j].y * scale);
+                }
             }
         }
 
@@ -175,6 +181,15 @@ int handle_image()
             for(int i = 0 ; i < num_rects; ++i)
             {
                 transform_draw_rect(&image, rects[i],(Color){0,255,0,255}, false, 1.0);
+
+                for(int l = 0; l < 5; ++l)
+                {
+                    PointU16 *lm = &rects[i].landmarks[l];
+                    u16 x = MAX(0, (int)lm->x - 2);
+                    u16 y = MAX(0, (int)lm->y - 2);
+
+                    transform_draw_rect(&image, (Rect){x,y,4,4},(Color){255,0,255,255}, true, 1.0);
+                }
             }
         }
 
@@ -331,6 +346,12 @@ int handle_video()
                             r->y = (u16)round(r->y * scale);
                             r->w = (u16)round(r->w * scale);
                             r->h = (u16)round(r->h * scale);
+
+                            for(int j = 0; j < 5; ++j)
+                            {
+                                r->landmarks[j].x = (u16)round(r->landmarks[j].x * scale);
+                                r->landmarks[j].y = (u16)round(r->landmarks[j].y * scale);
+                            }
                         }
                         
                         /* not sure if needed?
@@ -398,8 +419,7 @@ int handle_video()
 
                     if(output_ptrs[j])
                     {
-                        // valid frame
-                        // set rl1
+                        // valid frame (set rl1)
                         memcpy(&rl1.rect_count,output_ptrs[j], sizeof(u32));
                         rl1.rects = (Rect*)(output_ptrs[j]+sizeof(u32));
                         break;
@@ -416,44 +436,123 @@ int handle_video()
                     LOGW("TODO: No valid frames ahead! Copying forward");
                 }
 
-                for(int f = 0; f < frames_in_between; ++f)
+                if(rl0.rects && rl1.rects)
                 {
-                    // allocate space for frame
-                    output_ptrs[i+f] = (u8 *)arena_alloc(arena_results, sizeof(u32)+(rl0.rect_count*sizeof(Rect)));
-                    memcpy(output_ptrs[i+f], &rl0.rect_count, sizeof(u32));
-
-                    if(rl0.rects && rl1.rects)
+                    for(int f = 0; f < frames_in_between; ++f)
                     {
-                        // for each rect from rl0
+                        // allocate space for frame
+
+                        RectList* a = (rl0.rect_count >= rl1.rect_count) ? &rl0 : &rl1;
+                        RectList* b = (rl0.rect_count >= rl1.rect_count) ? &rl1 : &rl0;
+
+                        output_ptrs[i+f] = (u8 *)arena_alloc(arena_results, sizeof(u32)+(a->rect_count*sizeof(Rect)));
+                        memcpy(output_ptrs[i+f], &a->rect_count, sizeof(u32));
+
                         int _offset = sizeof(u32);
-                        for(int k = 0; k < rl0.rect_count; ++k)
+
+                        int matched_count = 0;
+                        int matches[256] = {};
+
+                        // for each rect from a
+                        for(int k = 0; k < a->rect_count; ++k)
                         {
-                            if(k >= rl1.rect_count)
-                                break;
+                            Rect *ra = &a->rects[k];
 
-                            Rect* ra = &rl0.rects[k];
-                            Rect* rb = &rl1.rects[k];
+                            // find best matching rect in b
 
-                            // gap rect
-                            Rect* rg = (Rect*)((output_ptrs[i+f]+_offset));
+                            float min_mv = FLT_MAX;
+                            int min_index = -1;
 
-                            // lerp
-                            float t = (f+1)/(float)(frames_in_between+1);
+                            for(int l = 0; l < b->rect_count; ++l)
+                            {
+                                bool is_matched = false;
+                                for(int m = 0; m < matched_count; ++m)
+                                {
+                                    if(l == matches[m])
+                                    {
+                                        is_matched = true;
+                                        break;
+                                    }
+                                }
 
-                            rg->x = (u16)lerp((float)ra->x, (float)rb->x, t);
-                            rg->y = (u16)lerp((float)ra->y, (float)rb->y, t);
-                            rg->w = (u16)lerp((float)ra->w, (float)rb->w, t);
-                            rg->h = (u16)lerp((float)ra->h, (float)rb->h, t);
-                            rg->confidence = (u16)lerp((float)ra->confidence, (float)rb->confidence, t);
+                                if(is_matched)
+                                    continue;
 
-                            // printf("  Lerping Rect %d (a: %u %u %u %u (%u), b: %u %u %u %u (%u), gap: %u %u %u %u (%u)\n", k, ra->x, ra->y, ra->w, ra->h, ra->confidence, rb->x, rb->y, rb->w, rb->h, rb->confidence, rg->x, rg->y, rg->w, rg->h, rg->confidence);
+                                Rect *rb = &b->rects[l];
+
+                                float dx = ABS(ra->x - rb->x);
+                                float dy = ABS(ra->y - rb->y);
+                                float dw = ABS(ra->w - rb->w);
+                                float dh = ABS(ra->h - rb->h);
+
+                                float mv = dx + dy + dw + dh;
+                                if(mv < min_mv)
+                                {
+                                    min_mv = mv;
+                                    min_index = l;
+                                }
+                            }
+
+                            if(min_index >= 0)
+                            {
+                                // we found the best matching rect from b
+                                // note the match
+                                matched_count = 0;
+                                matches[matched_count++] = k;
+
+                                Rect *rb = &b->rects[min_index];
+
+                                // gap rect
+                                Rect *rg = (Rect*)((output_ptrs[i+f]+_offset));
+                                _offset += sizeof(Rect);
+                                
+                                // lerp it!
+                                float t = (f+1)/(float)(frames_in_between+1);
+
+                                rg->x = (u16)lerp((float)ra->x, (float)rb->x, t);
+                                rg->y = (u16)lerp((float)ra->y, (float)rb->y, t);
+                                rg->w = (u16)lerp((float)ra->w, (float)rb->w, t);
+                                rg->h = (u16)lerp((float)ra->h, (float)rb->h, t);
+                                rg->confidence = (u16)lerp((float)ra->confidence, (float)rb->confidence, t);
+
+                                for(int j = 0; j < 5; ++j)
+                                {
+                                    rg->landmarks[j].x = (u16)lerp((float)ra->landmarks[j].x, (float)rb->landmarks[j].x, t);
+                                    rg->landmarks[j].y = (u16)lerp((float)ra->landmarks[j].y, (float)rb->landmarks[j].y, t);
+                                }
+
+                                // printf("  Lerping Rect %d (a: %u %u %u %u (%u), b: %u %u %u %u (%u), gap: %u %u %u %u (%u)\n", k, ra->x, ra->y, ra->w, ra->h, ra->confidence, rb->x, rb->y, rb->w, rb->h, rb->confidence, rg->x, rg->y, rg->w, rg->h, rg->confidence);
+                            }
+                        }
+
+                        // copy any un-matched rects forward from a -> b
+                        for(int k = 0; k < a->rect_count; ++k)
+                        {
+                            bool is_matched = false;
+                            for(int l = 0; k < matched_count; ++k)
+                            {
+                                if(k == matches[l])
+                                {
+                                    is_matched = true;
+                                    break;
+                                }
+                            }
+
+                            if(is_matched)
+                                continue;
+
+                            // copy rect forward
+                            Rect *rf = &a->rects[k];
+                            Rect *rg = (Rect*)((output_ptrs[i+f]+_offset));
                             _offset += sizeof(Rect);
+
+                            memcpy(rg, rf, sizeof(Rect));
                         }
                     }
-                    else
-                    {
-                        LOGI("Why am I here?");
-                    }
+                }
+                else
+                {
+                    LOGW("One of the rect lists is null (%s, %s)", (rl0.rects == NULL ? "null" : "not null"), (rl1.rects == NULL ? "null" : "not null"));
                 }
 
                 i += MAX(0,(frames_in_between-1));
@@ -532,6 +631,14 @@ int handle_video()
                 for(int j = 0 ; j < num_rects; ++j)
                 {
                     transform_draw_rect(&image, rects[j],(Color){0,255,0,255}, false, 1.0);
+
+                    for(int l = 0; l < 5; ++l)
+                    {
+                        PointU16 *lm = &rects[j].landmarks[l];
+                        u16 x = MAX(0, (int)lm->x - 2);
+                        u16 y = MAX(0, (int)lm->y - 2);
+                        transform_draw_rect(&image, (Rect){x,y,4,4},(Color){255,0,255,255}, true, 1.0);
+                    }
                 }
             }
         }

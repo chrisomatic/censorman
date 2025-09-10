@@ -209,9 +209,9 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     vid_ctx->enc_codec_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
     vid_ctx->enc_codec_ctx->width = width;
     vid_ctx->enc_codec_ctx->height = height;
-    vid_ctx->enc_codec_ctx->time_base = av_inv_q(fps);   // 1/fps
+    vid_ctx->enc_codec_ctx->time_base = av_inv_q(fps);
     vid_ctx->enc_codec_ctx->framerate = fps;
-    vid_ctx->enc_codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;      // encoder wants YUV420P
+    vid_ctx->enc_codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
     vid_ctx->enc_codec_ctx->gop_size = 12;
     vid_ctx->enc_codec_ctx->max_b_frames = 0;
     vid_ctx->enc_codec_ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;

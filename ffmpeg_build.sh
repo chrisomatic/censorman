@@ -24,16 +24,18 @@ make install
 cd ../ffmpeg_source
 
 # Download FFmpeg source
-curl -L https://ffmpeg.org/releases/ffmpeg-8.0.tar.bz2 | tar xj
-cd ffmpeg-8.0
+# curl -L https://ffmpeg.org/releases/ffmpeg-8.0.tar.bz2 | tar xj
+git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg-master
+cd ffmpeg-master
 
 # Configure for minimal static build: MP4 container + H.264 decoder only
 ./configure \
   --prefix="$PREFIX" \
   --pkg-config-flags="--static" \
-  --extra-cflags="-I$PREFIX/include -O3 -ffunction-sections -fdata-sections" \
+  --extra-cflags="-I$PREFIX/include -O3 -march=native -ffunction-sections -fdata-sections" \
   --extra-ldflags="-L$PREFIX/lib -Wl,--gc-sections" \
   --extra-libs="-lpthread -lm" \
+  --enable-hardcoded-tables \
   --disable-everything \
   --disable-libdrm \
   --enable-static \
@@ -51,12 +53,15 @@ cd ffmpeg-8.0
   --enable-demuxer=mov \
   --enable-decoder=h264 \
   --enable-parser=h264 \
+  --enable-decoder=hevc \
+  --enable-parser=hevc \
   --enable-muxer=mp4 \
   --enable-encoder=libx264 \
   --enable-gpl \
   --enable-libx264 \
   --enable-encoder=mpeg4 \
   --enable-bsfs \
+  --enable-unstable \
   --cc=gcc
 
 make -j$(nproc)
