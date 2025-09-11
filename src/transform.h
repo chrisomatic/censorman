@@ -401,7 +401,8 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
 }
 
 // Generate 1D Gaussian kernel
-static void generate_kernel(float sigma, float **kernel, int *k_size) {
+static void generate_kernel(float sigma, float **kernel, int *k_size)
+{
     int radius = (int)ceilf(3 * sigma);
     *k_size = 2 * radius + 1;
     *kernel = (float *)malloc((*k_size) * sizeof(float));
@@ -418,22 +419,23 @@ static void generate_kernel(float sigma, float **kernel, int *k_size) {
 }
 
 // Convolution pass in horizontal or vertical direction, restricted to ROI
-static void convolve_roi(
-    Image *src, Image *dst,
-    Rect *roi, float *kernel, int k_size,
-    int horizontal
-) {
+static void convolve_roi(Image *src, Image *dst,Rect *roi, float *kernel, int k_size,int horizontal)
+{
     int radius = k_size / 2;
 
-    for (int y = roi->y; y < roi->y + roi->h; y++) {
+    for (int y = roi->y; y < roi->y + roi->h; ++y)
+    {
         u8 *src_row = src->data + y * src->step;
         u8 *dst_row = dst->data + y * dst->step;
 
-        for (int x = roi->x; x < roi->x + roi->w; x++) {
-            for (int c = 0; c < src->n; c++) {
+        for (int x = roi->x; x < roi->x + roi->w; ++x)
+        {
+            for (int c = 0; c < src->n; c++)
+            {
                 float sum = 0.0f;
 
-                for (int k = -radius; k <= radius; k++) {
+                for (int k = -radius; k <= radius; ++k)
+                {
                     int xx = x + (horizontal ? k : 0);
                     int yy = y + (horizontal ? 0 : k);
 
@@ -446,13 +448,15 @@ static void convolve_roi(
                     u8 *p = src->data + yy * src->step + xx * src->n + c;
                     sum += (*p) * kernel[k + radius];
                 }
+
                 dst_row[x * src->n + c] = (u8)fminf(fmaxf(sum, 0.0f), 255.0f);
             }
         }
     }
 }
 
-void transform_gaussian_blur(Image *image, Rect *r) {
+void transform_gaussian_blur(Image *image, Rect *r)
+{
     if (!image || !r) return;
     if (r->x >= image->w || r->y >= image->h) return;
 
@@ -462,7 +466,7 @@ void transform_gaussian_blur(Image *image, Rect *r) {
 
     // sigma could be derived from Rect.confidence, or fixed
     float base = (r->w < r->h ? r->w : r->h);
-    float sigma = 0.09f * base;   // tune multiplier to taste
+    float sigma = 0.24 * settings.blur_strength * base;   // tune multiplier to taste
 
     if (sigma < 0.7f) sigma = 0.7f;  // clamp minimum
 

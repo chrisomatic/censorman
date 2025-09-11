@@ -164,6 +164,25 @@ int handle_image()
                     r->landmarks[j].x = (u16)round(r->landmarks[j].x * scale);
                     r->landmarks[j].y = (u16)round(r->landmarks[j].y * scale);
                 }
+
+                // add padding if needed
+                const float rect_pad_pct = settings.box_padding_pct;
+
+                float sw = (float)r->w * rect_pad_pct;
+                float sh = (float)r->h * rect_pad_pct;
+
+                r->x -= (u16)(sw/2.0);
+                r->y -= (u16)(sw/2.0);
+                r->w += sw;
+                r->h += sh;
+
+                if(r->x < 0)             r->x = 0;
+                if(r->x >= image.w)      r->x = image.w-1;
+                if(r->y < 0)             r->y = 0;
+                if(r->y >= image.h)      r->y = image.h-1;
+                if(r->x+r->w >= image.w) r->w = (image.w-r->x-1);
+                if(r->y+r->h >= image.h) r->h = (image.h-r->y-1);
+
             }
         }
 
@@ -596,7 +615,7 @@ int handle_video()
             ptr += sizeof(u32);
             Rect *rects = (Rect *)(ptr); 
 
-            // increase rect size for clarity
+            // add padding if needed
             const float rect_pad_pct = settings.box_padding_pct;
             for(int j = 0; j < num_rects; ++j)
             {
@@ -699,6 +718,7 @@ bool init(int argc, char **args)
     settings.debug = false;
     settings.confidence_threshold = 30;
     settings.nms_iou_threshold = 0.6;
+    settings.blur_strength = 0.50;
     settings.has_texture = false;
     settings.no_scale = false;
     settings.block_scale = 0.16;
@@ -739,7 +759,7 @@ bool init(int argc, char **args)
 void print_help()
 {
     printf("\n[USAGE]\n");
-    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>] [--buffer_size <buffer_size>] [--dry_run] [--is_quiet]\n");
+    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>] [--blur_strngth <blur_strength>] [--buffer_size <buffer_size>] [--dry_run] [--is_quiet]\n");
     printf("\n[DESCRIPTION]\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
     printf("\n[ARGUMENTS]\n");
     printf("  in_file:              Path to input image file (or folder) (.jpg, .png, .bmp)\n");
@@ -751,6 +771,7 @@ void print_help()
     printf("  debug:                Print debug info and draw boxes on output image\n");
     printf("  texture_image_path:   Used with 'texture' transform\n");
     printf("  block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform\n");
+    printf("  blur_strength:        Value between 0.0 and 1.0. Used in the Gaussian Blur (Default: 0.50)\n");
     printf("  buffer_size:          Number of bytes for video frames during conversion (Default: 4 GB)\n");
     printf("  box_padding_pct:      Added percentage of padding to detected boxes (Default: 0.15)");
     printf("  dry_run:              Prevents writing output image or video file\n");
@@ -792,6 +813,16 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             float f = atof(argv[i]);
                             CLAMP(f, 0.0, 1.0);
                             settings->block_scale = f;
+                        }
+                    }
+                    else if(STR_EQUAL(&argv[i][2],"blur_strength"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            float f = atof(argv[i]);
+                            CLAMP(f, 0.0, 1.0);
+                            settings->blur_strength = f;
                         }
                     }
                     else if(STR_EQUAL(&argv[i][2],"image"))
@@ -856,7 +887,9 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             }
 
                             if(i == len -1)
+                            {
                                 process = true;
+                            }
 
                             if(process)
                             {
@@ -882,7 +915,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                         }
                     }
                 } break;
-                case 'k': {
+                case 'j': {
                     if(i < argc-1)
                     {
                         int n = atoi(argv[i+1]);

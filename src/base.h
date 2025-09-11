@@ -613,6 +613,7 @@ typedef struct
     char texture_image_path[256];
 
     float block_scale;
+    float blur_strength;
     u64 max_buffer_size;
     float box_padding_pct; // 0.0 - 1.0
 
