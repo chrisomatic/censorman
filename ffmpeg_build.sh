@@ -52,14 +52,14 @@ cd ffmpeg-master
   --enable-protocol=file \
   --enable-demuxer=mov \
   --enable-decoder=h264 \
-  --enable-parser=h264 \
   --enable-decoder=hevc \
+  --enable-parser=h264 \
   --enable-parser=hevc \
   --enable-muxer=mp4 \
   --enable-encoder=libx264 \
+  --enable-encoder=mpeg4 \
   --enable-gpl \
   --enable-libx264 \
-  --enable-encoder=mpeg4 \
   --enable-bsfs \
   --enable-unstable \
   --cc=gcc

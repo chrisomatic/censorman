@@ -140,9 +140,8 @@ int handle_image()
             use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size);   
             double elapsed = timer_get_time() - t0;
             LOGI("Downscale took %.3f ms", elapsed*1000.0);
+            util_write_output(&image_scaled, "output/out_scaled.png");
         }
-
-        util_write_output(&image_scaled, "output/out_scaled.png");
 
         Rect rects[256] = {};
         int num_rects = use_scaled_image ? process_image(&image_scaled, rects) : process_image(&image, rects);
@@ -151,7 +150,7 @@ int handle_image()
         if(use_scaled_image)
         {
             // correct rects positions / sizes
-            const float scale = image.w > image.h ? image.w / (float)image_scaled.w : image.h / (float)image_scaled.h;
+            const double scale = image.w > image.h ? image.w / (double)image_scaled.w : image.h / (double)image_scaled.h;
             for(int i = 0; i < num_rects; ++i)
             {
                 Rect* r = &rects[i];
@@ -193,9 +192,12 @@ int handle_image()
             }
         }
 
-        String outfile = StringFormat(scratch, "output/%s", settings.input_files[i].filename);
-        LOGI("outfile %d: %.*s", i, outfile.len, outfile.data);
-        util_write_output(&image, outfile.data);
+        if(!settings.dry_run)
+        {
+            String outfile = StringFormat(scratch, "output/%s", settings.input_files[i].filename);
+            LOGI("outfile %d: %.*s", i, outfile.len, outfile.data);
+            util_write_output(&image, outfile.data);
+        }
     }
     return 0;
 }
@@ -243,10 +245,12 @@ int handle_video()
         u8 detect_buffers[settings.thread_count][0x9000] = {0};
 
         u32 output_count = 0;
-        u8* output_ptrs[MAX_FRAMES] = {};
+        u8* output_ptrs[4096] = {};
 
         int frame_counter = 0;
         int actual_thread_count;
+
+        const int skip_frames = 4;
 
         for(;;)
         {
@@ -287,10 +291,13 @@ int handle_video()
                 image->step = 3*image->w;
                 image->arena = arena;
 
+
                 if(!settings.no_scale)
                 {
                      // Scale down image
-                    use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,320);
+                    const float scaled_size = 640;
+                    use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size);
+                    // util_write_output(image_scaled, "output/out_scaled.png");
                 }
 
                 reverse_rgb_order(use_scaled[i] ? image_scaled : image);
@@ -305,7 +312,7 @@ int handle_video()
                     LOGW("Failed to start thread");
                 }
 
-                frame_counter += (MIN(3, vid.frame_count - frame_counter)); // always want to evaluate final frame
+                frame_counter += (MIN(skip_frames, vid.frame_count - frame_counter)); // always want to evaluate final frame
             }
             
             // join all threads back
@@ -341,7 +348,7 @@ int handle_video()
 
                         if(use_scaled[i])
                         {
-                            float scale = vid.w > vid.h ? vid.w / (float)image->w : vid.h / (float)image->h;
+                            const double scale = vid.w > vid.h ? vid.w / (double)image->w : vid.h / (double)image->h;
                             r->x = (u16)round(r->x * scale);
                             r->y = (u16)round(r->y * scale);
                             r->w = (u16)round(r->w * scale);
@@ -590,7 +597,7 @@ int handle_video()
             Rect *rects = (Rect *)(ptr); 
 
             // increase rect size for clarity
-            const float rect_pad_pct = 0.15;
+            const float rect_pad_pct = settings.box_padding_pct;
             for(int j = 0; j < num_rects; ++j)
             {
                 float sw = (float)rects[j].w * rect_pad_pct;
@@ -645,22 +652,25 @@ int handle_video()
 
         LOGI("Transformations done!");
 
-        // encode data
-        double _t0 = timer_get_time();
-        bool encoded = ffmpeg_encode_ctx(&vid, &vid_ctx);
-        if(!encoded)
+        if(!settings.dry_run)
         {
-            LOGE("Failed to write output file");
-            return 1;
-        }
+            // encode data
+            double _t0 = timer_get_time();
+            bool encoded = ffmpeg_encode_ctx(&vid, &vid_ctx);
+            if(!encoded)
+            {
+                LOGE("Failed to write output file");
+                return 1;
+            }
 
-        double _elapsed = timer_get_time() - _t0;
-        LOGI("Encode took %.3f ms", _elapsed*1000.0);
+            double _elapsed = timer_get_time() - _t0;
+            LOGI("Encode took %.3f ms", _elapsed*1000.0);
+        }
 
         // exit if video is done
         if(vid.decode_complete)
         {
-            ffmpeg_encode_done(&vid_ctx);
+            if(!settings.dry_run) ffmpeg_encode_done(&vid_ctx);
             LOGI("Complete!");
             break;
         }
@@ -693,6 +703,9 @@ bool init(int argc, char **args)
     settings.no_scale = false;
     settings.block_scale = 0.16;
     settings.input_file_count = 0;
+    settings.max_buffer_size = 4UL*1024UL*1024UL*1024UL; // 4GB
+    settings.box_padding_pct = 0.15;
+    settings.dry_run = false;
 
     bool parse = parse_args(&settings, argc, args);
     if(!parse) return false;
@@ -704,6 +717,9 @@ bool init(int argc, char **args)
     LOGI("  NMS IOU Threshold: %f", settings.nms_iou_threshold);
     LOGI("  Texture: %s", settings.has_texture ? settings.texture_image_path : "(None)");
     LOGI("  Block Scale: %f", settings.block_scale);
+    LOGI("  Max Buffer Size: %lu B", settings.max_buffer_size);
+    LOGI("  Box Padding Percentage: %f", settings.box_padding_pct);
+    LOGI("  Dry Run: %s", BOOLSTR(settings.dry_run));
     LOGI("  Debug: %s", settings.debug ? "ON" : "OFF");
     LOGI("----------------");
     
@@ -723,7 +739,7 @@ bool init(int argc, char **args)
 void print_help()
 {
     printf("\n[USAGE]\n");
-    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>] [--is_quiet]\n");
+    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-k thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>] [--buffer_size <buffer_size>] [--dry_run] [--is_quiet]\n");
     printf("\n[DESCRIPTION]\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
     printf("\n[ARGUMENTS]\n");
     printf("  in_file:              Path to input image file (or folder) (.jpg, .png, .bmp)\n");
@@ -735,6 +751,9 @@ void print_help()
     printf("  debug:                Print debug info and draw boxes on output image\n");
     printf("  texture_image_path:   Used with 'texture' transform\n");
     printf("  block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform\n");
+    printf("  buffer_size:          Number of bytes for video frames during conversion (Default: 4 GB)\n");
+    printf("  box_padding_pct:      Added percentage of padding to detected boxes (Default: 0.15)");
+    printf("  dry_run:              Prevents writing output image or video file\n");
     printf("  is_quiet:             Suppress standard log output\n");
     printf("\n");
 }
@@ -759,9 +778,11 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                 {
                     if(STR_EQUAL(&argv[i][2],"debug"))
                         settings->debug = true;
-                    if(STR_EQUAL(&argv[i][2],"quiet"))
+                    else if(STR_EQUAL(&argv[i][2],"quiet"))
                         is_quiet = true;
-                    if(STR_EQUAL(&argv[i][2],"no_scale"))
+                    else if(STR_EQUAL(&argv[i][2],"dry_run"))
+                        settings->dry_run = true;
+                    else if(STR_EQUAL(&argv[i][2],"no_scale"))
                         settings->no_scale = true;
                     else if(STR_EQUAL(&argv[i][2],"block_scale"))
                     {
@@ -780,6 +801,25 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             i++;
                             strncpy(settings->texture_image_path, argv[i], 255);
                             settings->has_texture = true;
+                        }
+                    }
+                    else if(STR_EQUAL(&argv[i][2],"buffer_size"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            u64 n = atol(argv[i]);
+                            if(n > 0) settings->max_buffer_size = n;
+                        }
+                    }
+                    else if(STR_EQUAL(&argv[i][2],"box_padding_pct"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            float f = atof(argv[i]);
+                            CLAMP(f, 0.0, 1.0);
+                            settings->box_padding_pct = f;
                         }
                     }
                 }   break;

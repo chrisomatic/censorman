@@ -221,6 +221,7 @@ void arena_reset(Arena* arena)
 #define STR_EMPTY(x)      (x == 0 || strlen(x) == 0)
 #define STR_EQUAL(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
 #define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
+#define BOOLSTR(b) ((b) ? "True" : "False")
 
 #define S(literal) (String){ .len = sizeof(literal) - 1, .data = (char*)(literal) }
 
@@ -567,6 +568,7 @@ typedef struct {
     u32 frames_processed;
     float seconds_per_frame;
     u8* data; // RGB
+    int data_max_frames;
     bool decode_complete;
 } Video;
 
@@ -611,7 +613,10 @@ typedef struct
     char texture_image_path[256];
 
     float block_scale;
+    u64 max_buffer_size;
+    float box_padding_pct; // 0.0 - 1.0
 
+    bool dry_run;
     bool no_scale;
     bool debug;
 } ProgramSettings;
@@ -622,7 +627,6 @@ typedef struct
     int err_code;
 } FunctionResult;
 
-#define MAX_FRAMES 1600
 #define MAX_ARENAS 64
 
 extern ProgramSettings settings;

@@ -31,6 +31,7 @@ typedef struct
     AVCodecContext    *enc_codec_ctx;
     const AVCodec     *enc_codec;
     struct SwsContext *enc_sws_ctx;
+    AVFrame           *enc_frame_src;
     AVFrame           *enc_frame;
     AVPacket          *enc_pkt;
     AVStream          *enc_video_st;
@@ -125,15 +126,16 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     int width = vid_ctx->codec_ctx->width;
     int height = vid_ctx->codec_ctx->height;
-    int rgb_stride = width * 3;
-    int frame_rgb_size = rgb_stride * height;
+    u64 rgb_stride = (u64)width * 3;
+    u64 frame_rgb_size = rgb_stride * height;
+    int max_frames = floor(settings.max_buffer_size / (double)frame_rgb_size);
 
-    // Allocate buffer for up to MAX_FRAMES
-    printf("frame rgb size: %d\n", frame_rgb_size);
-    u8 *rgb_data = (u8 *)malloc((u64)frame_rgb_size * MAX_FRAMES);
+    // Allocate buffer for up to max frames
+    printf("width: %d, height: %d, frame rgb size: %d, max_frames: %d\n", width, height, frame_rgb_size, max_frames);
+    u8 *rgb_data = (u8 *)malloc((u64)frame_rgb_size * max_frames);
     if(!rgb_data)
     {
-        LOGE("Failed to allocate RGB buffer of size %lu", (u64)frame_rgb_size * MAX_FRAMES);
+        LOGE("Failed to allocate RGB buffer of size %lu", (u64)frame_rgb_size * max_frames);
         avcodec_free_context(&vid_ctx->codec_ctx);
         avformat_close_input(&vid_ctx->fmt_ctx);
         return false;
@@ -155,6 +157,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     video->h = height;
     video->total_frame_count = (nb_frames > 0 ? nb_frames : -1);
     video->data = rgb_data;
+    video->data_max_frames = max_frames;
 
     // Set up encoding
     // Output format (MP4 / H264)
@@ -269,23 +272,31 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     }
 
     // Allocate frame + packet
+    vid_ctx->enc_frame_src = av_frame_alloc();
     vid_ctx->enc_frame = av_frame_alloc();
     vid_ctx->enc_pkt = av_packet_alloc();
-    if(!vid_ctx->enc_frame || !vid_ctx->enc_pkt)
+
+    if(!vid_ctx->enc_frame || !vid_ctx->enc_frame_src || !vid_ctx->enc_pkt)
     {
         fprintf(stderr, "Could not allocate frame/packet\n");
         return false;
     }
 
+    vid_ctx->enc_frame_src->format = AV_PIX_FMT_RGB24;
+    vid_ctx->enc_frame_src->width  = width;
+    vid_ctx->enc_frame_src->height = height;
+
     vid_ctx->enc_frame->format = vid_ctx->enc_codec_ctx->pix_fmt;
     vid_ctx->enc_frame->width  = vid_ctx->enc_codec_ctx->width;
     vid_ctx->enc_frame->height = vid_ctx->enc_codec_ctx->height;
 
+    /*
     if(av_frame_get_buffer(vid_ctx->enc_frame, 32) < 0)
     {
         fprintf(stderr, "Could not allocate frame buffer\n");
         return false;
     }
+    */
 
     // SWS converter (RGB24 -> YUV420P)
     vid_ctx->enc_sws_ctx = sws_getContext(width, height, AV_PIX_FMT_RGB24,
@@ -323,7 +334,7 @@ bool ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
 
     while(av_read_frame(vid_ctx->fmt_ctx, vid_ctx->pkt) >= 0)
     {
-        if(frame_count >= MAX_FRAMES)
+        if(frame_count >= video->data_max_frames)
         {
             full_decode = false;
             break;
@@ -357,7 +368,7 @@ bool ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
                 sws_scale(vid_ctx->sws_ctx, (const u8 *const *)vid_ctx->frame->data, vid_ctx->frame->linesize, 0, height, dest_data, dest_linesize);
 
                 frame_count++;
-                if (frame_count >= MAX_FRAMES)
+                if (frame_count >= video->data_max_frames)
                     break;
             }
         }
@@ -381,11 +392,17 @@ bool ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
 
     for (int i = 0; i < video->frame_count; ++i)
     {
-        const u8 *rgb_data[1] = { video->data + ((u64)i * rgb_stride * video->h)};
-        int rgb_linesize[1] = { rgb_stride };
-
         av_frame_make_writable(vid_ctx->enc_frame);
-        sws_scale(vid_ctx->enc_sws_ctx, rgb_data, rgb_linesize, 0, video->h, vid_ctx->enc_frame->data, vid_ctx->enc_frame->linesize);
+
+        vid_ctx->enc_frame_src->data[0] = video->data + ((u64)i * rgb_stride * video->h);
+        vid_ctx->enc_frame_src->linesize[0] = rgb_stride;
+
+        ret = sws_scale_frame(vid_ctx->enc_sws_ctx, vid_ctx->enc_frame, vid_ctx->enc_frame_src);
+        if(ret < 0)
+        {
+            LOGW("Error scaling frame");
+            continue;
+        }
 
         vid_ctx->enc_frame->pts = video->frames_processed++;
 

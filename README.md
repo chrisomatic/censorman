@@ -15,6 +15,25 @@ That's the power of Censor Man!
 
 ```
 
+## Dependencies
+
+- [libfacedetection](https://github.com/ShiqiYu/libfacedetection)
+- [ffmpeg](https://git.ffmpeg.org/ffmpeg.git)
+- [stb\_image](https://github.com/nothings/stb/blob/master/stb_image.h)
+- [stb\_image\_write](https://github.com/nothings/stb/blob/master/stb_image_write.h)
+
+## Image Reading / Writing
+
+Thanks to the awesome Sean Barrett for his open source single-header libraries (https://github.com/nothings/stb/)
+
+## Face Detection
+
+This project uses the libfacedetection model created by Shiqi Yu on GitHub (https://github.com/ShiqiYu/libfacedetection)
+
+## Video
+
+FFMPEG is being pulled, built, and statically linked for this project
+
 ## Usage
 
 ```

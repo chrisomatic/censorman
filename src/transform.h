@@ -356,7 +356,7 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
 
     if(use_scaled_image)
     {
-        const int a = 1;
+        const int a = 2; // number of iterations
         lanczos_init(a);
 
         // downscale largest dimension 

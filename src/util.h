@@ -48,7 +48,6 @@ bool util_load_image(char* input_file, Image* image)
 
 bool util_write_output(Image* image, const char* output_file)
 {
-    LOGI("Writing output file...");
     int step = image->w*image->n;
     int res = stbi_write_png(output_file, image->w, image->h, image->n, image->data, step);
 
