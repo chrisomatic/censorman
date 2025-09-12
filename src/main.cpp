@@ -130,6 +130,28 @@ int handle_image()
         bool loaded = util_load_image(infile.data, &image);
         if(!loaded) return 1;
 
+        FILE *bbx_file = NULL;
+
+        if(settings.has_bbx_output)
+        {
+            // open bbx file for output
+            bbx_file = fopen(settings.bbx_output,"wb");
+            if(!bbx_file)
+            {
+                LOGW("Failed to open Bounding Boxes file for writing %s", settings.bbx_output);
+            }
+            else
+            {
+                // write file header
+                FileWriteStr(bbx_file, "BBX");
+                FileWriteU8(bbx_file,  BBX_VERSION);
+                FileWriteU16(bbx_file, (u16)image.w);
+                FileWriteU16(bbx_file, (u16)image.h);
+                FileWriteF32(bbx_file, 0.0);
+                FileWriteU32(bbx_file, 1); // only one frame for an image
+            }
+        }
+
         Image image_scaled = {};
         const int scaled_size = 640;
         bool use_scaled_image = false;
@@ -186,6 +208,18 @@ int handle_image()
             }
         }
 
+
+        if(bbx_file)
+        {
+            FileWriteU32(bbx_file, 0); // frame index
+            FileWriteU16(bbx_file, num_rects);
+
+            for(int i  = 0; i < num_rects; ++i)
+            {
+                util_write_bbx_to_file(bbx_file, &rects[i]);
+            }
+        }
+
         for(int i = 0; i < settings.transform_count; ++i)
         {
             Transform* t = &settings.transforms[i];
@@ -217,6 +251,12 @@ int handle_image()
             LOGI("outfile %d: %.*s", i, outfile.len, outfile.data);
             util_write_output(&image, outfile.data);
         }
+
+        if(bbx_file)
+        {
+            fclose(bbx_file);
+        }
+
     }
     return 0;
 }
@@ -237,6 +277,27 @@ int handle_video()
     {
         LOGE("Failed to open stream for video %s", settings.input_file_text);
         return 1;
+    }
+
+    FILE *bbx_file = NULL;
+    if(settings.has_bbx_output)
+    {
+        // open bbx file for output
+        bbx_file = fopen(settings.bbx_output,"wb");
+        if(!bbx_file)
+        {
+            LOGW("Failed to open Bounding Boxes file for writing %s", settings.bbx_output);
+        }
+        else
+        {
+            // write file header
+            FileWriteStr(bbx_file, "BBX");
+            FileWriteU8(bbx_file,  BBX_VERSION);
+            FileWriteU16(bbx_file, (u16)vid.w);
+            FileWriteU16(bbx_file, (u16)vid.h);
+            FileWriteF32(bbx_file, (f32)vid.fps);
+            FileWriteU32(bbx_file, 0x00); // stub for frame count
+        }
     }
 
     for(;;)
@@ -314,7 +375,7 @@ int handle_video()
                 if(!settings.no_scale)
                 {
                      // Scale down image
-                    const float scaled_size = 640;
+                    const float scaled_size = 320;
                     use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size);
                     // util_write_output(image_scaled, "output/out_scaled.png");
                 }
@@ -585,7 +646,6 @@ int handle_video()
             }
         }
 
-
         // perform transformations
 
         LOGI("Applying transformation...");
@@ -615,6 +675,12 @@ int handle_video()
             ptr += sizeof(u32);
             Rect *rects = (Rect *)(ptr); 
 
+            if(bbx_file)
+            {
+                FileWriteU32(bbx_file, i); // frame index
+                FileWriteU16(bbx_file, num_rects);
+            }
+
             // add padding if needed
             const float rect_pad_pct = settings.box_padding_pct;
             for(int j = 0; j < num_rects; ++j)
@@ -633,6 +699,11 @@ int handle_video()
                 if(rects[j].y >= image.h) rects[j].y = image.h-1;
                 if(rects[j].x+rects[j].w >=image.w) rects[j].w = (image.w-rects[j].x-1);
                 if(rects[j].y+rects[j].h >=image.h) rects[j].h = (image.h-rects[j].y-1);
+
+                if(bbx_file)
+                {
+                    util_write_bbx_to_file(bbx_file, &rects[j]);
+                }
             }
 
             if(num_rects == 0)
@@ -695,6 +766,11 @@ int handle_video()
         }
     }
 
+    if(bbx_file)
+    {
+        fclose(bbx_file);
+    }
+
     // ffmpeg_close(&vid_ctx);
 
     return 0;
@@ -711,6 +787,7 @@ bool init(int argc, char **args)
 
     // set default settings
     memset(settings.input_file_text,0,256);
+    memset(settings.bbx_output,0,256);
     settings.thread_count = MAX(1, util_get_core_count()); // default to num_cores
     settings.asset_type = TYPE_IMAGE;
     settings.classification = CLASS_FACE;
@@ -726,6 +803,7 @@ bool init(int argc, char **args)
     settings.max_buffer_size = 4UL*1024UL*1024UL*1024UL; // 4GB
     settings.box_padding_pct = 0.15;
     settings.dry_run = false;
+    settings.has_bbx_output = false;
 
     bool parse = parse_args(&settings, argc, args);
     if(!parse) return false;
@@ -759,7 +837,7 @@ bool init(int argc, char **args)
 void print_help()
 {
     printf("\n[USAGE]\n");
-    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--block_scale <block_scale>] [--blur_strngth <blur_strength>] [--buffer_size <buffer_size>] [--dry_run] [--is_quiet]\n");
+    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strngth <blur_strength>] [--buffer_size <buffer_size>] [--dry_run] [--is_quiet]\n");
     printf("\n[DESCRIPTION]\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
     printf("\n[ARGUMENTS]\n");
     printf("  in_file:              Path to input image file (or folder) (.jpg, .png, .bmp)\n");
@@ -773,8 +851,9 @@ void print_help()
     printf("  block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform\n");
     printf("  blur_strength:        Value between 0.0 and 1.0. Used in the Gaussian Blur (Default: 0.50)\n");
     printf("  buffer_size:          Number of bytes for video frames during conversion (Default: 4 GB)\n");
-    printf("  box_padding_pct:      Added percentage of padding to detected boxes (Default: 0.15)");
+    printf("  box_padding_pct:      Added percentage of padding to detected boxes (Default: 0.15)\n");
     printf("  dry_run:              Prevents writing output image or video file\n");
+    printf("  bbx_output_filepath:  Bounding boxes output file. Specify if you want this file output.\n");
     printf("  is_quiet:             Suppress standard log output\n");
     printf("\n");
 }
@@ -832,6 +911,15 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             i++;
                             strncpy(settings->texture_image_path, argv[i], 255);
                             settings->has_texture = true;
+                        }
+                    }
+                    else if(STR_EQUAL(&argv[i][2],"bbx_output"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            strncpy(settings->bbx_output, argv[i], 255);
+                            settings->has_bbx_output = true;
                         }
                     }
                     else if(STR_EQUAL(&argv[i][2],"buffer_size"))

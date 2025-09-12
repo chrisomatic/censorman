@@ -39,14 +39,10 @@
 extern "C" {
 #endif
 
-//
-// Util
-//
-#define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
 
-//
+//:==================================
 // Types
-// 
+//:==================================
 
 typedef uint8_t   u8;
 typedef uint16_t  u16;
@@ -64,10 +60,10 @@ typedef int32_t   b32;
 typedef int64_t   b64;
 typedef wchar_t   wchar;
 
-
-//
+//:==================================
 // Math
-//
+//:==================================
+
 #define PI 3.14159265358979323846
 #define ABS(x)   ((x) < 0 ? -(x) : (x))
 #define ABSF(x)  ((x) < 0.0 ? -(x) : (x))
@@ -93,9 +89,9 @@ typedef struct
     u16 y;
 } PointU16;
 
-//
+//:==================================
 // Memory
-//
+//:==================================
 
 #define MemoryZero(p,z) memset((p), 0, (z))
 #define MemoryZeroStruct(p) MemoryZero((p), sizeof(*(p)))
@@ -103,7 +99,9 @@ typedef struct
 #define MemoryCopy(d,s,z) memmove((d), (s), (z))
 #define MemoryCopyStruct(d,s) MemoryCopy((d), (s), MIN(sizeof(*(d)), sizeof(*(s))))
 
+//:==================================
 // Arenas
+//:==================================
 
 #define ARENA_SIZE_TINY        16*1024 //  16K
 #define ARENA_SIZE_SMALL      128*1024 // 128K
@@ -214,10 +212,10 @@ void arena_reset(Arena* arena)
     }
 }
 
-
-//
+//:==================================
 // Strings
-//
+//:==================================
+
 #define STR_EMPTY(x)      (x == 0 || strlen(x) == 0)
 #define STR_EQUAL(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
 #define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
@@ -293,17 +291,31 @@ int str_get_extension(const char *source, char *buf, int buf_len)
 }
 
 
-
-//
+//:==================================
 // Arrays
-//
+//:==================================
 
 #define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
 
+//:==================================
+// Debugging
+//:==================================
 
-//
-// Timer 
-//
+#define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
+
+//:==================================
+// Files
+//:==================================
+
+inline int FileWriteU8(FILE* file, u8 x)   { return fwrite(&x,sizeof(u8),1,file);}
+inline int FileWriteU16(FILE* file, u16 x) { return fwrite(&x,sizeof(u16),1,file);}
+inline int FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file);}
+inline int FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
+inline int FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
+
+//:==================================
+// Timer
+//:==================================
 
 typedef struct
 {
@@ -534,6 +546,7 @@ typedef struct
     u16 h;
     u16 confidence;
     PointU16 landmarks[5];
+    bool interpolated;
 } Rect;
 
 typedef struct
@@ -566,7 +579,7 @@ typedef struct {
     u32 frame_count;
     i64 total_frame_count;
     u32 frames_processed;
-    float seconds_per_frame;
+    f32 fps;
     u8* data; // RGB
     int data_max_frames;
     bool decode_complete;
@@ -612,10 +625,13 @@ typedef struct
     bool has_texture;
     char texture_image_path[256];
 
-    float block_scale;
-    float blur_strength;
-    u64 max_buffer_size;
+    float block_scale; // 0.0 - 1.0
+    float blur_strength; // 0.0 - 1.0
     float box_padding_pct; // 0.0 - 1.0
+    u64 max_buffer_size;
+
+    char bbx_output[256];
+    bool has_bbx_output;
 
     bool dry_run;
     bool no_scale;
@@ -629,6 +645,7 @@ typedef struct
 } FunctionResult;
 
 #define MAX_ARENAS 64
+#define BBX_VERSION 1
 
 extern ProgramSettings settings;
 extern pthread_t *threads;

@@ -89,7 +89,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     int64_t nb_frames = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->nb_frames;
     LOGI("Num frames: %ld", nb_frames);
 
-    video->seconds_per_frame = fps.num / (double)fps.den;
+    video->fps = fps.num / (double)fps.den;
 
     enum AVCodecID codec_id = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id;
     LOGI("Video codec id: %d (%s)", codec_id, avcodec_get_name(codec_id));

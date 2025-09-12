@@ -90,6 +90,21 @@ void util_sort_rects(int num_rects, Rect* rects, bool asc)
     }
 }
 
+void util_write_bbx_to_file(FILE* file, Rect* r)
+{
+    FileWriteU16(file, r->x);
+    FileWriteU16(file, r->y);
+    FileWriteU16(file, r->w);
+    FileWriteU16(file, r->h);
+    FileWriteU16(file, r->confidence);
+    for(int i = 0; i < 5; ++i)
+    {
+        FileWriteU16(file, r->landmarks[i].x);
+        FileWriteU16(file, r->landmarks[i].y);
+    }
+    FileWriteU8(file, r->interpolated ? 0x01 : 0x00);
+}
+
 int util_get_core_count()
 {
 #if _WIN32
