@@ -153,6 +153,125 @@ void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opaci
     }
 }
 
+void transform_rotate_rgb24(const uint8_t *src, uint8_t *dst, int width, int height, int rotation)
+{
+    int row, col;
+    int dst_width = width;
+    int dst_height = height;
+
+    if (rotation == 90 || rotation == 270)
+    {
+        dst_width = height;
+        dst_height = width;
+    }
+
+    for(int y = 0; y < height; ++y)
+    {
+        for(int x = 0; x < width; ++x)
+        {
+            const uint8_t *p = src + (y * width + x) * 3;
+            uint8_t *q;
+
+            switch(rotation) {
+                case 0:
+                    q = dst + (y * width + x) * 3;
+                    break;
+                case 270:
+                    q = dst + (x * dst_width + (dst_width - 1 - y)) * 3;
+                    break;
+                case 180:
+                    q = dst + ((dst_height - 1 - y) * width + (width - 1 - x)) * 3;
+                    break;
+                case 90:
+                    q = dst + ((dst_height - 1 - x) * dst_width + y) * 3;
+                    break;
+                default:
+                    // invalid rotation; fallback to no rotation
+                    q = dst + (y * width + x) * 3;
+                    break;
+            }
+
+            // copy RGB triplet
+            q[0] = p[0];
+            q[1] = p[1];
+            q[2] = p[2];
+        }
+    }
+}
+
+static inline void blend_pixel(Image* img, int px, int py, Color c, float opacity)
+{
+    if (px < 0 || py < 0 || px >= img->w || py >= img->h) return;
+
+    u8* dst = img->data + py * img->step + px * img->n;
+
+    // Blend with existing pixel
+    float alpha = (c.a / 255.0f) * opacity;
+    dst[0] = (u8)((1 - alpha) * dst[0] + alpha * c.r);
+    dst[1] = (u8)((1 - alpha) * dst[1] + alpha * c.g);
+    dst[2] = (u8)((1 - alpha) * dst[2] + alpha * c.b);
+}
+
+static inline void draw_vline(Image* img, int x, int y1, int y2, Color c, float opacity) {
+
+    if (x < 0 || x >= img->w) return;
+    if (y1 > y2) { int tmp = y1; y1 = y2; y2 = tmp; }
+    if (y1 < 0) y1 = 0;
+    if (y2 >= img->h) y2 = img->h - 1;
+
+    for (int y = y1; y <= y2; y++) {
+        blend_pixel(img, x, y, c, opacity);
+    }
+}
+
+void transform_draw_circle(Image* image, u16 x, u16 y, u16 radius, Color c, bool filled, float opacity)
+{
+    if (!image || radius == 0) return;
+
+    int cx = x;
+    int cy = y;
+    int r = radius;
+
+    int dx = r;
+    int dy = 0;
+    int err = 1 - dx;
+    
+    // clamp opacity
+    if(opacity < 0.0f) opacity = 0.0f;
+    if(opacity > 1.0f) opacity = 1.0f;
+
+    while (dx >= dy)
+    {
+        if (filled)
+        {
+            draw_vline(image, cx + dx, cy - dy, cy + dy, c, opacity);
+            draw_vline(image, cx - dx, cy - dy, cy + dy, c, opacity);
+            draw_vline(image, cx + dy, cy - dx, cy + dx, c, opacity);
+            draw_vline(image, cx - dy, cy - dx, cy + dx, c, opacity);
+        }
+        else
+        {
+            // Outline only
+            blend_pixel(image, cx + dx, cy + dy, c, opacity);
+            blend_pixel(image, cx - dx, cy + dy, c, opacity);
+            blend_pixel(image, cx + dx, cy - dy, c, opacity);
+            blend_pixel(image, cx - dx, cy - dy, c, opacity);
+            blend_pixel(image, cx + dy, cy + dx, c, opacity);
+            blend_pixel(image, cx - dy, cy + dx, c, opacity);
+            blend_pixel(image, cx + dy, cy - dx, c, opacity);
+            blend_pixel(image, cx - dy, cy - dx, c, opacity);
+        }
+
+        dy++;
+        if (err < 0) {
+            err += 2 * dy + 1;
+        } else {
+            dx--;
+            err += 2 * (dy - dx + 1);
+        }
+    }
+}
+
 void transform_pixelate(Image* image, Rect r, float block_scale)
 {
     u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
@@ -288,6 +407,97 @@ static inline float fast_lanczos(double x, int a) {
     return lanczos_table[idx];
 }
 
+void lanczos_downscale_rotate(Image *in, Image *out, int a)
+{
+    double x_scale, y_scale;
+
+    // Compute scales depending on rotation
+    switch (out->rotation)
+    {
+        case 90:
+        case 270:
+            x_scale = (double)in->w / out->h;
+            y_scale = (double)in->h / out->w;
+            break;
+        default: // 0° or 180°
+            x_scale = (double)in->w / out->w;
+            y_scale = (double)in->h / out->h;
+            break;
+    }
+
+    for (int oy = 0; oy < out->h; ++oy)
+    {
+        for (int ox = 0; ox < out->w; ++ox)
+        {
+            double fx, fy;
+
+            // Map output pixel (ox,oy) -> source coordinates (fx,fy)
+            switch (out->rotation)
+            {
+                case 90:
+                    fx = (in->w - 1) - oy * x_scale;
+                    fy = ox * y_scale;
+                    break;
+                case 180:
+                    fx = (in->w - 1) - ox * x_scale;
+                    fy = (in->h - 1) - oy * y_scale;
+                    break;
+                case 270:
+                    fx = oy * x_scale;
+                    fy = (in->h - 1) - ox * y_scale;
+                    break;
+                default: // 0°
+                    fx = ox * x_scale;
+                    fy = oy * y_scale;
+                    break;
+            }
+
+            // Lanczos accumulation
+            int x_start = floor(fx - a);
+            int x_end   = floor(fx + a);
+            int y_start = floor(fy - a);
+            int y_end   = floor(fy + a);
+
+            double sum_r = 0.0, sum_g = 0.0, sum_b = 0.0;
+            double sum_w = 0.0;
+
+            for (int sy = y_start; sy <= y_end; ++sy)
+            {
+                int cy = sy < 0 ? 0 : (sy >= in->h ? in->h-1 : sy);
+                double wy = fast_lanczos((fy - sy) / y_scale, a);
+
+                for (int sx = x_start; sx <= x_end; ++sx)
+                {
+                    int cx = sx < 0 ? 0 : (sx >= in->w ? in->w-1 : sx);
+                    double wx = fast_lanczos((fx - sx) / x_scale, a);
+                    double w = wx * wy;
+                    if (w == 0.0) continue;
+
+                    int src_idx = (cy * in->w + cx) * in->n;
+                    sum_r += in->data[src_idx + 0] * w;
+                    sum_g += in->data[src_idx + 1] * w;
+                    sum_b += in->data[src_idx + 2] * w;
+                    sum_w += w;
+                }
+            }
+
+            int dst_idx = (oy * out->w + ox) * out->n;
+            if (sum_w > 0.0)
+            {
+                out->data[dst_idx + 0] = (uint8_t)(sum_r / sum_w + 0.5);
+                out->data[dst_idx + 1] = (uint8_t)(sum_g / sum_w + 0.5);
+                out->data[dst_idx + 2] = (uint8_t)(sum_b / sum_w + 0.5);
+            }
+            else
+            {
+                out->data[dst_idx + 0] = 0;
+                out->data[dst_idx + 1] = 0;
+                out->data[dst_idx + 2] = 0;
+            }
+        }
+    }
+}
+
 void lanczos_downscale(Image *in, Image *out, int a)
 {
     double x_scale = (double)in->w / out->w;
@@ -350,7 +560,7 @@ void lanczos_downscale(Image *in, Image *out, int a)
     }
 }
 
-bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_size)
+bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_size, int rotation)
 {
     bool use_scaled_image = source->w > scaled_size || source->h > scaled_size;
 
@@ -377,24 +587,35 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
             width_scaled = height_scaled * aspect;
         }
 
+        if(rotation == 90 || rotation == 270)
+        {
+            // swap the height and width
+            int tmp = width_scaled;
+            width_scaled = height_scaled;
+            height_scaled = tmp;
+        }
+
         result->w = width_scaled;
         result->h = height_scaled;
         result->n = source->n;
         result->step = width_scaled*result->n;
+        result->rotation = rotation;
         result->arena = source->arena;
         result->frame_number = source->frame_number;
         result->detect_buffer = source->detect_buffer;
 
+        int buffer_size = width_scaled*height_scaled*result->n;
+
         if(arena == NULL)
         {
-            result->data = (u8*)malloc(width_scaled*height_scaled*result->n);
+            result->data = (u8*)malloc(buffer_size);
         }
         else
         {
-            result->data = (u8*)arena_alloc(arena, width_scaled*height_scaled*result->n);
+            result->data = (u8*)arena_alloc(arena, buffer_size);
         }
 
-        lanczos_downscale(source, result, a);
+        lanczos_downscale_rotate(source, result, a);
     }
 
     return use_scaled_image;
@@ -464,7 +685,6 @@ void transform_gaussian_blur(Image *image, Rect *r)
     if (r->x + r->w > image->w) r->w = image->w - r->x;
     if (r->y + r->h > image->h) r->h = image->h - r->y;
 
-    // sigma could be derived from Rect.confidence, or fixed
     float base = (r->w < r->h ? r->w : r->h);
     float sigma = 0.24 * settings.blur_strength * base;   // tune multiplier to taste
 

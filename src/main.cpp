@@ -159,7 +159,7 @@ int handle_image()
         if(!settings.no_scale)
         {
             double t0 = timer_get_time();
-            use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size);   
+            use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size,0); // @TODO: rotation
             double elapsed = timer_get_time() - t0;
             LOGI("Downscale took %.3f ms", elapsed*1000.0);
             util_write_output(&image_scaled, "output/out_scaled.png");
@@ -230,6 +230,13 @@ int handle_image()
         if(settings.debug)
         {
             // draw debugging info on image
+            Color color_list[] = {
+                {255,0,0,255},
+                {0,255,0,255},
+                {0,0,255,255},
+                {255,255,0,255},
+                {255,0,255,255}
+            };
             for(int i = 0 ; i < num_rects; ++i)
             {
                 transform_draw_rect(&image, rects[i],(Color){0,255,0,255}, false, 1.0);
@@ -237,10 +244,7 @@ int handle_image()
                 for(int l = 0; l < 5; ++l)
                 {
                     PointU16 *lm = &rects[i].landmarks[l];
-                    u16 x = MAX(0, (int)lm->x - 2);
-                    u16 y = MAX(0, (int)lm->y - 2);
-
-                    transform_draw_rect(&image, (Rect){x,y,4,4},(Color){255,0,255,255}, true, 1.0);
+                    transform_draw_circle(&image, lm->x, lm->y, 2, color_list[l], true, 1.0);
                 }
             }
         }
@@ -371,13 +375,14 @@ int handle_video()
                 image->step = 3*image->w;
                 image->arena = arena;
 
-
                 if(!settings.no_scale)
                 {
                      // Scale down image
                     const float scaled_size = 320;
-                    use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size);
-                    // util_write_output(image_scaled, "output/out_scaled.png");
+                    use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
+                    char outfile[256] = {};
+                    snprintf(outfile, 255, "output/debug/%d.png",frame_counter);
+                    util_write_output(image_scaled, outfile);
                 }
 
                 reverse_rgb_order(use_scaled[i] ? image_scaled : image);
@@ -646,8 +651,9 @@ int handle_video()
             }
         }
 
-        // perform transformations
+        int zero_rects_frames = 0;
 
+        // perform transformations
         LOGI("Applying transformation...");
         for(int i = 0; i < vid.frame_count; ++i)
         {
@@ -708,7 +714,7 @@ int handle_video()
 
             if(num_rects == 0)
             {
-                printf("Zero rects at Frame %d!!\n", i);
+                zero_rects_frames++;
             }
             else
             {
@@ -725,6 +731,14 @@ int handle_video()
             if(settings.debug)
             {
                 // draw debugging info on image
+                Color color_list[] = {
+                    {255,0,0,255},
+                    {0,255,0,255},
+                    {0,0,255,255},
+                    {255,255,0,255},
+                    {255,0,255,255}
+                };
+
                 for(int j = 0 ; j < num_rects; ++j)
                 {
                     transform_draw_rect(&image, rects[j],(Color){0,255,0,255}, false, 1.0);
@@ -732,13 +746,13 @@ int handle_video()
                     for(int l = 0; l < 5; ++l)
                     {
                         PointU16 *lm = &rects[j].landmarks[l];
-                        u16 x = MAX(0, (int)lm->x - 2);
-                        u16 y = MAX(0, (int)lm->y - 2);
-                        transform_draw_rect(&image, (Rect){x,y,4,4},(Color){255,0,255,255}, true, 1.0);
+                        transform_draw_circle(&image, lm->x, lm->y, 2, color_list[l], true, 1.0);
                     }
                 }
             }
         }
+
+        LOGI("Number of zero rect frames: %d\n", zero_rects_frames);
 
         LOGI("Transformations done!");
 

@@ -5,7 +5,7 @@ includedir=/home/chris/git/censorman/ffmpeg_build/include
 
 Name: libavfilter
 Description: FFmpeg audio/video filtering library
-Version: 11.8.100
+Version: 11.9.100
 Requires: libavutil >= 60.13.100
 Requires.private: 
 Conflicts:

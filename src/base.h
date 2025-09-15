@@ -562,6 +562,7 @@ typedef struct
     int h;
     int n; // channels
     int step; // number of bytes to advance to next row
+    int rotation; // 0, 90, 180, 270
 
     // used for sub-image thread processing
     u8 *detect_buffer;
@@ -581,6 +582,7 @@ typedef struct {
     u32 frames_processed;
     f32 fps;
     u8* data; // RGB
+    int rotation;
     int data_max_frames;
     bool decode_complete;
 } Video;

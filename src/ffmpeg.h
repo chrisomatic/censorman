@@ -1,9 +1,13 @@
 extern "C" {
+
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/display.h>
+#include <libavutil/dict.h>
 }
+
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -38,6 +42,8 @@ typedef struct
     AVDictionary      *enc_opts;
 
 } VideoCtx;
+
+int _get_rotation(AVStream *st);
 
 bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoCtx *vid_ctx)
 {
@@ -90,6 +96,9 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     LOGI("Num frames: %ld", nb_frames);
 
     video->fps = fps.num / (double)fps.den;
+
+    video->rotation = _get_rotation(st);
+    LOGI("Video Rotation: %d", video->rotation);
 
     enum AVCodecID codec_id = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id;
     LOGI("Video codec id: %d (%s)", codec_id, avcodec_get_name(codec_id));
@@ -210,8 +219,8 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     vid_ctx->enc_codec_ctx->codec_id = vid_ctx->enc_codec->id;
     vid_ctx->enc_codec_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
-    vid_ctx->enc_codec_ctx->width = width;
-    vid_ctx->enc_codec_ctx->height = height;
+    vid_ctx->enc_codec_ctx->width = video->w;
+    vid_ctx->enc_codec_ctx->height = video->h;
     vid_ctx->enc_codec_ctx->time_base = av_inv_q(fps);
     vid_ctx->enc_codec_ctx->framerate = fps;
     vid_ctx->enc_codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
@@ -283,8 +292,8 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     }
 
     vid_ctx->enc_frame_src->format = AV_PIX_FMT_RGB24;
-    vid_ctx->enc_frame_src->width  = width;
-    vid_ctx->enc_frame_src->height = height;
+    vid_ctx->enc_frame_src->width  = video->w;
+    vid_ctx->enc_frame_src->height = video->h;
 
     vid_ctx->enc_frame->format = vid_ctx->enc_codec_ctx->pix_fmt;
     vid_ctx->enc_frame->width  = vid_ctx->enc_codec_ctx->width;
@@ -486,4 +495,42 @@ void ffmpeg_close(VideoCtx *ctx)
         }
         avformat_free_context(ctx->enc_fmt_ctx);
     }
+}
+
+
+//:========================
+// Helper functions
+//:========================
+
+int _get_rotation(AVStream *st)
+{
+    // 1. Try side_data in codecpar
+    for (int i = 0; i < st->codecpar->nb_coded_side_data; i++) {
+        const AVPacketSideData *sd = &st->codecpar->coded_side_data[i];
+        if (sd->type == AV_PKT_DATA_DISPLAYMATRIX) {
+            if (sd->size >= sizeof(int32_t) * 9) {
+                double angle = av_display_rotation_get((const int32_t*)sd->data);
+                // Normalize (FFmpeg returns e.g. 0.000001, — round)
+                int ang = (int)round(angle);
+                // make sure it's one of 0,90,180,270
+                ang = ((ang % 360) + 360) % 360;
+                if (ang == 0 || ang == 90 || ang == 180 || ang == 270)
+                    return ang;
+                // If weird angle, maybe return 0
+                return 0;
+            }
+        }
+    }
+
+    // 2. Fallback: metadata “rotate” tag
+    AVDictionaryEntry *tag = av_dict_get(st->metadata, "rotate", NULL, 0);
+    if (tag && tag->value) {
+        int ang = atoi(tag->value);
+        ang = ((ang % 360) + 360) % 360;
+        if (ang == 0 || ang == 90 || ang == 180 || ang == 270)
+            return ang;
+    }
+
+    // 3. Default: no rotation
+    return 0;
 }
