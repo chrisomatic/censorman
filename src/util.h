@@ -40,6 +40,8 @@ bool util_load_image(char* input_file, Image* image)
     image->h = h;
     image->n = 3;
     image->step = image->w*image->n;
+    image->scale_x = 1.0;
+    image->scale_y = 1.0;
 
     stbi_image_free(data);
 

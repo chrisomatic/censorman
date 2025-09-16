@@ -10,13 +10,21 @@
 
 // TODO
 //
-// [ ] Lerping rects in video
+// [ ] Add 'lerp_interval' parameter (default: 150ms)
+// [ ] Fix raster font on rotated videos
+// [ ] Fix count in video bbx output
+// [ ] Fix pixelate transform
 // [ ] Thread the transformations
-// [ ] Fix builds for MacOS
 // [ ] Add padding to sub-images
 // [ ] Add lots of test images and --tester mode
 // [ ] Implement thread pool (mutex vs spin-lock)
-// [ ] Add raster font for debug output
+// [ ] Statically compile ncnn (Tencent) inference engine
+// [ ] Clean up CLI interface and standard output
+// [ ] Add audio stream encoding (1:1)
+// [ ] Add YuNet model (.bin and .param) to compare accuracy
+// [ ] Fix builds for MacOS
+// [x] Add raster font for debug output
+// [x] Lerping rects in video
 // [x] Add scramble transform
 // [x] Add blur transform
 // [x] Add image scaling function
@@ -318,7 +326,7 @@ int handle_video()
         int frame_counter = 0;
         int actual_thread_count;
 
-        const int skip_frames = 4;
+        const int skip_frames = 3;
 
         for(;;)
         {
@@ -362,7 +370,7 @@ int handle_video()
                 if(!settings.no_scale)
                 {
                      // Scale down image
-                    const float scaled_size = 320;
+                    const float scaled_size = 480;
                     use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
                     char outfile[256] = {};
                     snprintf(outfile, 255, "output/debug/%d.png",frame_counter);
@@ -417,17 +425,12 @@ int handle_video()
 
                         if(use_scaled[i])
                         {
-                            const double scale = vid.w > vid.h ? vid.w / (double)image->w : vid.h / (double)image->h;
-                            r->x = (u16)round(r->x * scale);
-                            r->y = (u16)round(r->y * scale);
-                            r->w = (u16)round(r->w * scale);
-                            r->h = (u16)round(r->h * scale);
-
-                            for(int j = 0; j < 5; ++j)
-                            {
-                                r->landmarks[j].x = (u16)round(r->landmarks[j].x * scale);
-                                r->landmarks[j].y = (u16)round(r->landmarks[j].y * scale);
-                            }
+                            const float scale = vid.w > vid.h ? vid.w / (float)image->w : vid.h / (float)image->h;
+                            printf("scaled size: %u, %u\n", image->w, image->h);
+                            printf("orig size: %u, %u\n", vid.w, vid.h);
+                            printf("rotation: %d\n", image->rotation);
+                            //printf("calc scale: %f\n", scale);
+                            transform_rect_upscale_rotate_inverse(r, image->w, image->h, vid.w, vid.h, image->rotation);
                         }
                         
                         /* not sure if needed?
@@ -777,7 +780,7 @@ void draw_debugging_info(Image* image, Rect* rects, int num_rects)
 
         for(int l = 0; l < 5; ++l)
         {
-            PointU16 *lm = &rects[j].landmarks[l];
+            Point *lm = &rects[j].landmarks[l];
             transform_draw_circle(image, lm->x, lm->y, 2, color_list[l], true, 1.0);
         }
     }

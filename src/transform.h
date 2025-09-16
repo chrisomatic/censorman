@@ -211,7 +211,7 @@ void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opaci
     int step = image->w*n;
 
     // draw first line
-    for(int i = 0; i < r.w; ++i)
+    for(int i = 0; i <= r.w; ++i)
     {
         Color r = opacity == 1.0 ? c : get_blended_color(curr+i*n,c,opacity);
         memcpy(curr+i*n, &r, 3);
@@ -245,7 +245,7 @@ void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opaci
         }
     }
 
-    for(int i = 0; i < r.w; ++i)
+    for(int i = 0; i <= r.w; ++i)
     {
         Color r = opacity == 1.0 ? c : get_blended_color(curr+i*n,c,opacity);
         memcpy(curr + i*n, &r, 3);
@@ -767,6 +767,8 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
         result->n = source->n;
         result->step = width_scaled*result->n;
         result->rotation = rotation;
+        result->scale_x = width_scaled / source->w;
+        result->scale_y = height_scaled / source->h;
         result->arena = source->arena;
         result->frame_number = source->frame_number;
         result->detect_buffer = source->detect_buffer;
@@ -786,6 +788,108 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
     }
 
     return use_scaled_image;
+}
+
+
+void transform_rect_upscale_rotate_inverse(
+    Rect* r,
+    u16 det_w, u16 det_h,   // detector (downscaled+rotated) image size
+    u16 orig_w, u16 orig_h, // original frame size
+    int rotation)
+{
+    float scale_x, scale_y;
+
+    // These are the true dimensions of the image that was rotated
+    int scaled_w = det_w;
+    int scaled_h = det_h;
+
+    // Figure out what the detector "saw" relative to the original
+    switch (rotation)
+    {
+        case 90:
+        case 270:
+            scale_x = (float)orig_w / scaled_h;
+            scale_y = (float)orig_h / scaled_w;
+            break;
+        default: // 0 or 180
+            scale_x = (float)orig_w / scaled_w;
+            scale_y = (float)orig_h / scaled_h;
+            break;
+    }
+
+    // Collect all points: rect corners + landmarks
+    Point points[] =
+    {
+        {r->x, r->y},
+        {r->x + r->w, r->y},
+        {r->x, r->y + r->h},
+        {r->x + r->w, r->y + r->h},
+        {r->landmarks[0].x, r->landmarks[0].y},
+        {r->landmarks[1].x, r->landmarks[1].y},
+        {r->landmarks[2].x, r->landmarks[2].y},
+        {r->landmarks[3].x, r->landmarks[3].y},
+        {r->landmarks[4].x, r->landmarks[4].y}
+    };
+
+    printf("Rect before transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+
+    float minx = 1e9f, miny = 1e9f;
+    float maxx = -1e9f, maxy = -1e9f;
+
+    for (int i = 0; i < ArrayCount(points); ++i)
+    {
+        float fx = points[i].x;
+        float fy = points[i].y;
+        float ox, oy;
+
+        // Undo rotation: map detector coords back into original orientation
+        switch (rotation)
+        {
+            case 270:  // rotated right during downscale → rotate left to undo
+                ox = fy;
+                oy = (scaled_w - 1) - fx;
+                break;
+            case 180:
+                ox = (scaled_w - 1) - fx;
+                oy = (scaled_h - 1) - fy;
+                break;
+            case 90: // rotated left during downscale → rotate right to undo
+                ox = (scaled_h - 1) - fy;
+                oy = fx;
+                break;
+            case 0:
+            default:
+                ox = fx;
+                oy = fy;
+                break;
+        }
+
+        // Now scale back up to original frame
+        ox *= scale_x;
+        oy *= scale_y;
+
+        if (i < 4)
+        {
+            if (ox < minx) minx = ox;
+            if (oy < miny) miny = oy;
+            if (ox > maxx) maxx = ox;
+            if (oy > maxy) maxy = oy;
+        }
+        else
+        {
+            r->landmarks[i - 4].x = ox;
+            r->landmarks[i - 4].y = oy;
+        }
+    }
+
+    r->x = minx;
+    r->y = miny;
+    r->w = maxx - minx;
+    r->h = maxy - miny;
+
+    printf("Rect after transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+
+
 }
 
 // Generate 1D Gaussian kernel

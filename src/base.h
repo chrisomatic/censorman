@@ -89,6 +89,12 @@ typedef struct
     u16 y;
 } PointU16;
 
+typedef struct
+{
+    int x;
+    int y;
+} Point;
+
 //:==================================
 // Memory
 //:==================================
@@ -540,12 +546,12 @@ inline const char* transform_type_to_str(TransformType t)
 
 typedef struct
 {
-    u16 x;
-    u16 y;
-    u16 w;
-    u16 h;
-    u16 confidence;
-    PointU16 landmarks[5];
+    int x;
+    int y;
+    int w;
+    int h;
+    int confidence;
+    Point landmarks[5];
     bool interpolated;
 } Rect;
 
@@ -563,6 +569,9 @@ typedef struct
     int n; // channels
     int step; // number of bytes to advance to next row
     int rotation; // 0, 90, 180, 270
+
+    float scale_x;
+    float scale_y;
 
     // used for sub-image thread processing
     u8 *detect_buffer;
