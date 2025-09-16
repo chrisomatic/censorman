@@ -831,7 +831,7 @@ void transform_rect_upscale_rotate_inverse(
         {r->landmarks[4].x, r->landmarks[4].y}
     };
 
-    printf("Rect before transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+    // printf("Rect before transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
 
     float minx = 1e9f, miny = 1e9f;
     float maxx = -1e9f, maxy = -1e9f;
@@ -887,7 +887,7 @@ void transform_rect_upscale_rotate_inverse(
     r->w = maxx - minx;
     r->h = maxy - miny;
 
-    printf("Rect after transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+    // printf("Rect after transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
 
 
 }

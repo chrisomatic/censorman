@@ -14,6 +14,8 @@
 // [ ] Fix raster font on rotated videos
 // [ ] Fix count in video bbx output
 // [ ] Fix pixelate transform
+// [ ] Fix final frame missing from detection bug
+// [ ] Consider enabling crude first pass to address video discontinuity
 // [ ] Thread the transformations
 // [ ] Add padding to sub-images
 // [ ] Add lots of test images and --tester mode
@@ -370,11 +372,13 @@ int handle_video()
                 if(!settings.no_scale)
                 {
                      // Scale down image
-                    const float scaled_size = 480;
+                    const float scaled_size = 320;
                     use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
+#if 0
                     char outfile[256] = {};
                     snprintf(outfile, 255, "output/debug/%d.png",frame_counter);
                     util_write_output(image_scaled, outfile);
+#endif
                 }
 
                 reverse_rgb_order(use_scaled[i] ? image_scaled : image);
@@ -426,10 +430,6 @@ int handle_video()
                         if(use_scaled[i])
                         {
                             const float scale = vid.w > vid.h ? vid.w / (float)image->w : vid.h / (float)image->h;
-                            printf("scaled size: %u, %u\n", image->w, image->h);
-                            printf("orig size: %u, %u\n", vid.w, vid.h);
-                            printf("rotation: %d\n", image->rotation);
-                            //printf("calc scale: %f\n", scale);
                             transform_rect_upscale_rotate_inverse(r, image->w, image->h, vid.w, vid.h, image->rotation);
                         }
                         
