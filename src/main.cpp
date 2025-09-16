@@ -35,6 +35,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[]);
 int process_image(Image* image,Rect* ret_rects);
 int handle_image();
 int handle_video();
+void draw_debugging_info(Image* image, Rect* rects, int num_rects);
 
 int main(int argc, char** args)
 {
@@ -229,24 +230,7 @@ int handle_image()
 
         if(settings.debug)
         {
-            // draw debugging info on image
-            Color color_list[] = {
-                {255,0,0,255},
-                {0,255,0,255},
-                {0,0,255,255},
-                {255,255,0,255},
-                {255,0,255,255}
-            };
-            for(int i = 0 ; i < num_rects; ++i)
-            {
-                transform_draw_rect(&image, rects[i],(Color){0,255,0,255}, false, 1.0);
-
-                for(int l = 0; l < 5; ++l)
-                {
-                    PointU16 *lm = &rects[i].landmarks[l];
-                    transform_draw_circle(&image, lm->x, lm->y, 2, color_list[l], true, 1.0);
-                }
-            }
+            draw_debugging_info(&image, rects, num_rects);
         }
 
         if(!settings.dry_run)
@@ -730,25 +714,7 @@ int handle_video()
 
             if(settings.debug)
             {
-                // draw debugging info on image
-                Color color_list[] = {
-                    {255,0,0,255},
-                    {0,255,0,255},
-                    {0,0,255,255},
-                    {255,255,0,255},
-                    {255,0,255,255}
-                };
-
-                for(int j = 0 ; j < num_rects; ++j)
-                {
-                    transform_draw_rect(&image, rects[j],(Color){0,255,0,255}, false, 1.0);
-
-                    for(int l = 0; l < 5; ++l)
-                    {
-                        PointU16 *lm = &rects[j].landmarks[l];
-                        transform_draw_circle(&image, lm->x, lm->y, 2, color_list[l], true, 1.0);
-                    }
-                }
+                draw_debugging_info(&image, rects, num_rects);
             }
         }
 
@@ -788,6 +754,33 @@ int handle_video()
     // ffmpeg_close(&vid_ctx);
 
     return 0;
+}
+
+void draw_debugging_info(Image* image, Rect* rects, int num_rects)
+{
+    Color color_list[] = {
+        {255,0,0,255},
+        {0,255,0,255},
+        {0,0,255,255},
+        {255,255,0,255},
+        {255,0,255,255}
+    };
+
+    Color color_bad  = {255,0,0,255};
+    Color color_good = {0,255,0,255};
+
+    for(int j = num_rects - 1; j >= 0; --j)
+    {
+        Color color = transform_blend_color(color_bad, color_good, (rects[j].confidence / 100.0f));
+        transform_draw_rect(image, rects[j],color, false, 1.0);
+        transform_draw_string(image, rects[j].x, rects[j].y -17, color,"%u", rects[j].confidence);
+
+        for(int l = 0; l < 5; ++l)
+        {
+            PointU16 *lm = &rects[j].landmarks[l];
+            transform_draw_circle(image, lm->x, lm->y, 2, color_list[l], true, 1.0);
+        }
+    }
 }
 
 bool init(int argc, char **args)
