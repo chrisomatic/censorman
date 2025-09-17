@@ -11,20 +11,22 @@
 // TODO
 //
 // [ ] Add 'lerp_interval' parameter (default: 150ms)
-// [ ] Fix raster font on rotated videos
 // [ ] Fix count in video bbx output
-// [ ] Fix pixelate transform
-// [ ] Fix final frame missing from detection bug
+// [ ] Fix 'Could not find ref with POC' bug with some videos
 // [ ] Consider enabling crude first pass to address video discontinuity
 // [ ] Thread the transformations
 // [ ] Add padding to sub-images
 // [ ] Add lots of test images and --tester mode
+// [ ] Add Return Code Enum for any errors and success
 // [ ] Implement thread pool (mutex vs spin-lock)
 // [ ] Statically compile ncnn (Tencent) inference engine
 // [ ] Clean up CLI interface and standard output
 // [ ] Add audio stream encoding (1:1)
 // [ ] Add YuNet model (.bin and .param) to compare accuracy
 // [ ] Fix builds for MacOS
+// [x] Fix final frame missing from detection bug
+// [x] Fix pixelate transform
+// [x] Fix raster font on rotated videos
 // [x] Add raster font for debug output
 // [x] Lerping rects in video
 // [x] Add scramble transform
@@ -35,6 +37,7 @@
 
 Arena* scratch = {0};
 Arena* thread_arenas[MAX_ARENAS] = {0};
+
 Timer timer = {0};
 ProgramSettings settings = {};
 pthread_t *threads = NULL;
@@ -187,15 +190,15 @@ int handle_image()
             for(int i = 0; i < num_rects; ++i)
             {
                 Rect* r = &rects[i];
-                r->x = (u16)round(r->x * scale);
-                r->y = (u16)round(r->y * scale);
-                r->w = (u16)round(r->w * scale);
-                r->h = (u16)round(r->h * scale);
+                r->x = (int)round(r->x * scale);
+                r->y = (int)round(r->y * scale);
+                r->w = (int)round(r->w * scale);
+                r->h = (int)round(r->h * scale);
 
                 for(int j = 0; j < 5; ++j)
                 {
-                    r->landmarks[j].x = (u16)round(r->landmarks[j].x * scale);
-                    r->landmarks[j].y = (u16)round(r->landmarks[j].y * scale);
+                    r->landmarks[j].x = (int)round(r->landmarks[j].x * scale);
+                    r->landmarks[j].y = (int)round(r->landmarks[j].y * scale);
                 }
 
                 // add padding if needed
@@ -204,8 +207,8 @@ int handle_image()
                 float sw = (float)r->w * rect_pad_pct;
                 float sh = (float)r->h * rect_pad_pct;
 
-                r->x -= (u16)(sw/2.0);
-                r->y -= (u16)(sw/2.0);
+                r->x -= (int)(sw/2.0);
+                r->y -= (int)(sw/2.0);
                 r->w += sw;
                 r->h += sh;
 
@@ -339,7 +342,7 @@ int handle_video()
                 use_scaled[i] = false;
             }
 
-            if(frame_counter >= vid.frame_count)
+            if(frame_counter >= vid.frame_count-1)
                 break;
 
             actual_thread_count = 0;
@@ -347,8 +350,8 @@ int handle_video()
             // Create threads
             for(int i = 0; i < settings.thread_count; ++i)
             {
-                if(frame_counter >= vid.frame_count)
-                    break;
+                //if(frame_counter > vid.frame_count)
+                //    break;
 
                 Arena* arena = thread_arenas[actual_thread_count];
                 pthread_t* thread = &threads[actual_thread_count];
@@ -393,7 +396,12 @@ int handle_video()
                     LOGW("Failed to start thread");
                 }
 
-                frame_counter += (MIN(skip_frames, vid.frame_count - frame_counter)); // always want to evaluate final frame
+
+                int frame_advance = MIN(skip_frames, vid.frame_count - frame_counter - 1);
+                if(frame_advance <= 0)
+                    break;
+
+                frame_counter += frame_advance; // always want to evaluate final frame
             }
             
             // join all threads back
@@ -432,14 +440,6 @@ int handle_video()
                             const float scale = vid.w > vid.h ? vid.w / (float)image->w : vid.h / (float)image->h;
                             transform_rect_upscale_rotate_inverse(r, image->w, image->h, vid.w, vid.h, image->rotation);
                         }
-                        
-                        /* not sure if needed?
-                        // make sure rectangles are within bounds of image
-                        if(r->x >= image->w || r->y >= image->h) continue;
-
-                        if(r->x + r->w > image->w) r->w = MAX(0, image->w - r->x - 1);
-                        if(r->y + r->h > image->h) r->h = MAX(0, image->h - r->y - 1);
-                        */
 
                         memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Rect)); offset += sizeof(Rect);
                         num_faces++;
@@ -452,7 +452,7 @@ int handle_video()
                 }
             }
 
-            LOGI("[Frame %d/%d]: num_faces: %d", frame_counter, vid.frame_count, num_faces);
+            LOGI("[Frame %d/%d]: num_faces: %d", frame_counter+1, vid.frame_count, num_faces);
         }
         
         // lerping
@@ -506,14 +506,6 @@ int handle_video()
                 }
 
                 int frames_in_between = j - i;
-
-                if(frames_in_between == 0)
-                {
-                    // TODO
-                    // there is no filled out frame ahead
-                    // so just copy the results of rl0 forward
-                    LOGW("TODO: No valid frames ahead! Copying forward");
-                }
 
                 if(rl0.rects && rl1.rects)
                 {
@@ -588,16 +580,16 @@ int handle_video()
                                 // lerp it!
                                 float t = (f+1)/(float)(frames_in_between+1);
 
-                                rg->x = (u16)lerp((float)ra->x, (float)rb->x, t);
-                                rg->y = (u16)lerp((float)ra->y, (float)rb->y, t);
-                                rg->w = (u16)lerp((float)ra->w, (float)rb->w, t);
-                                rg->h = (u16)lerp((float)ra->h, (float)rb->h, t);
-                                rg->confidence = (u16)lerp((float)ra->confidence, (float)rb->confidence, t);
+                                rg->x = (int)lerp((float)ra->x, (float)rb->x, t);
+                                rg->y = (int)lerp((float)ra->y, (float)rb->y, t);
+                                rg->w = (int)lerp((float)ra->w, (float)rb->w, t);
+                                rg->h = (int)lerp((float)ra->h, (float)rb->h, t);
+                                rg->confidence = (int)lerp((float)ra->confidence, (float)rb->confidence, t);
 
                                 for(int j = 0; j < 5; ++j)
                                 {
-                                    rg->landmarks[j].x = (u16)lerp((float)ra->landmarks[j].x, (float)rb->landmarks[j].x, t);
-                                    rg->landmarks[j].y = (u16)lerp((float)ra->landmarks[j].y, (float)rb->landmarks[j].y, t);
+                                    rg->landmarks[j].x = (int)lerp((float)ra->landmarks[j].x, (float)rb->landmarks[j].x, t);
+                                    rg->landmarks[j].y = (int)lerp((float)ra->landmarks[j].y, (float)rb->landmarks[j].y, t);
                                 }
 
                                 // printf("  Lerping Rect %d (a: %u %u %u %u (%u), b: %u %u %u %u (%u), gap: %u %u %u %u (%u)\n", k, ra->x, ra->y, ra->w, ra->h, ra->confidence, rb->x, rb->y, rb->w, rb->h, rb->confidence, rg->x, rg->y, rg->w, rg->h, rg->confidence);
@@ -631,7 +623,7 @@ int handle_video()
                 }
                 else
                 {
-                    LOGW("One of the rect lists is null (%s, %s)", (rl0.rects == NULL ? "null" : "not null"), (rl1.rects == NULL ? "null" : "not null"));
+                    LOGW("[Frame %d/%d]One of the rect lists is null (%s, %s)", (rl0.rects == NULL ? "null" : "not null"), (rl1.rects == NULL ? "null" : "not null"));
                 }
 
                 i += MAX(0,(frames_in_between-1));
@@ -681,8 +673,8 @@ int handle_video()
                 float sw = (float)rects[j].w * rect_pad_pct;
                 float sh = (float)rects[j].h * rect_pad_pct;
 
-                rects[j].x -= (u16)(sw/2.0);
-                rects[j].y -= (u16)(sw/2.0);
+                rects[j].x -= (int)(sw/2.0);
+                rects[j].y -= (int)(sw/2.0);
                 rects[j].w += sw;
                 rects[j].h += sh;
 
@@ -697,6 +689,7 @@ int handle_video()
                 {
                     util_write_bbx_to_file(bbx_file, &rects[j]);
                 }
+
             }
 
             if(num_rects == 0)
@@ -775,8 +768,9 @@ void draw_debugging_info(Image* image, Rect* rects, int num_rects)
     for(int j = num_rects - 1; j >= 0; --j)
     {
         Color color = transform_blend_color(color_bad, color_good, (rects[j].confidence / 100.0f));
+
         transform_draw_rect(image, rects[j],color, false, 1.0);
-        transform_draw_string(image, rects[j].x, rects[j].y -17, color,"%u", rects[j].confidence);
+        transform_draw_string(image, rects[j].x+1, rects[j].y+1, color,"%u", rects[j].confidence);
 
         for(int l = 0; l < 5; ++l)
         {
@@ -803,7 +797,7 @@ bool init(int argc, char **args)
     settings.classification = CLASS_FACE;
     settings.transform_count = 0;
     settings.debug = false;
-    settings.confidence_threshold = 30;
+    settings.confidence_threshold = 0;
     settings.nms_iou_threshold = 0.6;
     settings.blur_strength = 0.50;
     settings.has_texture = false;

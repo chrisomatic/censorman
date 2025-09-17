@@ -458,9 +458,6 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
     float avg_g = 0.0;
     float avg_b = 0.0;
 
-    if(r.x + r.w + block_size > image->w) r.w = image->w - r.x - block_size -1;
-    if(r.y + r.h + block_size > image->h) r.h = image->h - r.y - block_size -1;
-
     int num_blocks_x = ceil(r.w / (float)block_size);
     int num_blocks_y = ceil(r.h / (float)block_size);
 
