@@ -83,6 +83,13 @@ float lerp(float a, float b, float t)
     return r;
 }
 
+float exponential_smooth(float start, float end, float alpha, int frame)
+{
+    alpha = CLAMP(alpha, 0.0f, 1.0f);
+    float factor = powf(1.0f - alpha, frame + 1);
+    return end - (end - start) * factor;
+}
+
 typedef struct
 {
     u16 x;
@@ -318,6 +325,14 @@ inline int FileWriteU16(FILE* file, u16 x) { return fwrite(&x,sizeof(u16),1,file
 inline int FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file);}
 inline int FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
 inline int FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
+
+inline int FileWriteU32AtIndex(FILE* file, u32 x, u32 index) {
+    int pos = ftell(file);
+    fseek(file, index, SEEK_SET);
+    int ret = fwrite(&x,sizeof(u32),1,file);
+    fseek(file, pos, SEEK_SET);
+    return ret;
+}
 
 //:==================================
 // Timer
@@ -586,13 +601,14 @@ typedef struct
 typedef struct {
     u16 w;
     u16 h;
-    u32 frame_count;
-    i64 total_frame_count;
-    u32 frames_processed;
+    u32 frame_count;        // number of frames currently in the buffer
+    i64 total_frame_count;  // total number of frames in the video
+    u32 frames_processed;   // used during encoding
     f32 fps;
-    u8* data; // RGB
+    u8* data;               // RGB buffer for current chunk
+    i64* pts_buffer;        // PTS for each frame in current chunk
     int rotation;
-    int data_max_frames;
+    int data_max_frames;    // max frames in current buffer
     bool decode_complete;
 } Video;
 
@@ -639,6 +655,8 @@ typedef struct
     float block_scale; // 0.0 - 1.0
     float blur_strength; // 0.0 - 1.0
     float box_padding_pct; // 0.0 - 1.0
+    float frame_smoothing_window; // 0.0 - 1.0
+
     u64 max_buffer_size;
 
     char bbx_output[256];
@@ -656,7 +674,9 @@ typedef struct
 } FunctionResult;
 
 #define MAX_ARENAS 64
+
 #define BBX_VERSION 1
+#define BBX_FRAME_COUNT_OFFSET 12
 
 extern ProgramSettings settings;
 extern pthread_t *threads;

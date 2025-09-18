@@ -885,8 +885,6 @@ void transform_rect_upscale_rotate_inverse(
     r->h = maxy - miny;
 
     // printf("Rect after transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
-
-
 }
 
 // Generate 1D Gaussian kernel
@@ -976,14 +974,119 @@ void transform_gaussian_blur(Image *image, Rect *r)
     free(kernel);
 }
 
+void transform_box_blur(Image *image, Rect *r, u8 *buffer)
+{
+    if(!buffer) return;
+
+    if (!image || !r) return;
+    if (r->x >= image->w || r->y >= image->h) return;
+
+    // Clamp ROI inside image
+    if (r->x + r->w > image->w) r->w = image->w - r->x;
+    if (r->y + r->h > image->h) r->h = image->h - r->y;
+
+    float base = (r->w < r->h ? r->w : r->h);
+    int radius = (int)(0.24f * settings.blur_strength * base);
+    if (radius < 1) radius = 1;
+
+    int k_size = 2 * radius + 1;
+    float norm = 1.0f / k_size;
+
+    // Precompute clamped indices for horizontal and vertical passes
+    int *h_indices = (int *)malloc((r->w + 2 * radius) * sizeof(int));
+    int *v_indices = (int *)malloc((r->h + 2 * radius) * sizeof(int));
+
+    for (int i = -radius; i < r->w + radius; ++i)
+    {
+        int idx = r->x + i;
+        if (idx < r->x) idx = r->x;
+        if (idx >= r->x + r->w) idx = r->x + r->w - 1;
+        h_indices[i + radius] = idx;
+    }
+    for (int i = -radius; i < r->h + radius; ++i)
+    {
+        int idx = r->y + i;
+        if (idx < r->y) idx = r->y;
+        if (idx >= r->y + r->h) idx = r->y + r->h - 1;
+        v_indices[i + radius] = idx;
+    }
+
+    u8 *tmp_data = buffer;
+
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        // ---- Horizontal pass ----
+        for (int y = r->y; y < r->y + r->h; ++y)
+        {
+            u8 *src_row = image->data + y * image->step;
+            u8 *dst_row = tmp_data + y * image->step;
+
+            for (int c = 0; c < image->n; ++c)
+            {
+                int sum = 0;
+
+                // Initialize sum for first pixel
+                for (int k = 0; k < k_size; ++k)
+                    sum += src_row[h_indices[k] * image->n + c];
+
+                dst_row[r->x * image->n + c] = (u8)(sum * norm);
+
+                for (int x = r->x + 1; x < r->x + r->w; ++x)
+                {
+                    int left  = h_indices[x - r->x - 1 + 0]; // previous left
+                    int right = h_indices[x - r->x + k_size - 1]; // new right
+                    sum += src_row[right * image->n + c] - src_row[left * image->n + c];
+                    dst_row[x * image->n + c] = (u8)(sum * norm);
+                }
+            }
+        }
+
+        // ---- Vertical pass ----
+        for (int x = r->x; x < r->x + r->w; ++x)
+        {
+            for (int c = 0; c < image->n; ++c)
+            {
+                int sum = 0;
+
+                // Initialize sum for first pixel
+                for (int k = 0; k < k_size; ++k)
+                    sum += tmp_data[v_indices[k] * image->step + x * image->n + c];
+
+                u8 *dst_row = image->data + r->y * image->step;
+                dst_row[x * image->n + c] = (u8)(sum * norm);
+
+                for (int y = r->y + 1; y < r->y + r->h; ++y)
+                {
+                    int top    = v_indices[y - r->y - 1 + 0];
+                    int bottom = v_indices[y - r->y + k_size - 1];
+                    sum += tmp_data[bottom * image->step + x * image->n + c] -
+                           tmp_data[top * image->step + x * image->n + c];
+                    dst_row = image->data + y * image->step;
+                    dst_row[x * image->n + c] = (u8)(sum * norm);
+                }
+            }
+        }
+
+        if (pass < 2)
+            memcpy(tmp_data, image->data, image->step * image->h);
+    }
+
+    free(h_indices);
+    free(v_indices);
+}
+
 void transform_apply(Image* image, int num_rects, Rect* rects, TransformType transform)
 {
-    // apply transformation
-    //printf("num rects; %d\n", num_rects);
+    u8 *buffer = NULL;
+    
+    if(transform == TRANSFORM_TYPE_BLUR)
+    {
+        buffer = (u8 *)malloc(image->step * image->h);  
+    }
+
     for(int i = 0; i < num_rects; ++i)
     {
         Rect r = rects[i];
-        //LOGI("Rect: [%u,%u,%u,%u] confidence: %u", r.x, r.y, r.w, r.h, r.confidence);
 
         switch(transform)
         {
@@ -991,7 +1094,7 @@ void transform_apply(Image* image, int num_rects, Rect* rects, TransformType tra
             case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, settings.block_scale); break;
             case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
             case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO: seed
-            case TRANSFORM_TYPE_BLUR:           transform_gaussian_blur(image, &r); break;
+            case TRANSFORM_TYPE_BLUR:           transform_box_blur(image, &r, buffer); break;
             case TRANSFORM_TYPE_TEXTURE: {
                if(settings.has_texture) {
                    transform_stretch_image(image, &texture_image, r);
@@ -1000,5 +1103,9 @@ void transform_apply(Image* image, int num_rects, Rect* rects, TransformType tra
             default: break;
         }
     }
-}
 
+    if(buffer)
+    {
+        free(buffer);
+    }
+}

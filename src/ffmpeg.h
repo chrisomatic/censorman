@@ -154,6 +154,8 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     vid_ctx->rgb_frame = av_frame_alloc();
     vid_ctx->pkt = av_packet_alloc();
 
+
+
     u8 *rgb_planes[4];
     int rgb_linesize[4];
     av_image_fill_arrays(rgb_planes, rgb_linesize, rgb_data, AV_PIX_FMT_RGB24, width, height, 1);
@@ -167,6 +169,9 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     video->total_frame_count = (nb_frames > 0 ? nb_frames : -1);
     video->data = rgb_data;
     video->data_max_frames = max_frames;
+
+    // allocat PTS buffer
+    video->pts_buffer = (i64 *)malloc(sizeof(i64) * video->data_max_frames);
 
     // Set up encoding
     // Output format (MP4 / H264)
@@ -257,6 +262,12 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
         avformat_free_context(vid_ctx->enc_fmt_ctx);
         return false;
     }
+    
+    // set rotation on encoder stream
+    char rotate[16];
+    snprintf(rotate, sizeof(rotate), "%d", video->rotation);
+    av_dict_set(&vid_ctx->enc_video_st->metadata, "rotate", rotate, 0);
+
 
     // Open output file
     if(!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE))
@@ -299,14 +310,6 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     vid_ctx->enc_frame->width  = vid_ctx->enc_codec_ctx->width;
     vid_ctx->enc_frame->height = vid_ctx->enc_codec_ctx->height;
 
-    /*
-    if(av_frame_get_buffer(vid_ctx->enc_frame, 32) < 0)
-    {
-        fprintf(stderr, "Could not allocate frame buffer\n");
-        return false;
-    }
-    */
-
     // SWS converter (RGB24 -> YUV420P)
     vid_ctx->enc_sws_ctx = sws_getContext(width, height, AV_PIX_FMT_RGB24,
                              width, height, vid_ctx->enc_codec_ctx->pix_fmt,
@@ -325,142 +328,195 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
 bool ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
 {
-    u32 frame_count = 0;
-    int ret;
+    if(!video->data) return false;
 
-    if(!video->data)
-    {
-        return false;
-    }
-
-    int width = vid_ctx->codec_ctx->width;
+    int width  = vid_ctx->codec_ctx->width;
     int height = vid_ctx->codec_ctx->height;
-
     int rgb_stride = width * 3;
     int frame_rgb_size = rgb_stride * height;
 
-    bool full_decode = true;
+    u32 frame_count = 0;
+    int ret;
+    bool eof_reached = false; // track end of file
+    bool hit_max_buffer = false;
 
-    while(av_read_frame(vid_ctx->fmt_ctx, vid_ctx->pkt) >= 0)
+    AVFrame *frame = vid_ctx->frame;
+    AVPacket *pkt  = vid_ctx->pkt;
+
+    while(frame_count < video->data_max_frames)
     {
-        if(frame_count >= video->data_max_frames)
+        ret = av_read_frame(vid_ctx->fmt_ctx, pkt);
+        if(ret < 0) // EOF or error
         {
-            full_decode = false;
+            eof_reached = true;
             break;
         }
 
-        if(vid_ctx->pkt->stream_index == vid_ctx->video_stream_index)
+        if(pkt->stream_index != vid_ctx->video_stream_index)
         {
-            ret = avcodec_send_packet(vid_ctx->codec_ctx, vid_ctx->pkt);
-            if(ret < 0)
-            {
-                LOGE("Error sending packet for decoding");
+            av_packet_unref(pkt);
+            continue;
+        }
+
+        ret = avcodec_send_packet(vid_ctx->codec_ctx, pkt);
+        av_packet_unref(pkt);
+        if(ret < 0) break;
+
+        while(ret >= 0)
+        {
+            ret = avcodec_receive_frame(vid_ctx->codec_ctx, frame);
+            if(ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+            else if(ret < 0) return false;
+
+            // Convert to RGB
+            u8 *dp = video->data + (u64)frame_count * frame_rgb_size;
+            u8 *dest_data[4] = { dp, NULL, NULL, NULL };
+            int dest_linesize[4] = { rgb_stride, 0, 0, 0 };
+            sws_scale(vid_ctx->sws_ctx, (const u8 *const*)frame->data, frame->linesize,
+                      0, height, dest_data, dest_linesize);
+
+            video->pts_buffer[frame_count] = frame->pts;
+            frame_count++;
+            if(frame_count >= video->data_max_frames) {
+                hit_max_buffer = true;
                 break;
             }
-
-            while(ret >= 0)
-            {
-                ret = avcodec_receive_frame(vid_ctx->codec_ctx, vid_ctx->frame);
-                if(ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                    break;
-                else if(ret < 0)
-                {
-                    LOGE("Error during decoding");
-                    return false;
-                }
-
-                // Convert frame to RGB
-                u8 *dp = video->data + (u64)frame_count * frame_rgb_size;
-                u8 *dest_data[4] = { dp, NULL, NULL, NULL };
-
-                int dest_linesize[4] = { rgb_stride, 0, 0, 0 };
-                sws_scale(vid_ctx->sws_ctx, (const u8 *const *)vid_ctx->frame->data, vid_ctx->frame->linesize, 0, height, dest_data, dest_linesize);
-
-                frame_count++;
-                if (frame_count >= video->data_max_frames)
-                    break;
-            }
         }
-        av_packet_unref(vid_ctx->pkt);
     }
 
-    // Fill the output structure
-    video->frame_count = frame_count;
-    video->decode_complete = full_decode;
-    video->total_frame_count = full_decode ? (i64)frame_count : video->total_frame_count;
+    // flush decoder if EOF
+    if(eof_reached)
+    {
+        avcodec_send_packet(vid_ctx->codec_ctx, NULL);
+        while(avcodec_receive_frame(vid_ctx->codec_ctx, frame) == 0 && frame_count < video->data_max_frames)
+        {
+            u8 *dp = video->data + (u64)frame_count * frame_rgb_size;
+            u8 *dest_data[4] = { dp, NULL, NULL, NULL };
+            int dest_linesize[4] = { rgb_stride, 0, 0, 0 };
+            sws_scale(vid_ctx->sws_ctx, (const u8 *const*)frame->data, frame->linesize,
+                      0, height, dest_data, dest_linesize);
 
-    return true;
+            video->pts_buffer[frame_count] = frame->pts;
+            frame_count++;
+        }
+    }
+
+    video->frame_count = frame_count;
+    video->decode_complete = !hit_max_buffer || eof_reached;
+
+    return (frame_count > 0);
 }
 
 bool ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
 {
-    int ret;
-    int rgb_stride = video->w * 3;
+    if (!video->data || video->frame_count == 0) return false;
 
-    LOGI("Encoding video, frame_count: %d, video size: %d %d\n", video->frame_count, video->w, video->h);
+    int width = video->w;
+    int height = video->h;
+    int rgb_stride = width * 3;
+    int frame_rgb_size = rgb_stride * height;
+    int ret;
+
+    LOGI("Encoding chunk, frame_count: %d, video size: %d x %d\n", video->frame_count, width, height);
 
     for (int i = 0; i < video->frame_count; ++i)
     {
         av_frame_make_writable(vid_ctx->enc_frame);
 
-        vid_ctx->enc_frame_src->data[0] = video->data + ((u64)i * rgb_stride * video->h);
+        // Source RGB data
+        vid_ctx->enc_frame_src->data[0] = video->data + ((u64)i * frame_rgb_size);
         vid_ctx->enc_frame_src->linesize[0] = rgb_stride;
 
+        // Convert RGB -> YUV420P
         ret = sws_scale_frame(vid_ctx->enc_sws_ctx, vid_ctx->enc_frame, vid_ctx->enc_frame_src);
         if(ret < 0)
         {
-            LOGW("Error scaling frame");
+            LOGW("Error scaling frame %d", i);
             continue;
         }
 
-        vid_ctx->enc_frame->pts = video->frames_processed++;
+        // Assign continuous PTS based on chunk index + global frames processed
+        // This avoids using potentially huge input PTS and keeps output framerate consistent
+        vid_ctx->enc_frame->pts = video->frames_processed + i;
 
-        // Encode
+        // Send to encoder
         ret = avcodec_send_frame(vid_ctx->enc_codec_ctx, vid_ctx->enc_frame);
         if(ret < 0)
         {
             char err[AV_ERROR_MAX_STRING_SIZE];
             av_strerror(ret, err, sizeof(err));
-            fprintf(stderr, "Error sending frame: %s\n", err);
+            LOGE("Error sending frame to encoder: %s", err);
             continue;
         }
 
+        // Receive and write all packets
         while(ret >= 0)
         {
             ret = avcodec_receive_packet(vid_ctx->enc_codec_ctx, vid_ctx->enc_pkt);
-
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+            if(ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
                 break;
-            else if (ret < 0) {
-                fprintf(stderr, "Error encoding frame\n");
+            else if(ret < 0)
+            {
+                char err[AV_ERROR_MAX_STRING_SIZE];
+                av_strerror(ret, err, sizeof(err));
+                LOGE("Error encoding frame: %s", err);
                 break;
             }
 
             vid_ctx->enc_pkt->stream_index = vid_ctx->enc_video_st->index;
-            av_packet_rescale_ts(vid_ctx->enc_pkt, vid_ctx->enc_codec_ctx->time_base, vid_ctx->enc_video_st->time_base);
+
+            // Rescale to output stream timebase
+            av_packet_rescale_ts(vid_ctx->enc_pkt, vid_ctx->enc_codec_ctx->time_base,
+                                 vid_ctx->enc_video_st->time_base);
+
             av_interleaved_write_frame(vid_ctx->enc_fmt_ctx, vid_ctx->enc_pkt);
             av_packet_unref(vid_ctx->enc_pkt);
         }
     }
-    
+
+    // Update global frames processed for next chunk
+    video->frames_processed += video->frame_count;
 
     return true;
 }
 
 bool ffmpeg_encode_done(VideoCtx *vid_ctx)
 {
-    // Flush encoder
-    avcodec_send_frame(vid_ctx->enc_codec_ctx, NULL);
-    while(avcodec_receive_packet(vid_ctx->enc_codec_ctx, vid_ctx->enc_pkt) == 0)
+    int ret;
+
+    // Flush encoder: send NULL until encoder returns AVERROR_EOF
+    ret = avcodec_send_frame(vid_ctx->enc_codec_ctx, NULL);
+    while (ret >= 0)
     {
+        ret = avcodec_receive_packet(vid_ctx->enc_codec_ctx, vid_ctx->enc_pkt);
+        if (ret == AVERROR(EAGAIN))
+            continue;  // keep sending
+        else if (ret == AVERROR_EOF)
+            break;     // encoder fully flushed
+        else if (ret < 0)
+        {
+            char err[AV_ERROR_MAX_STRING_SIZE];
+            av_strerror(ret, err, sizeof(err));
+            LOGE("Error flushing encoder: %s", err);
+            break;
+        }
+
         vid_ctx->enc_pkt->stream_index = vid_ctx->enc_video_st->index;
-        av_packet_rescale_ts(vid_ctx->enc_pkt, vid_ctx->enc_codec_ctx->time_base, vid_ctx->enc_video_st->time_base);
+
+        // Rescale packet timestamps to output stream timebase
+        av_packet_rescale_ts(vid_ctx->enc_pkt, vid_ctx->enc_codec_ctx->time_base,
+                             vid_ctx->enc_video_st->time_base);
+
         av_interleaved_write_frame(vid_ctx->enc_fmt_ctx, vid_ctx->enc_pkt);
         av_packet_unref(vid_ctx->enc_pkt);
     }
 
     // Write trailer
     av_write_trailer(vid_ctx->enc_fmt_ctx);
+
+    // Optional: flush underlying IO
+    if (!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE) && vid_ctx->enc_fmt_ctx->pb)
+        avio_flush(vid_ctx->enc_fmt_ctx->pb);
 
     return true;
 }
