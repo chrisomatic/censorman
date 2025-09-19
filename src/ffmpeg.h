@@ -53,6 +53,22 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     MemoryZeroStruct(vid_ctx);
 
+    if(is_quiet)
+    {
+        av_log_set_level(AV_LOG_QUIET);
+    }
+    else
+    {
+        switch(log_level)
+        {
+            case LOG_TYPE_ERROR:   av_log_set_level(AV_LOG_ERROR); break;
+            case LOG_TYPE_WARNING: av_log_set_level(AV_LOG_WARNING); break;
+            case LOG_TYPE_INFO:    av_log_set_level(AV_LOG_INFO); break;
+            case LOG_TYPE_VERBOSE: av_log_set_level(AV_LOG_VERBOSE); break;
+            default: av_log_set_level(AV_LOG_INFO); break;
+        }
+    }
+
     //
     // Set up decoding
     //
@@ -93,15 +109,11 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     if (!fps.num || !fps.den) fps = (AVRational){24,1}; // fallback
 
     int64_t nb_frames = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->nb_frames;
-    LOGI("Num frames: %ld", nb_frames);
-
     video->fps = fps.num / (double)fps.den;
-
     video->rotation = _get_rotation(st);
-    LOGI("Video Rotation: %d", video->rotation);
+
 
     enum AVCodecID codec_id = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id;
-    LOGI("Video codec id: %d (%s)", codec_id, avcodec_get_name(codec_id));
 
     vid_ctx->codec = avcodec_find_decoder(vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id);
     if(!vid_ctx->codec)
@@ -140,7 +152,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     int max_frames = floor(settings.max_buffer_size / (double)frame_rgb_size);
 
     // Allocate buffer for up to max frames
-    printf("width: %d, height: %d, frame rgb size: %d, max_frames: %d\n", width, height, frame_rgb_size, max_frames);
+
     u8 *rgb_data = (u8 *)malloc((u64)frame_rgb_size * max_frames);
     if(!rgb_data)
     {
@@ -179,7 +191,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     avformat_alloc_output_context2(&vid_ctx->enc_fmt_ctx, NULL, "mp4", outfile);
     if(!vid_ctx->enc_fmt_ctx)
     {
-        fprintf(stderr, "Could not deduce output format\n");
+        LOGE("Could not deduce output format");
         return false;
     }
 
@@ -197,7 +209,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     if(!vid_ctx->enc_codec)
     {
-        fprintf(stderr, "Encoder not found\n");
+        LOGE("Encoder not found");
         avformat_free_context(vid_ctx->enc_fmt_ctx);
         return false;
     }
@@ -206,7 +218,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     vid_ctx->enc_video_st = avformat_new_stream(vid_ctx->enc_fmt_ctx, NULL);
     if(!vid_ctx->enc_video_st)
     {
-        fprintf(stderr, "Could not create stream\n");
+        LOGE("Could not create stream");
         avformat_free_context(vid_ctx->enc_fmt_ctx);
         return false;
     }
@@ -214,13 +226,19 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     vid_ctx->enc_codec_ctx = avcodec_alloc_context3(vid_ctx->enc_codec);
     if(!vid_ctx->enc_codec_ctx)
     {
-        fprintf(stderr, "Could not allocate codec context\n");
+        LOGE("Could not allocate codec context");
         avformat_free_context(vid_ctx->enc_fmt_ctx);
         return false;
     }
 
+    LOGI("Video Details:");
+    LOGI("  Size:        %d, %d", width, height);
+    LOGI("  Frame count: %ld", nb_frames);
+    LOGI("  FPS:         %f", fps.num / (double)fps.den);
+    LOGI("  Rotation:    %d", video->rotation);
+    LOGI("  Codec:       %s (%d)", avcodec_get_name(codec_id), codec_id);
+
     // Basic encoding settings
-    printf("FPS: %f\n", fps.num / (double)fps.den);
 
     vid_ctx->enc_codec_ctx->codec_id = vid_ctx->enc_codec->id;
     vid_ctx->enc_codec_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
@@ -247,7 +265,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     // Open encoder
     if((ret = avcodec_open2(vid_ctx->enc_codec_ctx, vid_ctx->enc_codec, &vid_ctx->enc_opts)) < 0)
     {
-        fprintf(stderr, "Could not open encoder\n");
+        LOGE("Could not open encoder");
         avcodec_free_context(&vid_ctx->enc_codec_ctx);
         avformat_free_context(vid_ctx->enc_fmt_ctx);
         return false;
@@ -257,7 +275,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     ret = avcodec_parameters_from_context(vid_ctx->enc_video_st->codecpar, vid_ctx->enc_codec_ctx);
     if(ret < 0)
     {
-        fprintf(stderr, "Could not copy codec parameters\n");
+        LOGE("Could not copy codec parameters");
         avcodec_free_context(&vid_ctx->enc_codec_ctx);
         avformat_free_context(vid_ctx->enc_fmt_ctx);
         return false;
@@ -268,13 +286,12 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     snprintf(rotate, sizeof(rotate), "%d", video->rotation);
     av_dict_set(&vid_ctx->enc_video_st->metadata, "rotate", rotate, 0);
 
-
     // Open output file
     if(!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE))
     {
         if(avio_open(&vid_ctx->enc_fmt_ctx->pb, outfile, AVIO_FLAG_WRITE) < 0)
         {
-            fprintf(stderr, "Could not open output file '%s'\n", outfile);
+            LOGE("Could not open output file '%s'", outfile);
             avcodec_free_context(&vid_ctx->enc_codec_ctx);
             avformat_free_context(vid_ctx->enc_fmt_ctx);
             return false;
@@ -284,7 +301,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     // Write header
     if(avformat_write_header(vid_ctx->enc_fmt_ctx, NULL) < 0)
     {
-        fprintf(stderr, "Error occurred writing header\n");
+        LOGE("Error occurred writing header");
         avio_close(vid_ctx->enc_fmt_ctx->pb);
         avcodec_free_context(&vid_ctx->enc_codec_ctx);
         avformat_free_context(vid_ctx->enc_fmt_ctx);
@@ -298,7 +315,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     if(!vid_ctx->enc_frame || !vid_ctx->enc_frame_src || !vid_ctx->enc_pkt)
     {
-        fprintf(stderr, "Could not allocate frame/packet\n");
+        LOGE("Could not allocate frame/packet");
         return false;
     }
 
@@ -317,7 +334,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     if(!vid_ctx->enc_sws_ctx)
     {
-        fprintf(stderr, "Could not init sws context\n");
+        LOGE("Could not init sws context");
         return false;
     }
 
@@ -416,8 +433,6 @@ bool ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
     int rgb_stride = width * 3;
     int frame_rgb_size = rgb_stride * height;
     int ret;
-
-    LOGI("Encoding chunk, frame_count: %d, video size: %d x %d\n", video->frame_count, width, height);
 
     for (int i = 0; i < video->frame_count; ++i)
     {

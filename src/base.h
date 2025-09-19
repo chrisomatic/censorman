@@ -456,6 +456,18 @@ void timer_delay_us(int us)
     usleep(us);
 }
 
+double __stopwatch_t0;
+
+void stopwatch_start()
+{
+    __stopwatch_t0 = timer_get_time();
+}
+
+double stopwatch_time()
+{
+    return (timer_get_time() - __stopwatch_t0);
+}
+
 // Logging
 
 #define LOG_COLOR_BLACK   "30"
@@ -492,6 +504,17 @@ void timer_delay_us(int us)
 
 #endif
 
+typedef enum
+{
+    LOG_TYPE_NONE = 0,
+    LOG_TYPE_ERROR,
+    LOG_TYPE_WARNING,
+    LOG_TYPE_NETWORK,
+    LOG_TYPE_INFO,
+    LOG_TYPE_VERBOSE,
+} LogType;
+
+LogType log_level = LOG_TYPE_INFO;
 static bool is_quiet = false;
 
 static Timer log_timer = {0};
@@ -500,9 +523,10 @@ static void log_init(int log_level)
     timer_begin(&log_timer);
 }
 
-static void print_log(const char* fmt, ...)
+static void print_log(LogType type, const char* fmt, ...)
 {
     if(is_quiet) return;
+    if(type > log_level) return;
 
     va_list args;
     va_start(args, fmt);
@@ -510,13 +534,13 @@ static void print_log(const char* fmt, ...)
     va_end(args);
 }
 
-#define LOG(format, ...) print_log(format, __FILENAME__, __LINE__, timer_get_elapsed(&log_timer), ##__VA_ARGS__)
+#define LOG(type, format, ...) print_log(type, format, __FILENAME__, __LINE__, timer_get_elapsed(&log_timer), ##__VA_ARGS__)
 
-#define LOGE(format,...) LOG(LOG_FMT(E, format), ##__VA_ARGS__) // error
-#define LOGW(format,...) LOG(LOG_FMT(W, format), ##__VA_ARGS__) // warning
-#define LOGI(format,...) LOG(LOG_FMT(I, format), ##__VA_ARGS__) // info
-#define LOGV(format,...) LOG(LOG_FMT(V, format), ##__VA_ARGS__) // verbose
-#define LOGN(format,...) LOG(LOG_FMT(N, format), ##__VA_ARGS__) // network
+#define LOGE(format,...) LOG(LOG_TYPE_ERROR,   LOG_FMT(E, format), ##__VA_ARGS__) // error
+#define LOGW(format,...) LOG(LOG_TYPE_WARNING, LOG_FMT(W, format), ##__VA_ARGS__) // warning
+#define LOGI(format,...) LOG(LOG_TYPE_INFO   , LOG_FMT(I, format), ##__VA_ARGS__) // info
+#define LOGV(format,...) LOG(LOG_TYPE_VERBOSE, LOG_FMT(V, format), ##__VA_ARGS__) // verbose
+#define LOGN(format,...) LOG(LOG_TYPE_NETWORK, LOG_FMT(N, format), ##__VA_ARGS__) // network
 
 //
 // Program-specific types
@@ -657,14 +681,18 @@ typedef struct
     float box_padding_pct; // 0.0 - 1.0
     float frame_smoothing_window; // 0.0 - 1.0
 
+    u32 scaled_size_image;
+    u32 scaled_size_video;
+
     u64 max_buffer_size;
 
     char bbx_output[256];
     bool has_bbx_output;
 
-    bool dry_run;
+    bool no_encoding;
     bool no_scale;
     bool debug;
+    bool verbose;
 } ProgramSettings;
 
 typedef struct

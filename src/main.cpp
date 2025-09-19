@@ -8,9 +8,12 @@
 #include "transform.h"
 #include "util.h"
 
+#define CENSORMAN_VERSION 1
+
 // TODO
 // [ ] Thread the transformations
 // [ ] Add padding to sub-images
+// [ ] Optimize memory usage for --no_encoding
 // [ ] Add Return Code Enum for any errors and success
 // [ ] Consider enabling crude first pass to address video discontinuity
 // [ ] Add lots of test images and --tester mode
@@ -46,6 +49,7 @@ Timer timer = {0};
 ProgramSettings settings = {};
 pthread_t *threads = NULL;
 Image texture_image = {};
+double begin_time = 0.0;
 
 bool init(int argc, char **args);
 bool parse_args(ProgramSettings* settings, int argc, char* argv[]);
@@ -66,7 +70,7 @@ int main(int argc, char** args)
     if(ext_len == 0)
     {
         // load up images from folder
-        LOGI("Loading image from folder %s", settings.input_file_text);
+        LOGV("Loading image from folder %s", settings.input_file_text);
         strncpy(settings.input_directory,settings.input_file_text, strlen(settings.input_file_text));
 
         String ext1 = S(".png");
@@ -80,7 +84,7 @@ int main(int argc, char** args)
 
         for (int i = 0; i < count; ++i)
         {
-            LOGI("File %d: %.*s", i + 1, files[i].len, files[i].data);
+            LOGV("File %d: %.*s", i + 1, files[i].len, files[i].data);
             strncpy(settings.input_files[i].filename, files[i].data, files[i].len);
         }
         settings.input_file_count = count;
@@ -91,7 +95,7 @@ int main(int argc, char** args)
     {
         // single input file, not a folder
 
-        LOGI("File extension: %s", ext);
+        LOGV("File extension: %s", ext);
         bool is_video = (STR_EQUAL(ext, "mp4") || STR_EQUAL(ext, "mov") || STR_EQUAL(ext, "MP4") || STR_EQUAL(ext, "MOV"));
         if(is_video) settings.asset_type = TYPE_VIDEO;
         settings.input_file_count = 1;
@@ -143,7 +147,7 @@ int handle_image()
         String infile;
         infile = StringFormat(scratch, "%s/%s", settings.input_directory, settings.input_files[i].filename);
 
-        LOGI("infile: %.*s", infile.len, infile.data);
+        LOGV("infile: %.*s", infile.len, infile.data);
 
         bool loaded = util_load_image(infile.data, &image);
         if(!loaded) return 1;
@@ -171,21 +175,20 @@ int handle_image()
         }
 
         Image image_scaled = {};
-        const int scaled_size = 640;
+        int scaled_size = settings.scaled_size_image;
         bool use_scaled_image = false;
 
         if(!settings.no_scale)
         {
-            double t0 = timer_get_time();
+            stopwatch_start();
             use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size,0); // @TODO: rotation
-            double elapsed = timer_get_time() - t0;
-            LOGI("Downscale took %.3f ms", elapsed*1000.0);
+            LOGI("Downscale took %.3f ms", stopwatch_time()*1000.0);
             util_write_output(&image_scaled, "output/out_scaled.png");
         }
 
         Rect rects[256] = {};
         int num_rects = use_scaled_image ? process_image(&image_scaled, rects) : process_image(&image, rects);
-        LOGI("Found %d rects", num_rects);
+        LOGV("Found %d rects", num_rects);
 
         if(use_scaled_image)
         {
@@ -241,7 +244,7 @@ int handle_image()
         for(int i = 0; i < settings.transform_count; ++i)
         {
             Transform* t = &settings.transforms[i];
-            LOGI("Applying %s transform...", transform_type_to_str(t->type));
+            LOGV("Applying %s transform...", transform_type_to_str(t->type));
             transform_apply(&image, num_rects, rects,t->type);
         }
 
@@ -250,7 +253,7 @@ int handle_image()
             draw_debugging_info(&image, rects, num_rects);
         }
 
-        if(!settings.dry_run)
+        if(!settings.no_encoding)
         {
             String outfile = StringFormat(scratch, "output/%s", settings.input_files[i].filename);
             LOGI("outfile %d: %.*s", i, outfile.len, outfile.data);
@@ -270,10 +273,12 @@ int handle_video()
 {
     Arena *arena_results = arena_create(ARENA_SIZE_MEDIUM);
 
-    LOGI("Decoding video file %s", settings.input_file_text);
+    LOGI("Opening video file '%s'...", settings.input_file_text);
     
     Video vid = {};
     VideoCtx vid_ctx = {};
+
+    stopwatch_start();
 
     // open
     bool opened = ffmpeg_open(settings.input_file_text, "output/out.mp4", &vid, &vid_ctx);
@@ -282,6 +287,8 @@ int handle_video()
         LOGE("Failed to open stream for video %s", settings.input_file_text);
         return 1;
     }
+
+    LOGI("Opened. [%6.3f s]", stopwatch_time());
 
     FILE *bbx_file = NULL;
     if(settings.has_bbx_output)
@@ -308,7 +315,8 @@ int handle_video()
 
     for(;;)
     {
-        double t0 = timer_get_time();
+        LOGI("Decoding Chunk...");
+        stopwatch_start();
 
         // decode data
         bool decoded = ffmpeg_decode_ctx(&vid, &vid_ctx);
@@ -318,6 +326,8 @@ int handle_video()
             break;
         }
 
+        LOGI("Decoded Chunk (%d / %ld). [%6.3f s] ", vid.frame_count, vid.total_frame_count, stopwatch_time());
+
         // If no frames were decoded, we are done
         if(vid.frame_count == 0 && vid.decode_complete)
         {
@@ -326,8 +336,8 @@ int handle_video()
 
         // run detections
 
-        double elapsed = timer_get_time() - t0;
-        LOGI("Decode took %.3f ms (frame count: %d / %ld), output: %p", elapsed*1000.0, vid.frame_count, vid.total_frame_count, vid.data);
+        LOGI("Detecting faces...");
+        stopwatch_start();
 
         Image* images = (Image*)calloc(settings.thread_count, sizeof(Image));
         Image* images_scaled = (Image*)calloc(settings.thread_count, sizeof(Image));
@@ -343,7 +353,7 @@ int handle_video()
         int actual_thread_count;
 
         int skip_frames = MAX(1, (int)(settings.frame_smoothing_window * vid.fps));
-        LOGI("Skip Frames: %d\n", skip_frames);
+        LOGV("Number of skip frames: %d (Based on %f smoothing window)", skip_frames, settings.frame_smoothing_window);
 
         for(;;)
         {
@@ -384,7 +394,7 @@ int handle_video()
                 if(!settings.no_scale)
                 {
                      // Scale down image
-                    const float scaled_size = 320;
+                    int scaled_size = settings.scaled_size_video;
                     use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
 #if 0
                     char outfile[256] = {};
@@ -461,16 +471,18 @@ int handle_video()
                 }
             }
 
-            LOGI("[Frame %d/%d]: num_faces: %d", frame_counter+1, vid.frame_count, num_faces);
+            LOGV("[Frame %d/%d]: num_faces: %d", frame_counter+1, vid.frame_count, num_faces);
         }
 
+        LOGI("Detection done. [%6.3f s]", stopwatch_time());
         
         //  
         //  |------|------|------|
         // rl0     x      x     rl1
         //
 
-        LOGI("Lerping boxes (Frame count: %d)", vid.frame_count);
+        LOGI("Interpolating Boxes...");
+        stopwatch_start();
 
         RectList rl0 = {};
         RectList rl1 = {};
@@ -602,11 +614,15 @@ int handle_video()
                 i += frames_in_between;
             }
         }
+
+        LOGI("Interpolation done. [%6.3f s]", stopwatch_time());
         
         int zero_rects_frames = 0;
 
         // perform transformations
-        LOGI("Applying transformation...");
+        LOGI("Applying transformations...");
+        stopwatch_start();
+
         for(int i = 0; i < vid.frame_count; ++i)
         {
             // Get frame
@@ -687,20 +703,19 @@ int handle_video()
             }
         }
 
+        LOGV("Number of zero rect frames: %d", zero_rects_frames);
+        LOGI("Transformations done. [%6.3f s]", stopwatch_time());
+
         total_frame_count += vid.frame_count;
         if(bbx_file)
         {
             fflush(bbx_file);
         }
 
-        LOGI("Number of zero rect frames: %d\n", zero_rects_frames);
-
-        LOGI("Transformations done!");
-
-        if(!settings.dry_run)
+        if(!settings.no_encoding)
         {
-            // encode data
-            double _t0 = timer_get_time();
+            LOGI("Encoding chunk...");
+            stopwatch_start();
             bool encoded = ffmpeg_encode_ctx(&vid, &vid_ctx);
             if(!encoded)
             {
@@ -708,15 +723,13 @@ int handle_video()
                 return 1;
             }
 
-            double _elapsed = timer_get_time() - _t0;
-            LOGI("Encode took %.3f ms", _elapsed*1000.0);
+            LOGI("Encode done. [%6.3f s]", stopwatch_time());
         }
 
         // exit if video is done
         if(vid.decode_complete)
         {
-            if(!settings.dry_run) ffmpeg_encode_done(&vid_ctx);
-            LOGI("Complete!");
+            if(!settings.no_encoding) ffmpeg_encode_done(&vid_ctx);
             break;
         }
     }
@@ -725,9 +738,11 @@ int handle_video()
     {
         // Write the total frame count in the header after done
         FileWriteU32AtIndex(bbx_file, total_frame_count, BBX_FRAME_COUNT_OFFSET);
-        printf("total frame count: %u\n", total_frame_count);
         fclose(bbx_file);
     }
+
+    double elapsed_time = timer_get_time() - begin_time;
+    LOGI("Complete! [%6.3f s]", elapsed_time);
 
     // ffmpeg_close(&vid_ctx);
 
@@ -766,6 +781,8 @@ bool init(int argc, char **args)
 {
     // init
     timer_init();
+    begin_time = timer_get_time();
+
     log_init(0);
 
     time_t t;
@@ -789,25 +806,53 @@ bool init(int argc, char **args)
     settings.input_file_count = 0;
     settings.max_buffer_size = 4UL*1024UL*1024UL*1024UL; // 4GB
     settings.box_padding_pct = 0.15;
-    settings.dry_run = false;
+    settings.no_encoding = false;
+    settings.verbose = false;
     settings.has_bbx_output = false;
+    settings.scaled_size_image = 640;
+    settings.scaled_size_video = 320;
 
     bool parse = parse_args(&settings, argc, args);
     if(!parse) return false;
 
+    if(settings.verbose)
+    {
+        log_level = LOG_TYPE_VERBOSE;
+    }
+
+    // print title
+    if(!is_quiet)
+    {
+        printf("[CENSORMAN V%d]\n", CENSORMAN_VERSION);
+        printf("    _O_\n");
+        printf("  /|-x-|\\\n");
+        printf(" /  \\_/  \\\n");
+        printf("    / \\\n");
+        printf("  _/   \\_\n");
+    }
+
     // print settings
-    LOGI("--- Settings ---");
-    LOGI("  Thread Count: %d", settings.thread_count);
-    LOGI("  Confidence Threshold: %d", settings.confidence_threshold);
-    LOGI("  NMS IOU Threshold: %f", settings.nms_iou_threshold);
-    LOGI("  Texture: %s", settings.has_texture ? settings.texture_image_path : "(None)");
-    LOGI("  Block Scale: %f", settings.block_scale);
-    LOGI("  Max Buffer Size: %lu B", settings.max_buffer_size);
-    LOGI("  Box Padding Percentage: %f", settings.box_padding_pct);
-    LOGI("  Dry Run: %s", BOOLSTR(settings.dry_run));
-    LOGI("  Debug: %s", settings.debug ? "ON" : "OFF");
-    LOGI("----------------");
-    
+    LOGI("");
+    LOGI("=============== Settings ===============");
+    LOGI("  File Count:             %d", settings.input_file_count);
+    LOGI("  Asset Type:             %s", settings.asset_type == TYPE_IMAGE ? "Image" : "Video");
+    LOGI("  Thread Count:           %d", settings.thread_count);
+    LOGI("  Confidence Threshold:   %d", settings.confidence_threshold);
+    LOGI("  Blur Strength:          %f", settings.blur_strength);
+    LOGI("  NMS IOU Threshold:      %f", settings.nms_iou_threshold);
+    LOGI("  Block Scale:            %f", settings.block_scale);
+    LOGI("  Texture:                %s", settings.has_texture ? settings.texture_image_path : "(None)");
+    LOGI("  Max Buffer Size:        %lu B", settings.max_buffer_size);
+    LOGI("  Box Padding Percent:    %f", settings.box_padding_pct);
+    LOGI("  Frame Smoothing Window: %f", settings.frame_smoothing_window);
+    LOGI("  No Encoding:            %s", BOOLSTR(settings.no_encoding));
+    LOGI("  Downscaling:            %s (%d px)", settings.no_scale ? "No" : "Yes", settings.asset_type == TYPE_IMAGE ? settings.scaled_size_image : settings.scaled_size_video);
+    LOGI("  Bounding Box Output:    %s", settings.has_bbx_output ? settings.bbx_output : "(None)");
+    LOGI("  Debug:                  %s", settings.debug ? "ON" : "OFF");
+    LOGI("  Verbose:                %s", settings.verbose ? "ON" : "OFF");
+    LOGI("========================================");
+    LOGI("");
+
     // initialize memory arenas used in program
     for(int i = 0; i < settings.thread_count; ++i)
     {
@@ -824,7 +869,7 @@ bool init(int argc, char **args)
 void print_help()
 {
     printf("\n[USAGE]\n");
-    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strngth <blur_strength>] [--buffer_size <buffer_size>] [--dry_run] [--is_quiet]\n");
+    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strngth <blur_strength>] [--buffer_size <buffer_size>] [--no_encoding] [--is_quiet]\n");
     printf("\n[DESCRIPTION]\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
     printf("\n[ARGUMENTS]\n");
     printf("  in_file:              Path to input image file (or folder) (.jpg, .png, .bmp)\n");
@@ -839,8 +884,9 @@ void print_help()
     printf("  blur_strength:        Value between 0.0 and 1.0. Used in the Gaussian Blur (Default: 0.50)\n");
     printf("  frame_smoothing_window:  Smoothing window for lerping between frames of video (Default: 0.150 or 150ms)");
     printf("  buffer_size:          Number of bytes for video frames during conversion (Default: 4 GB)\n");
+    printf("  scaled_size:          The longest dimension in pixels to scale down to (Default: 640 for images, 320 for videos)\n");
     printf("  box_padding_pct:      Added percentage of padding to detected boxes (Default: 0.15)\n");
-    printf("  dry_run:              Prevents writing output image or video file\n");
+    printf("  no_encoding:          Prevents writing output image or video file\n");
     printf("  bbx_output_filepath:  Bounding boxes output file. Specify if you want this file output.\n");
     printf("  is_quiet:             Suppress standard log output\n");
     printf("\n");
@@ -868,8 +914,10 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                         settings->debug = true;
                     else if(STR_EQUAL(&argv[i][2],"quiet"))
                         is_quiet = true;
-                    else if(STR_EQUAL(&argv[i][2],"dry_run"))
-                        settings->dry_run = true;
+                    else if(STR_EQUAL(&argv[i][2],"verbose"))
+                        settings->verbose = true;
+                    else if(STR_EQUAL(&argv[i][2],"no_encoding"))
+                        settings->no_encoding = true;
                     else if(STR_EQUAL(&argv[i][2],"no_scale"))
                         settings->no_scale = true;
                     else if(STR_EQUAL(&argv[i][2],"block_scale"))
@@ -927,6 +975,20 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             i++;
                             u64 n = atol(argv[i]);
                             if(n > 0) settings->max_buffer_size = n;
+                        }
+                    }
+                    else if(STR_EQUAL(&argv[i][2],"scaled_size"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            u32 n = atoi(argv[i]);
+
+                            if(n > 0)
+                            {
+                                settings->scaled_size_image = n;   
+                                settings->scaled_size_video = n;
+                            }
                         }
                     }
                     else if(STR_EQUAL(&argv[i][2],"box_padding_pct"))
@@ -989,13 +1051,17 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                                 else if(STR_EQUAL(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
                                 else if(STR_EQUAL(buf, "texture"))  type = TRANSFORM_TYPE_TEXTURE;
 
-                                memset(buf,256,0);
+                                memset(buf,0,256);
                                 bufi = 0;
 
                                 if(type != TRANSFORM_TYPE_NONE)
                                 {
                                     Transform *t = &settings->transforms[settings->transform_count++];
                                     t->type = type;
+                                }
+                                else
+                                {
+                                    LOGW("Transform type is None (string: %s)", buf);
                                 }
                             }
                         }

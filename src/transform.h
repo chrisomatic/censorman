@@ -533,6 +533,14 @@ void transform_stretch_image(Image *dst, Image *src, Rect r)
             // Get the destination pixel's starting index
             u8 *dst_pixel = dst->data + (r.y + dy) * dst->step + (r.x + dx) * dst->n;
 
+            // check for magenta pixel on src
+            bool ignore = (src_pixel[0] == 0xFF && src_pixel[1] == 0x00 && src_pixel[2]);
+
+            if(ignore)
+            {
+                continue;
+            }
+
             // Copy pixel data (assume both images have the same number of channels)
             for (int c = 0; c < src->n; c++)
                 dst_pixel[c] = src_pixel[c];

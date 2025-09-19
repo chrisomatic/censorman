@@ -18,7 +18,7 @@ bool util_load_image(char* input_file, Image* image)
         return false;
     }
 
-    LOGI("Loaded image! w: %d h: %d n: %d", image->w,image->h,image->n);
+    LOGV("Loaded image %s [w: %d h: %d n: %d]", input_file, image->w,image->h,image->n);
 
     if(n < 3)
     {
