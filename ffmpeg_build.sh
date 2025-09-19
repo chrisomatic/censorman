@@ -25,8 +25,9 @@ cd ../ffmpeg_source
 
 # Download FFmpeg source
 # curl -L https://ffmpeg.org/releases/ffmpeg-8.0.tar.bz2 | tar xj
-git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg-master
-cd ffmpeg-master
+git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
+git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg --depth 1 --branch n8.0
+cd ffmpeg
 
 # Configure for minimal static build: MP4 container + H.264 decoder only
 ./configure \

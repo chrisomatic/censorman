@@ -34,6 +34,38 @@ This project uses the libfacedetection model created by Shiqi Yu on GitHub (http
 
 FFMPEG is being pulled, built, and statically linked for this project
 
+## Usage
+
+```
+[USAGE]
+    censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strength <blur_strength>] [--max_buffer_size <buffer_size>] [--scaled_size <scaled_size>] [--box_padding_pct <padding_pct>] [--no_scale] [--no_encoding] [--quiet] [--verbose]
+
+[DESCRIPTION]
+    Takes an image or video file, detects regions of human faces (for now), applies transformations on those regions and writes back an output file
+
+[ARGUMENTS]
+    in_file:              Path to input image (or video) file (or folder) (.jpg, .png, .bmp, .mp4, .mov)
+    out_file:             Path to output image (or video) file (.jpg, .png, .bmp, .mp4)
+    class_list:           {face}
+    transform_list:       {pixelate, blur, blackout, scramble, texture}
+    confidence_threshold: Discard any boxes lower than this (0 - 100)
+    thread_count:         How many threads to use to detect (default to number of cores)
+    debug:                Print debug info and draw boxes on output image
+    texture_image_path:   Used with 'texture' transform
+    block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform
+    blur_strength:        Value between 0.0 and 1.0. Blur is a box blur. (Default: 0.50)
+    frame_smoothing_window:  Smoothing window for lerping between frames of video (Default: 0.150 or 150m
+    buffer_size:          Number of bytes for video frames during conversion (Default: 1 GB)
+    scaled_size:          The longest dimension in pixels to scale down to (Default: 640 for images, 320 for videos)
+    padding_pct:          Added percentage of padding to detected boxes (Default: 0.15)
+    no_encoding:          Prevents writing output image or video file
+    bbx_output_filepath:  Bounding boxes output file. Specify if you want this file output.
+    no_scale:             Disables downscaling of images and videos before detections
+    quiet:                Suppress standard log output
+    verbose:              Enable verbose log output
+
+```
+
 ## Bounding Box File Format
 
 The Bounding Box file can be specified as an output on command line. All integer types are stored in little-endian byte order.
@@ -76,29 +108,3 @@ Where f = 0 to Number of Frames
 | ...   | ...            |      ... |       ... | ...                            |
 |f + N  | Box N Data     |          |           |                                |
 
-## Usage
-
-```
-[USAGE]
-    censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strngth <blur_strength>] [--buffer_size <buffer_size>] [--dry_run] [--is_quiet]
-
-[DESCRIPTION]
-    Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file
-
-[ARGUMENTS]
-    in_file:              Path to input image file (or folder) (.jpg, .png, .bmp)
-    out_file:             Path to output image file (.jpg, .png, .bmp)
-    class_list:           {face}
-    transform_list:       {pixelate, blur, blackout, scramble, texture}
-    confidence_threshold: Discard any boxes lower than this (0 - 100)
-    thread_count:         How many threads to use to detect (default to number of cores)
-    debug:                Print debug info and draw boxes on output image
-    texture_image_path:   Used with 'texture' transform
-    block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform
-    blur_strength:        Value between 0.0 and 1.0. Used in the Gaussian Blur (Default: 0.50)
-    buffer_size:          Number of bytes for video frames during conversion (Default: 4 GB)
-    box_padding_pct:      Added percentage of padding to detected boxes (Default: 0.15)
-    dry_run:              Prevents writing output image or video file
-    bbx_output_filepath:  Bounding boxes output file. Specify if you want this file output.
-    is_quiet:             Suppress standard log output
-```

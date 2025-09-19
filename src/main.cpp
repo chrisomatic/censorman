@@ -19,13 +19,13 @@
 // [ ] Add lots of test images and --tester mode
 // [ ] Implement thread pool (mutex vs spin-lock)
 // [ ] Statically compile ncnn (Tencent) inference engine
-// [ ] Clean up CLI interface and standard output
 // [ ] Add audio stream encoding (1:1)
 // [ ] Add YuNet model (.bin and .param) to compare accuracy
 // [ ] Fix builds for MacOS
 
 
 // DONE
+// [x] Clean up CLI interface and standard output
 // [x] Use an exponential smooth instead of lerp for video frames
 // [x] Fix 'Could not find ref with POC' bug with some videos
 // [x] Add 'frame_smoothing_window' parameter (default: 150ms)
@@ -311,7 +311,12 @@ int handle_video()
         }
     }
 
-    u32 total_frame_count = 0;
+    double total_time_decoding = 0.0;
+    double total_time_detecting = 0.0;
+    double total_time_transforming = 0.0;
+    double total_time_encoding = 0.0;
+
+    u32 total_frames_processed = 0;
 
     for(;;)
     {
@@ -326,7 +331,9 @@ int handle_video()
             break;
         }
 
-        LOGI("Decoded Chunk (%d / %ld). [%6.3f s] ", vid.frame_count, vid.total_frame_count, stopwatch_time());
+        double decode_time = stopwatch_time();
+        total_time_decoding += decode_time;
+        LOGI("Decoded Chunk (Size: %d). [%6.3f s] ", vid.frame_count, decode_time);
 
         // If no frames were decoded, we are done
         if(vid.frame_count == 0 && vid.decode_complete)
@@ -474,15 +481,14 @@ int handle_video()
             LOGV("[Frame %d/%d]: num_faces: %d", frame_counter+1, vid.frame_count, num_faces);
         }
 
-        LOGI("Detection done. [%6.3f s]", stopwatch_time());
+        double detect_time = stopwatch_time();
+        total_time_detecting += detect_time;
+        LOGI("Detection done. [%6.3f s]", detect_time);
         
         //  
         //  |------|------|------|
         // rl0     x      x     rl1
         //
-
-        LOGI("Interpolating Boxes...");
-        stopwatch_start();
 
         RectList rl0 = {};
         RectList rl1 = {};
@@ -615,8 +621,6 @@ int handle_video()
             }
         }
 
-        LOGI("Interpolation done. [%6.3f s]", stopwatch_time());
-        
         int zero_rects_frames = 0;
 
         // perform transformations
@@ -704,9 +708,12 @@ int handle_video()
         }
 
         LOGV("Number of zero rect frames: %d", zero_rects_frames);
-        LOGI("Transformations done. [%6.3f s]", stopwatch_time());
 
-        total_frame_count += vid.frame_count;
+        double transform_time = stopwatch_time();
+        total_time_transforming += transform_time;
+        LOGI("Transformations done. [%6.3f s]", transform_time);
+
+        total_frames_processed += vid.frame_count;
         if(bbx_file)
         {
             fflush(bbx_file);
@@ -723,8 +730,12 @@ int handle_video()
                 return 1;
             }
 
-            LOGI("Encode done. [%6.3f s]", stopwatch_time());
+            double encode_time = stopwatch_time();
+            total_time_encoding += encode_time;
+            LOGI("Encode done. [%6.3f s]", encode_time);
         }
+
+        LOGI("Progress: %d / %d [%d%]", total_frames_processed, vid.total_frame_count, (int)(100.0f*total_frames_processed / (float)vid.total_frame_count));
 
         // exit if video is done
         if(vid.decode_complete)
@@ -732,17 +743,27 @@ int handle_video()
             if(!settings.no_encoding) ffmpeg_encode_done(&vid_ctx);
             break;
         }
+
     }
 
     if(bbx_file)
     {
         // Write the total frame count in the header after done
-        FileWriteU32AtIndex(bbx_file, total_frame_count, BBX_FRAME_COUNT_OFFSET);
+        FileWriteU32AtIndex(bbx_file, total_frames_processed, BBX_FRAME_COUNT_OFFSET);
         fclose(bbx_file);
     }
 
-    double elapsed_time = timer_get_time() - begin_time;
-    LOGI("Complete! [%6.3f s]", elapsed_time);
+    double total_processing_time = total_time_decoding + total_time_detecting + total_time_transforming + total_time_encoding;
+    double total_elapsed_time = timer_get_time() - begin_time;
+
+    LOGI("Complete!");
+
+    LOGI("Total Time Decoding:     %6.3f s [%02d%]", total_time_decoding, (int)(100.0f*total_time_decoding / total_processing_time));
+    LOGI("Total Time Detecting:    %6.3f s [%02d%]", total_time_detecting, (int)(100.0f*total_time_detecting / total_processing_time));
+    LOGI("Total Time Transforming: %6.3f s [%02d%]", total_time_transforming, (int)(100.0f*total_time_transforming / total_processing_time));
+    LOGI("Total Time Encoding:     %6.3f s [%02d%]", total_time_encoding, (int)(100.0f*total_time_encoding / total_processing_time));
+    LOGI("Total Time:              %6.3f s", total_elapsed_time);
+
 
     // ffmpeg_close(&vid_ctx);
 
@@ -804,7 +825,7 @@ bool init(int argc, char **args)
     settings.block_scale = 0.16;
     settings.frame_smoothing_window = 0.150;
     settings.input_file_count = 0;
-    settings.max_buffer_size = 4UL*1024UL*1024UL*1024UL; // 4GB
+    settings.max_buffer_size = 1UL*1024UL*1024UL*1024UL; // 1GB
     settings.box_padding_pct = 0.15;
     settings.no_encoding = false;
     settings.verbose = false;
@@ -869,26 +890,28 @@ bool init(int argc, char **args)
 void print_help()
 {
     printf("\n[USAGE]\n");
-    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strngth <blur_strength>] [--buffer_size <buffer_size>] [--no_encoding] [--is_quiet]\n");
-    printf("\n[DESCRIPTION]\n  Takes an image file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
+    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strength <blur_strength>] [--max_buffer_size <buffer_size>] [--scaled_size <scaled_size>] [--box_padding_pct <padding_pct>] [--no_scale] [--no_encoding] [--quiet] [--verbose]\n");
+    printf("\n[DESCRIPTION]\n  Takes an image or video file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
     printf("\n[ARGUMENTS]\n");
-    printf("  in_file:              Path to input image file (or folder) (.jpg, .png, .bmp)\n");
-    printf("  out_file:             Path to output image file (.jpg, .png, .bmp)\n");
-    printf("  class_list:           {face}\n");
-    printf("  transform_list:       {pixelate, blur, blackout, scramble, texture}\n");
-    printf("  confidence_threshold: Discard any boxes lower than this (0 - 100)\n");
-    printf("  thread_count:         How many threads to use to detect (default to number of cores)\n");
-    printf("  debug:                Print debug info and draw boxes on output image\n");
-    printf("  texture_image_path:   Used with 'texture' transform\n");
-    printf("  block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform\n");
-    printf("  blur_strength:        Value between 0.0 and 1.0. Used in the Gaussian Blur (Default: 0.50)\n");
-    printf("  frame_smoothing_window:  Smoothing window for lerping between frames of video (Default: 0.150 or 150ms)");
-    printf("  buffer_size:          Number of bytes for video frames during conversion (Default: 4 GB)\n");
-    printf("  scaled_size:          The longest dimension in pixels to scale down to (Default: 640 for images, 320 for videos)\n");
-    printf("  box_padding_pct:      Added percentage of padding to detected boxes (Default: 0.15)\n");
-    printf("  no_encoding:          Prevents writing output image or video file\n");
-    printf("  bbx_output_filepath:  Bounding boxes output file. Specify if you want this file output.\n");
-    printf("  is_quiet:             Suppress standard log output\n");
+    printf("  in_file:                Path to input image (or video) file (or folder) (.jpg, .png, .bmp, .mp4, .mov)\n");
+    printf("  out_file:               Path to output image (or video) file (.jpg, .png, .bmp, .mp4)\n");
+    printf("  class_list:             {face}\n");
+    printf("  transform_list:         {pixelate, blur, blackout, scramble, texture}\n");
+    printf("  confidence_threshold:   Discard any boxes lower than this (0 - 100)\n");
+    printf("  thread_count:           How many threads to use to detect (default to number of cores)\n");
+    printf("  debug:                  Draw boxes and confidence labels on output image/video\n");
+    printf("  texture_image_path:     Used with 'texture' transform\n");
+    printf("  block_scale:            Value between 0.0 and 1.0. Used to scale blocks in pixelate transform\n");
+    printf("  blur_strength:          Value between 0.0 and 1.0. Blur is a box blur. (Default: 0.50)\n");
+    printf("  frame_smoothing_window: Smoothing window for lerping between frames of video (Default: 0.150 or 150ms)\n");
+    printf("  buffer_size:            Number of bytes for video frames during conversion (Default: 1 GB)\n");
+    printf("  scaled_size:            The longest dimension in pixels to scale down to (Default: 640 for images, 320 for videos)\n");
+    printf("  padding_pct:            Added percentage of padding to detected boxes (Default: 0.15)\n");
+    printf("  no_encoding:            Prevents writing output image or video file\n");
+    printf("  bbx_output_filepath:    Bounding boxes output file. Specify if you want this file output.\n");
+    printf("  no_scale:               Disables downscaling of images and videos before detections\n");
+    printf("  quiet:                  Suppress standard log output\n");
+    printf("  verbose:                Enable verbose log output\n");
     printf("\n");
 }
 
@@ -968,7 +991,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->has_bbx_output = true;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"buffer_size"))
+                    else if(STR_EQUAL(&argv[i][2],"max_buffer_size"))
                     {
                         if(i < argc-1)
                         {
@@ -986,6 +1009,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
 
                             if(n > 0)
                             {
+                                printf("n: %d\n", n);
                                 settings->scaled_size_image = n;   
                                 settings->scaled_size_video = n;
                             }
