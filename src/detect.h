@@ -1,4 +1,5 @@
 #include "base.h"
+#include "platform.h"
 #include "transform.h"
 #include "util.h"
 #include "facedetectcnn.h"
@@ -12,7 +13,7 @@ void* detect_faces(void* arg)
 {
     Image* image = (Image*)arg;
 
-    int *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step); 
+    int *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step, (float)(settings.confidence_threshold / 100.0f));
     int num_faces = (results ? *results : 0);
 
     image->result = (u8*)arena_alloc((Arena*)image->arena, sizeof(int) + num_faces*sizeof(Rect));
@@ -123,7 +124,6 @@ int process_image(Image* image,Rect* ret_rects)
     for(int i = 0; i < settings.thread_count; ++i)
     {
         Arena* arena = thread_arenas[actual_thread_count];
-        pthread_t* thread = &threads[actual_thread_count];
         Image* sub_image = sub_images[actual_thread_count];
 
         // calculate offset into base image
@@ -139,7 +139,7 @@ int process_image(Image* image,Rect* ret_rects)
         sub_image->subx = x;
         sub_image->suby = y;
 
-        if(pthread_create(thread, NULL, detect_faces, (void*)sub_image) == 0)
+        if(thread_create(&threads[actual_thread_count], detect_faces, (void*)sub_image) == 0)
         {
             //LOGI("Thread %d started (%d, %d)", i, x, y);
             actual_thread_count++;
@@ -160,7 +160,7 @@ int process_image(Image* image,Rect* ret_rects)
     for(int i = 0; i < settings.thread_count; ++i)
     {
         //LOGI("Thread %d joined", i);
-        pthread_join(threads[i], NULL);
+        thread_join(threads[i]);
     }
 
     double detection_time = timer_get_elapsed(&timer);
@@ -183,9 +183,6 @@ int process_image(Image* image,Rect* ret_rects)
             for(int j = 0; j < sub_faces_found; ++j)
             {
                 Rect* r = (Rect*)(ret_rects+offset);
-                if(r->confidence < settings.confidence_threshold) // filter out low-confidence regions
-                    continue;
-
                 if(r->x >= image->w || r->y >= image->h)
                     continue;
 

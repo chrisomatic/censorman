@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <pthread.h>
 
 #include "base.h"
 #include "platform.h"
@@ -11,6 +10,7 @@
 #define CENSORMAN_VERSION 1
 
 // TODO
+// [ ] Get Windows support working
 // [ ] Add a output_size CLI parameter
 // [ ] Optimize memory usage for --no_encoding
 // [ ] Add Return Code Enum for any errors and success
@@ -48,7 +48,6 @@ Arena* thread_arenas[MAX_ARENAS] = {0};
 
 Timer timer = {0};
 ProgramSettings settings = {};
-pthread_t *threads = NULL;
 Image texture_image = {};
 double begin_time = 0.0;
 
@@ -115,7 +114,7 @@ int main(int argc, char** args)
     }
 
     // initialize threads
-    threads = (pthread_t *)calloc(settings.thread_count,sizeof(pthread_t));
+    thread_init(settings.thread_count);
 
     if(settings.has_texture)
     {
@@ -381,8 +380,6 @@ int handle_video()
             for(int i = 0; i < settings.thread_count; ++i)
             {
                 Arena* arena = thread_arenas[actual_thread_count];
-                pthread_t* thread = &threads[actual_thread_count];
-
                 Image* image = &images[actual_thread_count];
                 Image* image_scaled = &images_scaled[actual_thread_count];
 
@@ -414,7 +411,7 @@ int handle_video()
                 reverse_rgb_order(use_scaled[i] ? image_scaled : image);
 
                 // start detection thread
-                if(pthread_create(thread, NULL, detect_faces, (void*)(use_scaled[i] ? image_scaled : image)) == 0)
+                if(thread_create(&threads[actual_thread_count], detect_faces, (void*)(use_scaled[i] ? image_scaled : image)) == 0)
                 {
                     actual_thread_count++;
                 }
@@ -434,7 +431,7 @@ int handle_video()
             // join all threads back
             for(int i = 0; i < actual_thread_count; ++i)
             {
-                pthread_join(threads[i], NULL);
+                thread_join(threads[i]);
             }
             
             // Gather results
@@ -459,8 +456,6 @@ int handle_video()
                     for(int j = 0; j < _faces_found; ++j)
                     {
                         Rect* r = (Rect*)(ret_rects+offset);
-                        if(r->confidence < settings.confidence_threshold) // filter out low-confidence regions
-                            continue;
 
                         if(use_scaled[i])
                         {
@@ -628,6 +623,7 @@ int handle_video()
         LOGI("Applying transformations...");
         stopwatch_start();
 
+        LOGV("Iterating through video frames (Total: %d)", vid.frame_count);
         for(int i = 0; i < vid.frame_count; ++i)
         {
             // Get frame
@@ -645,7 +641,7 @@ int handle_video()
 
             if(!ptr)
             {
-                //LOGW("No output at Frame %d", i);
+                LOGV("No output at Frame %d", i);
                 continue;
             }
 
@@ -684,15 +680,12 @@ int handle_video()
                     util_write_bbx_to_file(bbx_file, &rects[j]);
                 }
 
+                LOGV("[Frame %d][Rect %d] %u %u %u %u (%u%)", i, j, rects[j].x, rects[j].y, rects[j].w, rects[j].h, rects[j].confidence);
             }
 
             if(num_rects == 0)
             {
                 zero_rects_frames++;
-            }
-            else
-            {
-                //printf("[Frame %d][Rect %d] %u %u %u %u (%u)\n", i, 0, rects[0].x, rects[0].y, rects[0].w, rects[0].h, rects[0].confidence);
             }
 
             // Apply transformations
@@ -813,12 +806,12 @@ bool init(int argc, char **args)
     // set default settings
     memset(settings.input_file_text,0,256);
     memset(settings.bbx_output,0,256);
-    settings.thread_count = MAX(1, util_get_core_count()); // default to num_cores
+    settings.thread_count = MAX(1, util_get_core_count()*2); // default to num_cores
     settings.asset_type = TYPE_IMAGE;
     settings.classification = CLASS_FACE;
     settings.transform_count = 0;
     settings.debug = false;
-    settings.confidence_threshold = 0;
+    settings.confidence_threshold = 20;
     settings.nms_iou_threshold = 0.6;
     settings.blur_strength = 0.50;
     settings.has_texture = false;
@@ -899,7 +892,7 @@ void print_help()
     printf("  class_list:             {face}\n");
     printf("  transform_list:         {pixelate, blur, blackout, scramble, texture}\n");
     printf("  confidence_threshold:   Discard any boxes lower than this (0 - 100)\n");
-    printf("  thread_count:           How many threads to use to detect (default to number of cores)\n");
+    printf("  thread_count:           How many threads to use to detect (default to number of cores * 2)\n");
     printf("  debug:                  Draw boxes and confidence labels on output image/video\n");
     printf("  texture_image_path:     Used with 'texture' transform\n");
     printf("  block_scale:            Value between 0.0 and 1.0. Used to scale blocks in pixelate transform\n");

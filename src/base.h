@@ -25,11 +25,14 @@
 #include <windows.h>
 #include <profileapi.h>
 #include <handleapi.h>
+#include <processthreadsapi.h>
+#include <synchapi.h>
 #else
 #include <unistd.h> // for usleep
 #include <sys/time.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <pthread.h>
 #endif
 
 #include <assert.h>

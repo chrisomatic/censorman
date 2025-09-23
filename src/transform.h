@@ -443,6 +443,7 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
 {
     u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
     u8* curr = start;
+    u8* limit = &image->data[image->w*image->h*image->n -1];
 
     int n = image->n;
     int step = image->w*n;
@@ -474,15 +475,22 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
 
             curr = start + y*block_size_y*step + x*block_size_x*n;
 
+
             for(int j = 0; j < block_size_y; ++j)
             {
+                if(curr > limit)
+                {
+                    LOGV("Hit end of image!");
+                    break;
+                }
                 for(int i = 0; i < block_size_x; ++i)
                 {
                     avg_r += curr[i*n+0];
                     avg_g += curr[i*n+1];
                     avg_b += curr[i*n+2];
                 }
-                curr += step;
+
+                curr += MIN(step, limit - curr);
             }
 
             avg_r /= total_block_size;
@@ -496,6 +504,7 @@ void transform_pixelate(Image* image, Rect r, float block_scale)
 
             // apply avgcolor to range
             curr = start + y*block_size_y*step + x*block_size_x*n;
+
             for(int j = 0; j < block_size_y - offset_y; ++j)
             {
                 for(int i = 0; i < block_size_x - offset_x; ++i)

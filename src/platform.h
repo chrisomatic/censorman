@@ -2,6 +2,50 @@
 
 #include "base.h"
 
+#if PLATFORM == PLATFORM_WINDOWS
+
+HANDLE *threads  = NULL;
+
+bool thread_init(int count)
+{
+    threads = (HANDLE *)calloc(count,sizeof(HANDLE));
+    return false;
+}
+
+int thread_create(HANDLE *thread, void *(func)(void *), void *arg)
+{
+    *thread = CreateThread(NULL, 0, func, arg, 0, NULL);
+    return (*thread != NULL);
+}
+
+int thread_join(HANDLE thread)
+{
+    return WaitForSingleObject(thread, INFINITE);
+}
+
+#else
+
+pthread_t *threads = NULL;
+
+bool thread_init(int count)
+{
+    threads = (pthread_t *)calloc(count,sizeof(pthread_t));
+    return (threads != NULL);
+}
+
+int thread_create(pthread_t *thread, void *(func)(void *), void *arg)
+{
+    return (pthread_create(thread, NULL, func, arg));
+}
+
+int thread_join(pthread_t thread)
+{
+    return (pthread_join(thread,NULL));
+}
+
+#endif
+
+
 int platform_get_files_in_folder(Arena* arena, String folder_path, String* extensions, int extension_count, String** out_files)
 {
     int file_count = 0;
