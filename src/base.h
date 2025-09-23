@@ -694,8 +694,10 @@ typedef struct
 
     bool no_encoding;
     bool no_scale;
+    bool no_rotate;
     bool debug;
     bool verbose;
+
 } ProgramSettings;
 
 typedef struct

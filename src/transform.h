@@ -805,11 +805,7 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
 }
 
 
-void transform_rect_upscale_rotate_inverse(
-    Rect* r,
-    u16 det_w, u16 det_h,   // detector (downscaled+rotated) image size
-    u16 orig_w, u16 orig_h, // original frame size
-    int rotation)
+void transform_rect_upscale_rotate_inverse(Rect* r,u16 det_w, u16 det_h, u16 orig_w, u16 orig_h, int rotation)
 {
     float scale_x, scale_y;
 
@@ -831,6 +827,11 @@ void transform_rect_upscale_rotate_inverse(
             break;
     }
 
+    // printf("Rect before transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+
+    float minx = 1e9f, miny = 1e9f;
+    float maxx = -1e9f, maxy = -1e9f;
+
     // Collect all points: rect corners + landmarks
     Point points[] =
     {
@@ -844,11 +845,6 @@ void transform_rect_upscale_rotate_inverse(
         {r->landmarks[3].x, r->landmarks[3].y},
         {r->landmarks[4].x, r->landmarks[4].y}
     };
-
-    // printf("Rect before transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
-
-    float minx = 1e9f, miny = 1e9f;
-    float maxx = -1e9f, maxy = -1e9f;
 
     for (int i = 0; i < ArrayCount(points); ++i)
     {

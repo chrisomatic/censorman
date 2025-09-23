@@ -401,7 +401,7 @@ int handle_video()
                      // Scale down image
                     int scaled_size = settings.scaled_size_video;
                     use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
-#if 0
+#if 1
                     char outfile[256] = {};
                     snprintf(outfile, 255, "output/debug/%d.png",frame_counter);
                     util_write_output(image_scaled, outfile);
@@ -658,6 +658,7 @@ int handle_video()
 
             // add padding if needed
             const float rect_pad_pct = settings.box_padding_pct;
+
             for(int j = 0; j < num_rects; ++j)
             {
                 float sw = (float)rects[j].w * rect_pad_pct;
@@ -677,6 +678,34 @@ int handle_video()
 
                 if(bbx_file)
                 {
+                    if(settings.no_rotate)
+                    {
+                        if(vid.rotation == 90 || vid.rotation == 270)
+                        {
+                            // swap back the x,y,w,h
+                            u16 tmp = 0;
+
+                            tmp = rects[j].x;
+                            rects[j].x = rects[j].y;
+                            rects[j].y = tmp;
+
+                            tmp = rects[j].w;
+                            rects[j].w = rects[j].h;
+                            rects[j].h = tmp;
+
+                            for(int k = 0; k < 5; ++k)
+                            {
+                                tmp = rects[j].landmarks[k].x;
+                                rects[j].landmarks[k].x = rects[j].landmarks[k].y;
+                                rects[j].landmarks[k].y = tmp;
+                            }
+
+                        }
+                    }
+                    if(i == 0 && j == 0)
+                    {
+                        LOGW("DEBUG: Pos: [%u,%u] Size: [%u,%u] Confidence: %u", rects[j].x, rects[j].y, rects[j].w, rects[j].h, rects[j].confidence);
+                    }
                     util_write_bbx_to_file(bbx_file, &rects[j]);
                 }
 
@@ -815,6 +844,7 @@ bool init(int argc, char **args)
     settings.nms_iou_threshold = 0.6;
     settings.blur_strength = 0.50;
     settings.has_texture = false;
+    settings.no_rotate = false;
     settings.no_scale = false;
     settings.block_scale = 0.16;
     settings.frame_smoothing_window = 0.150;
@@ -862,6 +892,7 @@ bool init(int argc, char **args)
     LOGI("  Frame Smoothing Window: %f", settings.frame_smoothing_window);
     LOGI("  No Encoding:            %s", BOOLSTR(settings.no_encoding));
     LOGI("  Downscaling:            %s (%d px)", settings.no_scale ? "No" : "Yes", settings.asset_type == TYPE_IMAGE ? settings.scaled_size_image : settings.scaled_size_video);
+    LOGI("  No Rotate:              %s", BOOLSTR(settings.no_rotate));
     LOGI("  Bounding Box Output:    %s", settings.has_bbx_output ? settings.bbx_output : "(None)");
     LOGI("  Debug:                  %s", settings.debug ? "ON" : "OFF");
     LOGI("  Verbose:                %s", settings.verbose ? "ON" : "OFF");
@@ -904,6 +935,7 @@ void print_help()
     printf("  no_encoding:            Prevents writing output image or video file\n");
     printf("  bbx_output_filepath:    Bounding boxes output file. Specify if you want this file output.\n");
     printf("  no_scale:               Disables downscaling of images and videos before detections\n");
+    printf("  no_rotate:              Prevents rotation happening for input frames from video, and on bounding boxes\n");
     printf("  quiet:                  Suppress standard log output\n");
     printf("  verbose:                Enable verbose log output\n");
     printf("\n");
@@ -937,6 +969,8 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                         settings->no_encoding = true;
                     else if(STR_EQUAL(&argv[i][2],"no_scale"))
                         settings->no_scale = true;
+                    else if(STR_EQUAL(&argv[i][2],"no_rotate"))
+                        settings->no_rotate = true;
                     else if(STR_EQUAL(&argv[i][2],"block_scale"))
                     {
                         if(i < argc-1)
