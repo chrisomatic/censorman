@@ -7,29 +7,76 @@ PREFIX="$PWD/ffmpeg_build"
 pushd .
 
 # Cleanup
-rm -rf x264 ffmpeg ffmpeg_build ffmpeg_source
-mkdir -p ffmpeg_build ffmpeg_source
+#rm -rf x264 ffmpeg ffmpeg_build ffmpeg_source
+#mkdir -p ffmpeg_build ffmpeg_source
 
 # Download x264 source
-git clone https://code.videolan.org/videolan/x264.git
+#git clone https://code.videolan.org/videolan/x264.git
 cd x264
+if [ "$1" == "win32" ]; then
+echo ""
+#./configure \
+#  --prefix=$PREFIX \
+#  --enable-static \
+#  --disable-cli \
+#  --disable-opencl
+else
 ./configure \
   --prefix=$PREFIX \
   --enable-static \
   --disable-cli \
   --disable-opencl
-make -j$(nproc)
-make install
+fi
+#make -j$(nproc)
+#make install
 
 cd ../ffmpeg_source
 
 # Download FFmpeg source
 # curl -L https://ffmpeg.org/releases/ffmpeg-8.0.tar.bz2 | tar xj
-git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
-git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg --depth 1 --branch n8.0
-cd ffmpeg
+# git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg8
+#git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg8 --depth 1 --branch n8.0
+cd ffmpeg8
 
-# Configure for minimal static build: MP4 container + H.264 decoder only
+if [ "$1" == "win32" ]; then
+./configure \
+  --prefix="$PREFIX" \
+  --toolchain=msvc \
+  --pkg-config-flags="--static" \
+  --extra-cflags="-I$PREFIX/include -O3 -march=native -ffunction-sections -fdata-sections" \
+  --extra-ldflags="-L$PREFIX/lib -Wl,--gc-sections" \
+  --extra-libs="-lpthread -lm" \
+  --enable-hardcoded-tables \
+  --disable-everything \
+  --disable-libdrm \
+  --enable-static \
+  --disable-shared \
+  --disable-doc \
+  --disable-programs \
+  --disable-network \
+  --disable-debug \
+  --enable-small \
+  --enable-avformat \
+  --enable-avcodec \
+  --enable-avutil \
+  --enable-swscale \
+  --enable-protocol=file \
+  --enable-demuxer=mov \
+  --enable-decoder=h264 \
+  --enable-decoder=hevc \
+  --enable-parser=h264 \
+  --enable-parser=hevc \
+  --enable-muxer=mp4 \
+  --enable-encoder=libx264 \
+  --enable-encoder=mpeg4 \
+  --enable-gpl \
+  --enable-libx264 \
+  --enable-bsfs \
+  --enable-unstable \
+  --enable-cross-compile
+  --cc=cl
+
+else
 ./configure \
   --prefix="$PREFIX" \
   --pkg-config-flags="--static" \
@@ -64,6 +111,8 @@ cd ffmpeg
   --enable-bsfs \
   --enable-unstable \
   --cc=gcc
+
+fi
 
 make -j$(nproc)
 make install
