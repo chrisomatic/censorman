@@ -112,7 +112,6 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     video->fps = fps.num / (double)fps.den;
     video->rotation = _get_rotation(st);
 
-
     enum AVCodecID codec_id = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id;
 
     vid_ctx->codec = avcodec_find_decoder(vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id);
@@ -165,8 +164,6 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     vid_ctx->frame = av_frame_alloc();
     vid_ctx->rgb_frame = av_frame_alloc();
     vid_ctx->pkt = av_packet_alloc();
-
-
 
     u8 *rgb_planes[4];
     int rgb_linesize[4];

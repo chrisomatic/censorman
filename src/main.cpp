@@ -11,10 +11,11 @@
 #define CENSORMAN_VERSION 1
 
 // TODO
-// [ ] Thread the transformations
-// [ ] Add padding to sub-images
+// [ ] Add a output_size CLI parameter
 // [ ] Optimize memory usage for --no_encoding
 // [ ] Add Return Code Enum for any errors and success
+// [ ] Add padding to sub-images
+// [ ] Thread the transformations
 // [ ] Consider enabling crude first pass to address video discontinuity
 // [ ] Add lots of test images and --tester mode
 // [ ] Implement thread pool (mutex vs spin-lock)
