@@ -652,7 +652,7 @@ int handle_video()
 
             if(bbx_file)
             {
-                FileWriteU32(bbx_file, i); // frame index
+                FileWriteU32(bbx_file, total_frames_processed+i); // frame index
                 FileWriteU16(bbx_file, num_rects);
             }
 
@@ -669,40 +669,64 @@ int handle_video()
                 rects[j].w += sw;
                 rects[j].h += sh;
 
+                bool no_rotate = (settings.no_rotate && (vid.rotation == 90 || vid.rotation == 270));
+                int w = no_rotate ? image.h : image.w;
+                int h = no_rotate ? image.w : image.h;
+
                 if(rects[j].x < 0) rects[j].x = 0;
-                if(rects[j].x >= image.w) rects[j].x = image.w-1;
+                if(rects[j].x >= w) rects[j].x = w-1;
                 if(rects[j].y < 0) rects[j].y = 0;
-                if(rects[j].y >= image.h) rects[j].y = image.h-1;
-                if(rects[j].x+rects[j].w >=image.w) rects[j].w = (image.w-rects[j].x-1);
-                if(rects[j].y+rects[j].h >=image.h) rects[j].h = (image.h-rects[j].y-1);
+                if(rects[j].y >= h) rects[j].y = h-1;
+                if(rects[j].x+rects[j].w >= w) rects[j].w = (w-rects[j].x-1);
+                if(rects[j].y+rects[j].h >= h) rects[j].h = (h-rects[j].y-1);
 
                 if(bbx_file)
                 {
+#if 0
                     if(settings.no_rotate)
                     {
-                        if(vid.rotation == 90 || vid.rotation == 270)
+                        if(vid.rotation == 90)
                         {
-                            // swap back the x,y,w,h
-                            u16 tmp = 0;
+                            int ox = rects[j].y;
+                            int oy = (image.h - 1) - rects[j].x;
 
-                            tmp = rects[j].x;
-                            rects[j].x = rects[j].y;
-                            rects[j].y = tmp;
+                            rects[j].x = (u16)ox;
+                            rects[j].y = (u16)oy;
 
-                            tmp = rects[j].w;
-                            rects[j].w = rects[j].h;
-                            rects[j].h = tmp;
+                            SWAP(u16,rects[j].w, rects[j].h);
 
                             for(int k = 0; k < 5; ++k)
                             {
-                                tmp = rects[j].landmarks[k].x;
-                                rects[j].landmarks[k].x = rects[j].landmarks[k].y;
-                                rects[j].landmarks[k].y = tmp;
+                                int ox2 = rects[j].landmarks[k].y;
+                                int oy2 = (image.h - 1) - rects[j].landmarks[k].x;
+
+                                rects[j].landmarks[k].x = (u16)ox2;
+                                rects[j].landmarks[k].y = (u16)oy2;
+                            }
+                        }
+                        else if(vid.rotation == 270)
+                        {
+                            int ox = (image.w - 1) - rects[j].y;
+                            int oy = rects[j].x;
+
+                            rects[j].x = (u16)ox;
+                            rects[j].y = (u16)oy;
+
+                            SWAP(u16,rects[j].w, rects[j].h);
+
+                            for(int k = 0; k < 5; ++k)
+                            {
+                                int ox2 = (image.w - 1) - rects[j].landmarks[k].y;
+                                int oy2 = rects[j].landmarks[k].x;
+
+                                rects[j].landmarks[k].x = (u16)ox2;
+                                rects[j].landmarks[k].y = (u16)oy2;
                             }
 
                         }
                     }
-                    if(i == 0 && j == 0)
+#endif
+                    if(i == 5000)
                     {
                         LOGW("DEBUG: Pos: [%u,%u] Size: [%u,%u] Confidence: %u", rects[j].x, rects[j].y, rects[j].w, rects[j].h, rects[j].confidence);
                     }

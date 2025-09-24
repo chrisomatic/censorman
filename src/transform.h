@@ -852,26 +852,34 @@ void transform_rect_upscale_rotate_inverse(Rect* r,u16 det_w, u16 det_h, u16 ori
         float fy = points[i].y;
         float ox, oy;
 
-        // Undo rotation: map detector coords back into original orientation
-        switch (rotation)
+        if(settings.no_rotate)
         {
-            case 270:  // rotated right during downscale → rotate left to undo
-                ox = fy;
-                oy = (scaled_w - 1) - fx;
-                break;
-            case 180:
-                ox = (scaled_w - 1) - fx;
-                oy = (scaled_h - 1) - fy;
-                break;
-            case 90: // rotated left during downscale → rotate right to undo
-                ox = (scaled_h - 1) - fy;
-                oy = fx;
-                break;
-            case 0:
-            default:
-                ox = fx;
-                oy = fy;
-                break;
+            ox = fx;
+            oy = fy;
+        }
+        else
+        {
+            // Undo rotation: map detector coords back into original orientation
+            switch (rotation)
+            {
+                case 270:  // rotated right during downscale → rotate left to undo
+                    ox = fy;
+                    oy = (scaled_w - 1) - fx;
+                    break;
+                case 180:
+                    ox = (scaled_w - 1) - fx;
+                    oy = (scaled_h - 1) - fy;
+                    break;
+                case 90: // rotated left during downscale → rotate right to undo
+                    ox = (scaled_h - 1) - fy;
+                    oy = fx;
+                    break;
+                case 0:
+                default:
+                    ox = fx;
+                    oy = fy;
+                    break;
+            }
         }
 
         // Now scale back up to original frame

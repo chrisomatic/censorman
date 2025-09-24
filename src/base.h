@@ -73,6 +73,7 @@ typedef wchar_t   wchar;
 #define MIN(x,y) ((x)  < (y) ? (x) : (y))
 #define MAX(x,y) ((x) >= (y) ? (x) : (y))
 #define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
+#define SWAP(T, a, b) do { T temp = a; a = b; b = temp; } while (0)
 
 float exp_decay(float a, float b, float decay, float dt)
 {
