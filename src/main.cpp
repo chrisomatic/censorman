@@ -43,10 +43,10 @@
 // [x] Open a video file and read image frames
 // [x] Write output video file
 
-Arena* scratch = {0};
-Arena* thread_arenas[MAX_ARENAS] = {0};
+Arena* scratch = {};
+Arena* thread_arenas[MAX_ARENAS] = {};
 
-Timer timer = {0};
+Timer timer = {};
 ProgramSettings settings = {};
 Image texture_image = {};
 double begin_time = 0.0;
@@ -65,7 +65,7 @@ int main(int argc, char** args)
         return 1;
 
     // check input
-    char ext[10] = {0};
+    char ext[10] = {};
     int ext_len = str_get_extension(settings.input_file_text, ext, 10);
     if(ext_len == 0)
     {
@@ -351,7 +351,7 @@ int handle_video()
 
         bool use_scaled[settings.thread_count] = {};
 
-        u8 detect_buffers[settings.thread_count][0x9000] = {0};
+        u8 detect_buffers[settings.thread_count][0x9000] = {};
 
         u32 output_count = 0;
         u8* output_ptrs[4096] = {};
@@ -1094,7 +1094,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                         // parse transforms
                         char* p = argv[i+1];
                         int len = strlen(p);
-                        char buf[256] = {0};
+                        char buf[256] = {};
                         int bufi = 0;
                         bool process = false;
 

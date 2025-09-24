@@ -103,7 +103,7 @@ static const uint8_t font8x16[95][16] =
 
 inline Color get_pixel(Image* image, int x, int y)
 {
-    Color c = {0};
+    Color c = {};
     memcpy(&c, &image->data[y*image->w*image->n + x*image->n], 3);
     return c;
 }
@@ -125,7 +125,7 @@ Color get_blended_color(u8* data, Color c, float opacity)
     u8 g = data[1];
     u8 b = data[2];
 
-    Color ret_color = {0};
+    Color ret_color = {};
 
     ret_color.r = opacity*c.r + (1.0 - opacity)*r;
     ret_color.g = opacity*c.g + (1.0 - opacity)*g;
@@ -167,7 +167,7 @@ void transform_scramble(Image* image, Rect r, u32 seed)
 
     // initialize unprocessed list
     int num_pixels = r.w*r.h;
-    int unprocessed[num_pixels] = {0};
+    int unprocessed[num_pixels] = {};
     int unprocessed_count = num_pixels;
 
     for(int i = 0; i < num_pixels; ++i)
@@ -189,7 +189,7 @@ void transform_scramble(Image* image, Rect r, u32 seed)
         int offset1 = image->w*image->n*(u1/r.w) + image->n*(u1%r.w);
         int offset2 = image->w*image->n*(u2/r.w) + image->n*(u2%r.w);
 
-        Color tmp = {0};
+        Color tmp = {};
         memcpy(&tmp, start+offset1, 3);
         memcpy(start+offset1,start+offset2,3);
         memcpy(start+offset2, &tmp, 3);

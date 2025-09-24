@@ -521,7 +521,7 @@ typedef enum
 LogType log_level = LOG_TYPE_INFO;
 static bool is_quiet = false;
 
-static Timer log_timer = {0};
+static Timer log_timer = {};
 static void log_init(int log_level)
 {
     timer_begin(&log_timer);
@@ -713,7 +713,13 @@ typedef struct
 #define BBX_FRAME_COUNT_OFFSET 12
 
 extern ProgramSettings settings;
+
+#if PLATFORM == PLATFORM_WINDOWS
+extern HANDLE *threads;
+#else
 extern pthread_t *threads;
+#endif
+
 extern Timer timer;
 extern Arena* thread_arenas[MAX_ARENAS];
 extern Image texture_image;

@@ -9,6 +9,8 @@ pushd .
 
 rm -rf $PWD/third_party/ffmpeg
 rm -rf $BUILD_DIR
+mkdir $BUILD_DIR
+
 cd $BUILD_DIR
 
 # Cleanup
@@ -34,6 +36,47 @@ git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg --depth 1 --branch n8.0
 # git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg # master
 
 cd ffmpeg
+
+if [ "$1" = "win32" ]; then
+
+./configure \
+  --prefix="$PREFIX" \
+  --pkg-config-flags="--static" \
+  --extra-cflags="-I$PREFIX/include -O3 -march=native -ffunction-sections -fdata-sections" \
+  --extra-ldflags="-L$PREFIX/lib -Wl,--gc-sections" \
+  --extra-libs="-lpthread -lm" \
+  --enable-hardcoded-tables \
+  --disable-everything \
+  --disable-libdrm \
+  --enable-static \
+  --disable-shared \
+  --disable-doc \
+  --disable-programs \
+  --disable-network \
+  --disable-debug \
+  --enable-small \
+  --enable-avformat \
+  --enable-avcodec \
+  --enable-avutil \
+  --enable-swscale \
+  --enable-protocol=file \
+  --enable-demuxer=mov \
+  --enable-decoder=h264 \
+  --enable-decoder=hevc \
+  --enable-parser=h264 \
+  --enable-parser=hevc \
+  --enable-muxer=mp4 \
+  --enable-encoder=libx264 \
+  --enable-encoder=mpeg4 \
+  --enable-gpl \
+  --enable-libx264 \
+  --enable-bsfs \
+  --enable-unstable \
+  --toolchain=msvc \
+  --arch=x86_64 \
+  --target-os=win64
+
+else
 
 ./configure \
   --prefix="$PREFIX" \
@@ -69,6 +112,8 @@ cd ffmpeg
   --enable-bsfs \
   --cc=gcc \
   --enable-unstable
+
+fi
 
 make -j$(nproc)
 make install
