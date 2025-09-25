@@ -105,7 +105,13 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     AVStream *st = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index];
     AVRational fps = st->avg_frame_rate.num ? st->avg_frame_rate : st->r_frame_rate;
-    if (!fps.num || !fps.den) fps = (AVRational){24,1}; // fallback
+
+    if(!fps.num || !fps.den) 
+    {
+        // fallback
+        fps.num = 24;
+        fps.den = 1;
+    }
 
     int64_t nb_frames = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->nb_frames;
     video->fps = fps.num / (double)fps.den;

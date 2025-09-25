@@ -101,8 +101,8 @@ int process_image(Image* image,Rect* ret_rects)
 
     LOGI("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
 
-    Image* sub_images[settings.thread_count] = {0};
-    u8 detect_buffers[settings.thread_count][0x9000] = {0};
+    Image** sub_images = (Image**)calloc(settings.thread_count, sizeof(Image*));
+    u8 detect_buffers[settings.thread_count][0x9000] = {};
 
     for(int i = 0; i < settings.thread_count; ++i)
     {
@@ -166,7 +166,7 @@ int process_image(Image* image,Rect* ret_rects)
     double detection_time = timer_get_elapsed(&timer);
     LOGI("detection time: %.3f ms", detection_time*1000.0f);
 
-    Rect total_rects[1024] = {0};
+    Rect total_rects[1024] = {};
     int num_faces = 0;
 
     // collect face box results
@@ -204,7 +204,7 @@ int process_image(Image* image,Rect* ret_rects)
     // NMS (Non-Maximum Suppression)
     // Conlidate detection regions
 
-    bool removed_rects[1024] = {0};
+    bool removed_rects[1024] = {};
     int num_removed = 0;
 
     for(int i = 0; i < num_faces; ++i)

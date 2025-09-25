@@ -2,7 +2,7 @@
 
 #include "base.h"
 
-#if PLATFORM == PLATFORM_WINDOWS
+#if 0 //PLATFORM == PLATFORM_WINDOWS
 
 HANDLE *threads  = NULL;
 

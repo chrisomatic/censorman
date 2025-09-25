@@ -349,7 +349,7 @@ int handle_video()
         Image* images = (Image*)calloc(settings.thread_count, sizeof(Image));
         Image* images_scaled = (Image*)calloc(settings.thread_count, sizeof(Image));
 
-        bool use_scaled[settings.thread_count] = {};
+        bool *use_scaled = (bool *)calloc(settings.thread_count,sizeof(bool));
 
         u8 detect_buffers[settings.thread_count][0x9000] = {};
 
@@ -401,7 +401,7 @@ int handle_video()
                      // Scale down image
                     int scaled_size = settings.scaled_size_video;
                     use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
-#if 1
+#if 0
                     char outfile[256] = {};
                     snprintf(outfile, 255, "output/debug/%d.png",frame_counter);
                     util_write_output(image_scaled, outfile);

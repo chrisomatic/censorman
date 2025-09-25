@@ -71,7 +71,6 @@ if [ "$1" = "win32" ]; then
   --enable-gpl \
   --enable-libx264 \
   --enable-bsfs \
-  --enable-unstable \
   --toolchain=msvc \
   --arch=x86_64 \
   --target-os=win64
@@ -110,8 +109,7 @@ else
   --enable-gpl \
   --enable-libx264 \
   --enable-bsfs \
-  --cc=gcc \
-  --enable-unstable
+  --cc=gcc
 
 fi
 

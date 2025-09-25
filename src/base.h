@@ -238,7 +238,7 @@ void arena_reset(Arena* arena)
 #define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
 #define BOOLSTR(b) ((b) ? "True" : "False")
 
-#define S(literal) (String){ .len = sizeof(literal) - 1, .data = (char*)(literal) }
+#define S(literal) (String){sizeof(literal) - 1,(char*)(literal) }
 
 typedef struct
 {
@@ -714,7 +714,7 @@ typedef struct
 
 extern ProgramSettings settings;
 
-#if PLATFORM == PLATFORM_WINDOWS
+#if 0 //PLATFORM == PLATFORM_WINDOWS
 extern HANDLE *threads;
 #else
 extern pthread_t *threads;
