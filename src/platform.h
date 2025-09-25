@@ -85,7 +85,7 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
 
     *out_files = files;
 
-#elif PLATFORM == PLATFORM_UNIX || PLATFORM == PLATFORM_MAC
+#else
 
     char path_buffer[1024];
     snprintf(path_buffer, sizeof(path_buffer), "%.*s", folder_path.len, folder_path.data);
@@ -117,8 +117,6 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
     closedir(dir);
     *out_files = files;
 
-#else
-    #error "Unsupported platform"
 #endif
 
     return file_count;

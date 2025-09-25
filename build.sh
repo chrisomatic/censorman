@@ -8,6 +8,21 @@ rm -rf bin
 echo "Creating new bin directory"
 mkdir bin
 
+if [ "$1" = "win32" ]; then
+
+srcs="src/main.cpp third_party/facedetectcnn-data.cpp third_party/facedetectcnn-model.cpp third_party/facedetectcnn.cpp"
+includes="-Isrc -Ithird_party -Ithird_party/ffmpeg/include"
+libs="-Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lz -lx264 -liconv -lbcrypt"
+opts="-static -static-libgcc -static-libstdc++ -march=native -Ofast"
+
+output="./bin/censorman.exe"
+
+cmd="g++ ${srcs} ${includes} ${libs} ${opts} -o ${output}"
+echo "${cmd}"
+exec $cmd
+
+else
+
 srcs="src/main.cpp third_party/facedetectcnn-data.cpp third_party/facedetectcnn-model.cpp third_party/facedetectcnn.cpp"
 opts="-march=native -Ofast"
 #-mavx2
@@ -17,5 +32,7 @@ libs="-Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lm -lz -
 cmd="g++ ${srcs} ${includes} ${libs} ${opts} -o ./bin/censorman"
 echo "${cmd}"
 exec $cmd
+
+fi
 
 popd

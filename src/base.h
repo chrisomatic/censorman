@@ -27,6 +27,7 @@
 #include <handleapi.h>
 #include <processthreadsapi.h>
 #include <synchapi.h>
+#include <pthread.h>
 #else
 #include <unistd.h> // for usleep
 #include <sys/time.h>
