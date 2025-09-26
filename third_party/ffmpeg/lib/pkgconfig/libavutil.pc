@@ -1,7 +1,7 @@
-prefix=/c/git/censorman/build/ffmpeg_build
+prefix=/home/chris/git/censorman/build/ffmpeg_build
 exec_prefix=${prefix}
-libdir=/c/git/censorman/build/ffmpeg_build/lib
-includedir=/c/git/censorman/build/ffmpeg_build/include
+libdir=/home/chris/git/censorman/build/ffmpeg_build/lib
+includedir=/home/chris/git/censorman/build/ffmpeg_build/include
 
 Name: libavutil
 Description: FFmpeg utility library
@@ -9,6 +9,6 @@ Version: 60.8.100
 Requires: 
 Requires.private: 
 Conflicts:
-Libs: -L${libdir}  -lavutil -lm -luser32 -lbcrypt -latomic
+Libs: -L${libdir}  -lavutil -lva-drm -lva -lva-x11 -lva -lvdpau -lX11 -lm -lva -latomic -pthread -lX11 -lpthread -lxcb -lXau -lXdmcp
 Libs.private: 
 Cflags: -I${includedir}

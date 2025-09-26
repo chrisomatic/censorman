@@ -1,7 +1,7 @@
-prefix=/c/git/censorman/build/ffmpeg_build
+prefix=/home/chris/git/censorman/build/ffmpeg_build
 exec_prefix=${prefix}
-libdir=/c/git/censorman/build/ffmpeg_build/lib
-includedir=/c/git/censorman/build/ffmpeg_build/include
+libdir=/home/chris/git/censorman/build/ffmpeg_build/lib
+includedir=/home/chris/git/censorman/build/ffmpeg_build/include
 
 Name: libswscale
 Description: FFmpeg image rescaling library

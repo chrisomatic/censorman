@@ -65,6 +65,12 @@ typedef int64_t   b64;
 typedef wchar_t   wchar;
 
 //:==================================
+// Debugging
+//:==================================
+
+#define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
+
+//:==================================
 // Math
 //:==================================
 
@@ -187,6 +193,7 @@ void* arena_alloc(Arena* arena, size_t size)
     {
         if(a->offset + size <= a->capacity)
             break; // enough space, we're good
+
 
         // can't fit data on current arena
         // check for a next arena
@@ -314,12 +321,6 @@ int str_get_extension(const char *source, char *buf, int buf_len)
 //:==================================
 
 #define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
-
-//:==================================
-// Debugging
-//:==================================
-
-#define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
 
 //:==================================
 // Files

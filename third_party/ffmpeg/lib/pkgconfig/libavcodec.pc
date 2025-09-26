@@ -1,7 +1,7 @@
-prefix=/c/git/censorman/build/ffmpeg_build
+prefix=/home/chris/git/censorman/build/ffmpeg_build
 exec_prefix=${prefix}
-libdir=/c/git/censorman/build/ffmpeg_build/lib
-includedir=/c/git/censorman/build/ffmpeg_build/include
+libdir=/home/chris/git/censorman/build/ffmpeg_build/lib
+includedir=/home/chris/git/censorman/build/ffmpeg_build/include
 
 Name: libavcodec
 Description: FFmpeg codec library
@@ -9,6 +9,6 @@ Version: 62.11.100
 Requires: libavutil >= 60.8.100
 Requires.private: 
 Conflicts:
-Libs: -L${libdir}  -lavcodec -liconv -lm -latomic -LC:/git/censorman/build/ffmpeg_build/lib -lx264 -lole32 -luser32
+Libs: -L${libdir}  -lavcodec -pthread -lm -latomic -lx264 -lpthread -lm -ldl
 Libs.private: 
 Cflags: -I${includedir}

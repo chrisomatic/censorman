@@ -271,7 +271,7 @@ int handle_image()
 
 int handle_video()
 {
-    Arena *arena_results = arena_create(ARENA_SIZE_MEDIUM);
+    Arena *arena_results = arena_create(ARENA_SIZE_LARGE);
 
     LOGI("Opening video file '%s'...", settings.input_file_text);
     
@@ -311,6 +311,10 @@ int handle_video()
         }
     }
 
+    Image* images = (Image*)calloc(settings.thread_count, sizeof(Image));
+    Image* images_scaled = (Image*)calloc(settings.thread_count, sizeof(Image));
+
+
     double total_time_decoding = 0.0;
     double total_time_detecting = 0.0;
     double total_time_transforming = 0.0;
@@ -346,10 +350,10 @@ int handle_video()
         LOGI("Detecting faces...");
         stopwatch_start();
 
-        Image* images = (Image*)calloc(settings.thread_count, sizeof(Image));
-        Image* images_scaled = (Image*)calloc(settings.thread_count, sizeof(Image));
+        memset(images, 0, settings.thread_count*sizeof(Image));
+        memset(images_scaled, 0, settings.thread_count*sizeof(Image));
 
-        bool *use_scaled = (bool *)calloc(settings.thread_count,sizeof(bool));
+        bool use_scaled[settings.thread_count] = {0};
 
         u8 detect_buffers[settings.thread_count][0x9000] = {};
 
@@ -380,11 +384,10 @@ int handle_video()
             for(int i = 0; i < settings.thread_count; ++i)
             {
                 Arena* arena = thread_arenas[actual_thread_count];
+                arena_reset(arena);
+
                 Image* image = &images[actual_thread_count];
                 Image* image_scaled = &images_scaled[actual_thread_count];
-
-                // reset arena
-                arena_reset(arena);
 
                 // fill out the image object
                 image->detect_buffer = detect_buffers[actual_thread_count];
@@ -427,15 +430,23 @@ int handle_video()
 
                 frame_counter += frame_advance; // always want to evaluate final frame
             }
+
+            LOGV("Joining Threads.");
             
             // join all threads back
             for(int i = 0; i < actual_thread_count; ++i)
             {
+                LOGV("Joining Thread %d...", i);
                 thread_join(threads[i]);
             }
+
+            LOGV("Threads joined!");
             
             // Gather results
+
             int num_faces = 0;
+
+            //arena_reset(arena_results);
 
             for(int i = 0; i < actual_thread_count; ++i)
             {
@@ -451,6 +462,7 @@ int handle_video()
                     int _faces_found = *((int*)(ret_rects));
                     offset += sizeof(int);
 
+                    LOGV("frame number: %d, faces_found: %d", image->frame_number, _faces_found);
                     output_ptrs[image->frame_number] = (u8 *)arena_alloc(arena_results, sizeof(u32)+(_faces_found*sizeof(Rect)));
 
                     for(int j = 0; j < _faces_found; ++j)
