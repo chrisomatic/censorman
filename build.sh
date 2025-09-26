@@ -11,9 +11,16 @@ mkdir bin
 if [ "$1" = "win32" ]; then
 
 srcs="src/main.cpp third_party/facedetectcnn-data.cpp third_party/facedetectcnn-model.cpp third_party/facedetectcnn.cpp"
+
 includes="-Isrc -Ithird_party -Ithird_party/ffmpeg/include"
-libs="-Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lz -lx264 -liconv -lbcrypt"
-opts="-static -static-libgcc -static-libstdc++ -march=native -Ofast"
+
+libs="-Lthird_party/ffmpeg/lib \
+      -Wl,-Bstatic \
+      -lavformat -lavcodec -lswscale -lavutil -lpthread -lz -lx264 \
+      -liconv -static-libgcc -static-libstdc++ \
+      -lstdc++ -lgcc -Wl,-Bdynamic -lbcrypt"
+
+opts="-static -march=x86-64 -Ofast -D__USE_MINGW_ANSI_STDIO=0"
 
 output="./bin/censorman.exe"
 

@@ -2,81 +2,81 @@
 
 set -e
 
-# Set up paths
 BUILD_DIR="$PWD/build"
 PREFIX="$BUILD_DIR/ffmpeg_build"
 
-# Make sure we're in the MINGW64 shell
-if [[ "$MSYSTEM" != "MINGW64" ]]; then
-  echo "Please run this script from the MSYS2 MINGW64 shell."
-  exit 1
-fi
+# Set static build flags globally
+export CFLAGS="-static -static-libgcc -static-libstdc++ -O3 -march=x86-64"
+export CXXFLAGS="$CFLAGS"
+export LDFLAGS="-static"
 
-# Use mingw-w64 compilers
-export CC=gcc
-export CXX=g++
-export PKG_CONFIG=pkg-config
+pushd .
 
-echo "Cleaning old builds..."
-rm -rf "$BUILD_DIR"
+# Clean previous builds
 rm -rf "$PWD/third_party/ffmpeg"
-
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
-mkdir -p "$BUILD_DIR/ffmpeg_build"
-mkdir -p "$BUILD_DIR/ffmpeg_source"
 
-pushd "$BUILD_DIR"
+cd "$BUILD_DIR"
 
-########################
+# Create working directories
+mkdir -p ffmpeg_build ffmpeg_source
+
+#########################
 # Build x264 (static)
-########################
-
+#########################
 echo "Cloning x264..."
-git clone https://code.videolan.org/videolan/x264.git
+git clone https://code.videolan.org/videolan/x264.git x264
 cd x264
 
 ./configure \
   --prefix="$PREFIX" \
   --enable-static \
   --disable-cli \
-  --host=x86_64-w64-mingw32
+  --disable-opencl \
+  --host=x86_64-w64-mingw32 \
+  --extra-cflags="$CFLAGS" \
+  --extra-ldflags="$LDFLAGS"
 
 make -j$(nproc)
 make install
-
 cd ..
 
-########################
+#########################
 # Build FFmpeg (static)
-########################
-
+#########################
 cd ffmpeg_source
-
 echo "Cloning FFmpeg..."
 git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg --depth 1 --branch n8.0
 
 cd ffmpeg
 
-PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
+# Point pkg-config to x264's .pc file
+export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
 
 ./configure \
   --prefix="$PREFIX" \
-  --pkg-config="$PKG_CONFIG" \
   --pkg-config-flags="--static" \
-  --extra-cflags="-I$PREFIX/include -O3 -march=native" \
-  --extra-ldflags="-L$PREFIX/lib -static" \
-  --extra-libs="-lz" \
+  --extra-cflags="$CFLAGS -I$PREFIX/include" \
+  --extra-ldflags="$LDFLAGS -L$PREFIX/lib" \
+  --extra-libs="-lpthread -lm -liconv -lbcrypt" \
+  --cc=gcc \
+  --disable-everything \
+  --disable-libdrm \
   --enable-static \
   --disable-shared \
-  --disable-programs \
   --disable-doc \
+  --disable-programs \
   --disable-network \
-  --disable-everything \
+  --disable-debug \
   --enable-small \
+  --enable-gpl \
+  --enable-libx264 \
   --enable-avformat \
   --enable-avcodec \
   --enable-avutil \
   --enable-swscale \
+  --enable-hardcoded-tables \
   --enable-protocol=file \
   --enable-demuxer=mov \
   --enable-decoder=h264 \
@@ -86,29 +86,26 @@ PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
   --enable-muxer=mp4 \
   --enable-encoder=libx264 \
   --enable-encoder=mpeg4 \
-  --enable-gpl \
-  --enable-libx264 \
-  --enable-bsfs \
-  --disable-debug
+  --enable-bsfs
 
 make -j$(nproc)
 make install
 
+#########################
+# Cleanup
+#########################
+
 popd
 
-########################
-# Clean Up
-########################
-
-echo "Cleaning up temporary build files..."
-
+# Clean up temporary source dirs
 rm -rf "$BUILD_DIR/ffmpeg_source"
 rm -rf "$BUILD_DIR/x264"
 rm -rf "$BUILD_DIR/ffmpeg_build/share"
 
-mkdir -p third_party
+# Move final static build to third_party
 mv "$BUILD_DIR/ffmpeg_build" third_party/ffmpeg
 
+# Final cleanup
 rm -rf "$BUILD_DIR"
 
-echo "✅ Build complete. Static libs and headers are in: third_party/ffmpeg"
+echo "✅ Static build of FFmpeg and x264 complete."
