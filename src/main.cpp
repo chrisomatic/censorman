@@ -182,8 +182,8 @@ int handle_image()
         {
             stopwatch_start();
             use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size,0); // @TODO: rotation
-            LOGI("Downscale took %.3f ms", stopwatch_time()*1000.0);
-            util_write_output(&image_scaled, "output/out_scaled.png");
+            LOGV("Downscale took %.3f ms", stopwatch_time()*1000.0);
+            //util_write_output(&image_scaled, "output/out_scaled.png");
         }
 
         Rect rects[256] = {};
@@ -225,10 +225,8 @@ int handle_image()
                 if(r->y >= image.h)      r->y = image.h-1;
                 if(r->x+r->w >= image.w) r->w = (image.w-r->x-1);
                 if(r->y+r->h >= image.h) r->h = (image.h-r->y-1);
-
             }
         }
-
 
         if(bbx_file)
         {

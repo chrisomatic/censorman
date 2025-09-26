@@ -190,157 +190,160 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     // Set up encoding
     // Output format (MP4 / H264)
 
-    avformat_alloc_output_context2(&vid_ctx->enc_fmt_ctx, NULL, "mp4", outfile);
-    if(!vid_ctx->enc_fmt_ctx)
+    if(!settings.no_encoding)
     {
-        LOGE("Could not deduce output format");
-        return false;
-    }
-
-    vid_ctx->enc_codec = avcodec_find_encoder_by_name("libx264");
-
-    if(!vid_ctx->enc_codec)
-    {
-        vid_ctx->enc_codec = avcodec_find_encoder(AV_CODEC_ID_H264);
-    }
-
-    if(!vid_ctx->enc_codec)
-    {
-        vid_ctx->enc_codec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
-    }
-
-    if(!vid_ctx->enc_codec)
-    {
-        LOGE("Encoder not found");
-        avformat_free_context(vid_ctx->enc_fmt_ctx);
-        return false;
-    }
-
-    // Add new video stream
-    vid_ctx->enc_video_st = avformat_new_stream(vid_ctx->enc_fmt_ctx, NULL);
-    if(!vid_ctx->enc_video_st)
-    {
-        LOGE("Could not create stream");
-        avformat_free_context(vid_ctx->enc_fmt_ctx);
-        return false;
-    }
-
-    vid_ctx->enc_codec_ctx = avcodec_alloc_context3(vid_ctx->enc_codec);
-    if(!vid_ctx->enc_codec_ctx)
-    {
-        LOGE("Could not allocate codec context");
-        avformat_free_context(vid_ctx->enc_fmt_ctx);
-        return false;
-    }
-
-    LOGI("Video Details:");
-    LOGI("  Size:        %d, %d", width, height);
-    LOGI("  Frame count: %ld", nb_frames);
-    LOGI("  FPS:         %f", fps.num / (double)fps.den);
-    LOGI("  Rotation:    %d", video->rotation);
-    LOGI("  Codec:       %s (%d)", avcodec_get_name(codec_id), codec_id);
-
-    // Basic encoding settings
-
-    vid_ctx->enc_codec_ctx->codec_id = vid_ctx->enc_codec->id;
-    vid_ctx->enc_codec_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
-    vid_ctx->enc_codec_ctx->width = video->w;
-    vid_ctx->enc_codec_ctx->height = video->h;
-    vid_ctx->enc_codec_ctx->time_base = av_inv_q(fps);
-    vid_ctx->enc_codec_ctx->framerate = fps;
-    vid_ctx->enc_codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
-    vid_ctx->enc_codec_ctx->gop_size = 12;
-    vid_ctx->enc_codec_ctx->max_b_frames = 0;
-    vid_ctx->enc_codec_ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
-    vid_ctx->enc_codec_ctx->thread_count = 0; // auto
-
-    vid_ctx->enc_video_st->time_base  = vid_ctx->enc_codec_ctx->time_base;
-
-    if (vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
-        vid_ctx->enc_codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-    av_dict_set(&vid_ctx->enc_opts, "preset", "superfast", 0); // ultrafast, superfast, fast, medium, slow, placebo
-    av_dict_set(&vid_ctx->enc_opts, "tune", "zerolatency", 0);
-
-    int ret;
-
-    // Open encoder
-    if((ret = avcodec_open2(vid_ctx->enc_codec_ctx, vid_ctx->enc_codec, &vid_ctx->enc_opts)) < 0)
-    {
-        LOGE("Could not open encoder");
-        avcodec_free_context(&vid_ctx->enc_codec_ctx);
-        avformat_free_context(vid_ctx->enc_fmt_ctx);
-        return false;
-    }
-
-    // Copy codec params to stream
-    ret = avcodec_parameters_from_context(vid_ctx->enc_video_st->codecpar, vid_ctx->enc_codec_ctx);
-    if(ret < 0)
-    {
-        LOGE("Could not copy codec parameters");
-        avcodec_free_context(&vid_ctx->enc_codec_ctx);
-        avformat_free_context(vid_ctx->enc_fmt_ctx);
-        return false;
-    }
-    
-    // set rotation on encoder stream
-    char rotate[16];
-    snprintf(rotate, sizeof(rotate), "%d", video->rotation);
-    av_dict_set(&vid_ctx->enc_video_st->metadata, "rotate", rotate, 0);
-
-    // Open output file
-    if(!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE))
-    {
-        if(avio_open(&vid_ctx->enc_fmt_ctx->pb, outfile, AVIO_FLAG_WRITE) < 0)
+        avformat_alloc_output_context2(&vid_ctx->enc_fmt_ctx, NULL, "mp4", outfile);
+        if(!vid_ctx->enc_fmt_ctx)
         {
-            LOGE("Could not open output file '%s'", outfile);
+            LOGE("Could not deduce output format");
+            return false;
+        }
+
+        vid_ctx->enc_codec = avcodec_find_encoder_by_name("libx264");
+
+        if(!vid_ctx->enc_codec)
+        {
+            vid_ctx->enc_codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+        }
+
+        if(!vid_ctx->enc_codec)
+        {
+            vid_ctx->enc_codec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
+        }
+
+        if(!vid_ctx->enc_codec)
+        {
+            LOGE("Encoder not found");
+            avformat_free_context(vid_ctx->enc_fmt_ctx);
+            return false;
+        }
+
+        // Add new video stream
+        vid_ctx->enc_video_st = avformat_new_stream(vid_ctx->enc_fmt_ctx, NULL);
+        if(!vid_ctx->enc_video_st)
+        {
+            LOGE("Could not create stream");
+            avformat_free_context(vid_ctx->enc_fmt_ctx);
+            return false;
+        }
+
+        vid_ctx->enc_codec_ctx = avcodec_alloc_context3(vid_ctx->enc_codec);
+        if(!vid_ctx->enc_codec_ctx)
+        {
+            LOGE("Could not allocate codec context");
+            avformat_free_context(vid_ctx->enc_fmt_ctx);
+            return false;
+        }
+
+        LOGI("Video Details:");
+        LOGI("  Size:        %d, %d", width, height);
+        LOGI("  Frame count: %ld", nb_frames);
+        LOGI("  FPS:         %f", fps.num / (double)fps.den);
+        LOGI("  Rotation:    %d", video->rotation);
+        LOGI("  Codec:       %s (%d)", avcodec_get_name(codec_id), codec_id);
+
+        // Basic encoding settings
+
+        vid_ctx->enc_codec_ctx->codec_id = vid_ctx->enc_codec->id;
+        vid_ctx->enc_codec_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
+        vid_ctx->enc_codec_ctx->width = video->w;
+        vid_ctx->enc_codec_ctx->height = video->h;
+        vid_ctx->enc_codec_ctx->time_base = av_inv_q(fps);
+        vid_ctx->enc_codec_ctx->framerate = fps;
+        vid_ctx->enc_codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        vid_ctx->enc_codec_ctx->gop_size = 12;
+        vid_ctx->enc_codec_ctx->max_b_frames = 0;
+        vid_ctx->enc_codec_ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
+        vid_ctx->enc_codec_ctx->thread_count = 0; // auto
+
+        vid_ctx->enc_video_st->time_base  = vid_ctx->enc_codec_ctx->time_base;
+
+        if (vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
+            vid_ctx->enc_codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+        av_dict_set(&vid_ctx->enc_opts, "preset", "superfast", 0); // ultrafast, superfast, fast, medium, slow, placebo
+        av_dict_set(&vid_ctx->enc_opts, "tune", "zerolatency", 0);
+
+        int ret;
+
+        // Open encoder
+        if((ret = avcodec_open2(vid_ctx->enc_codec_ctx, vid_ctx->enc_codec, &vid_ctx->enc_opts)) < 0)
+        {
+            LOGE("Could not open encoder");
             avcodec_free_context(&vid_ctx->enc_codec_ctx);
             avformat_free_context(vid_ctx->enc_fmt_ctx);
             return false;
         }
+
+        // Copy codec params to stream
+        ret = avcodec_parameters_from_context(vid_ctx->enc_video_st->codecpar, vid_ctx->enc_codec_ctx);
+        if(ret < 0)
+        {
+            LOGE("Could not copy codec parameters");
+            avcodec_free_context(&vid_ctx->enc_codec_ctx);
+            avformat_free_context(vid_ctx->enc_fmt_ctx);
+            return false;
+        }
+        
+        // set rotation on encoder stream
+        char rotate[16];
+        snprintf(rotate, sizeof(rotate), "%d", video->rotation);
+        av_dict_set(&vid_ctx->enc_video_st->metadata, "rotate", rotate, 0);
+
+        // Open output file
+        if(!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE))
+        {
+            if(avio_open(&vid_ctx->enc_fmt_ctx->pb, outfile, AVIO_FLAG_WRITE) < 0)
+            {
+                LOGE("Could not open output file '%s'", outfile);
+                avcodec_free_context(&vid_ctx->enc_codec_ctx);
+                avformat_free_context(vid_ctx->enc_fmt_ctx);
+                return false;
+            }
+        }
+
+        // Write header
+        if(avformat_write_header(vid_ctx->enc_fmt_ctx, NULL) < 0)
+        {
+            LOGE("Error occurred writing header");
+            avio_close(vid_ctx->enc_fmt_ctx->pb);
+            avcodec_free_context(&vid_ctx->enc_codec_ctx);
+            avformat_free_context(vid_ctx->enc_fmt_ctx);
+            return false;
+        }
+
+        // Allocate frame + packet
+        vid_ctx->enc_frame_src = av_frame_alloc();
+        vid_ctx->enc_frame = av_frame_alloc();
+        vid_ctx->enc_pkt = av_packet_alloc();
+
+        if(!vid_ctx->enc_frame || !vid_ctx->enc_frame_src || !vid_ctx->enc_pkt)
+        {
+            LOGE("Could not allocate frame/packet");
+            return false;
+        }
+
+        vid_ctx->enc_frame_src->format = AV_PIX_FMT_RGB24;
+        vid_ctx->enc_frame_src->width  = video->w;
+        vid_ctx->enc_frame_src->height = video->h;
+
+        vid_ctx->enc_frame->format = vid_ctx->enc_codec_ctx->pix_fmt;
+        vid_ctx->enc_frame->width  = vid_ctx->enc_codec_ctx->width;
+        vid_ctx->enc_frame->height = vid_ctx->enc_codec_ctx->height;
+
+        // SWS converter (RGB24 -> YUV420P)
+        vid_ctx->enc_sws_ctx = sws_getContext(width, height, AV_PIX_FMT_RGB24,
+                                 width, height, vid_ctx->enc_codec_ctx->pix_fmt,
+                                 SWS_BILINEAR, NULL, NULL, NULL);
+
+        if(!vid_ctx->enc_sws_ctx)
+        {
+            LOGE("Could not init sws context");
+            return false;
+        }
+
+        vid_ctx->enc_frame->pict_type = AV_PICTURE_TYPE_I;
     }
-
-    // Write header
-    if(avformat_write_header(vid_ctx->enc_fmt_ctx, NULL) < 0)
-    {
-        LOGE("Error occurred writing header");
-        avio_close(vid_ctx->enc_fmt_ctx->pb);
-        avcodec_free_context(&vid_ctx->enc_codec_ctx);
-        avformat_free_context(vid_ctx->enc_fmt_ctx);
-        return false;
-    }
-
-    // Allocate frame + packet
-    vid_ctx->enc_frame_src = av_frame_alloc();
-    vid_ctx->enc_frame = av_frame_alloc();
-    vid_ctx->enc_pkt = av_packet_alloc();
-
-    if(!vid_ctx->enc_frame || !vid_ctx->enc_frame_src || !vid_ctx->enc_pkt)
-    {
-        LOGE("Could not allocate frame/packet");
-        return false;
-    }
-
-    vid_ctx->enc_frame_src->format = AV_PIX_FMT_RGB24;
-    vid_ctx->enc_frame_src->width  = video->w;
-    vid_ctx->enc_frame_src->height = video->h;
-
-    vid_ctx->enc_frame->format = vid_ctx->enc_codec_ctx->pix_fmt;
-    vid_ctx->enc_frame->width  = vid_ctx->enc_codec_ctx->width;
-    vid_ctx->enc_frame->height = vid_ctx->enc_codec_ctx->height;
-
-    // SWS converter (RGB24 -> YUV420P)
-    vid_ctx->enc_sws_ctx = sws_getContext(width, height, AV_PIX_FMT_RGB24,
-                             width, height, vid_ctx->enc_codec_ctx->pix_fmt,
-                             SWS_BILINEAR, NULL, NULL, NULL);
-
-    if(!vid_ctx->enc_sws_ctx)
-    {
-        LOGE("Could not init sws context");
-        return false;
-    }
-
-    vid_ctx->enc_frame->pict_type = AV_PICTURE_TYPE_I;
 
     return true;
 }
