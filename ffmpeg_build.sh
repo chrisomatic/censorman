@@ -42,7 +42,7 @@ if [ "$1" = "win32" ]; then
 ./configure \
   --prefix="$PREFIX" \
   --pkg-config-flags="--static" \
-  --extra-cflags="-I$PREFIX/include -O3 -march=native -ffunction-sections -fdata-sections" \
+  --extra-cflags="-I$PREFIX/include -O3 -march=x86-64 -ffunction-sections -fdata-sections" \
   --extra-ldflags="-L$PREFIX/lib -Wl,--gc-sections" \
   --extra-libs="-lpthread -lm" \
   --enable-hardcoded-tables \
@@ -80,7 +80,7 @@ else
 ./configure \
   --prefix="$PREFIX" \
   --pkg-config-flags="--static" \
-  --extra-cflags="-I$PREFIX/include -O3 -march=native -ffunction-sections -fdata-sections" \
+  --extra-cflags="-I$PREFIX/include -O3 -march=x86-64 -ffunction-sections -fdata-sections" \
   --extra-ldflags="-L$PREFIX/lib -Wl,--gc-sections" \
   --extra-libs="-lpthread -lm" \
   --enable-hardcoded-tables \
