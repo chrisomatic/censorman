@@ -92,6 +92,16 @@ void util_sort_rects(int num_rects, Rect* rects, bool asc)
     }
 }
 
+void util_read_and_print_bbx_file(const char* filepath)
+{
+    FILE *file = fopen(filepath, "rb");
+    if(!file)
+        return;
+
+        
+    fclose(file);
+}
+
 void util_write_bbx_to_file(FILE* file, Rect* r)
 {
     FileWriteU16(file, r->x);
@@ -99,6 +109,7 @@ void util_write_bbx_to_file(FILE* file, Rect* r)
     FileWriteU16(file, r->w);
     FileWriteU16(file, r->h);
     FileWriteU16(file, r->confidence);
+
     for(int i = 0; i < 5; ++i)
     {
         FileWriteU16(file, r->landmarks[i].x);

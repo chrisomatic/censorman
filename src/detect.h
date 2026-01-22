@@ -9,7 +9,7 @@ void detect_init()
     facedetect_init(); // copies model data to be used
 }
 
-void* detect_faces(void* arg)
+void *detect_faces(void* arg)
 {
     Image* image = (Image*)arg;
 

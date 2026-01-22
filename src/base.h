@@ -52,10 +52,10 @@ typedef uint8_t   u8;
 typedef uint16_t  u16;
 typedef uint32_t  u32;
 typedef uint64_t  u64;
-typedef int8_t    i8;
-typedef int16_t   i16;
-typedef int32_t   i32;
-typedef int64_t   i64;
+typedef int8_t    s8;
+typedef int16_t   s16;
+typedef int32_t   s32;
+typedef int64_t   s64;
 typedef float     f32;
 typedef double    f64;
 typedef int8_t    b8;
@@ -183,7 +183,7 @@ void arena_destroy(Arena* arena)
     arena = NULL;
 }
 
-void* arena_alloc(Arena* arena, size_t size)
+void *arena_alloc(Arena* arena, size_t size)
 {
     assert(arena);
 
@@ -241,18 +241,25 @@ void arena_reset(Arena* arena)
 // Strings
 //:==================================
 
-#define STR_EMPTY(x)      (x == 0 || strlen(x) == 0)
-#define STR_EQUAL(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
-#define STRN_EQUAL(x,y,n) (strncmp((x),(y),(n)) == 0)
-#define BOOLSTR(b) ((b) ? "True" : "False")
+#define StringEmpty(x)      (x == 0 || strlen(x) == 0)
+#define StringEqual(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
+#define StringBool(b)       ((b) ? "True" : "False")
 
 #define S(literal) (String){sizeof(literal) - 1,(char*)(literal) }
+#define SA(...) (StringArray){}
 
 typedef struct
 {
     u64 len;
     char* data;
 } String;
+
+typedef struct
+{
+    String *v;
+    u64 count;
+    u64 total_size;
+} StringArray;
 
 String str_from_cstr(char* cstr)
 {
@@ -271,14 +278,14 @@ String StringFormat(Arena* arena, const char* format, ...)
     int required_len = vsnprintf(NULL, 0, format, args);
     va_end(args);
 
-    if (required_len < 0)
+    if(required_len < 0)
     {
         return (String){ .len = 0, .data = NULL };
     }
 
     // Allocate from arena (+1 for null terminator)
     char* buffer = (char*)arena_alloc(arena, required_len + 1);
-    if (!buffer)
+    if(!buffer)
     {
         return (String){ .len = 0, .data = NULL };
     }
@@ -332,7 +339,8 @@ inline int FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file
 inline int FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
 inline int FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
 
-inline int FileWriteU32AtIndex(FILE* file, u32 x, u32 index) {
+inline int FileWriteU32AtIndex(FILE* file, u32 x, u32 index)
+{
     int pos = ftell(file);
     fseek(file, index, SEEK_SET);
     int ret = fwrite(&x,sizeof(u32),1,file);
@@ -632,11 +640,11 @@ typedef struct {
     u16 w;
     u16 h;
     u32 frame_count;        // number of frames currently in the buffer
-    i64 total_frame_count;  // total number of frames in the video
+    s64 total_frame_count;  // total number of frames in the video
     u32 frames_processed;   // used during encoding
     f32 fps;
     u8* data;               // RGB buffer for current chunk
-    i64* pts_buffer;        // PTS for each frame in current chunk
+    s64* pts_buffer;        // PTS for each frame in current chunk
     int rotation;
     int data_max_frames;    // max frames in current buffer
     bool decode_complete;

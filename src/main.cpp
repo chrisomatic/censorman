@@ -10,7 +10,6 @@
 #define CENSORMAN_VERSION 1
 
 // TODO
-// [ ] Get Windows support working
 // [ ] Add a output_size CLI parameter
 // [ ] Optimize memory usage for --no_encoding
 // [ ] Add Return Code Enum for any errors and success
@@ -23,9 +22,11 @@
 // [ ] Add audio stream encoding (1:1)
 // [ ] Add YuNet model (.bin and .param) to compare accuracy
 // [ ] Fix builds for MacOS
-
+// [ ] Add --model_dir parameter for plugin system
+// [ ] Add plugin
 
 // DONE
+// [x] Get Windows support working
 // [x] Clean up CLI interface and standard output
 // [x] Use an exponential smooth instead of lerp for video frames
 // [x] Fix 'Could not find ref with POC' bug with some videos
@@ -43,8 +44,8 @@
 // [x] Open a video file and read image frames
 // [x] Write output video file
 
-Arena* scratch = {};
-Arena* thread_arenas[MAX_ARENAS] = {};
+Arena *scratch = {};
+Arena *thread_arenas[MAX_ARENAS] = {};
 
 Timer timer = {};
 ProgramSettings settings = {};
@@ -87,6 +88,7 @@ int main(int argc, char** args)
             LOGV("File %d: %.*s", i + 1, files[i].len, files[i].data);
             strncpy(settings.input_files[i].filename, files[i].data, files[i].len);
         }
+
         settings.input_file_count = count;
 
         arena_reset(scratch);
@@ -96,7 +98,7 @@ int main(int argc, char** args)
         // single input file, not a folder
 
         LOGV("File extension: %s", ext);
-        bool is_video = (STR_EQUAL(ext, "mp4") || STR_EQUAL(ext, "mov") || STR_EQUAL(ext, "MP4") || STR_EQUAL(ext, "MOV"));
+        bool is_video = (StringEqual(ext, "mp4") || StringEqual(ext, "mov") || StringEqual(ext, "MP4") || StringEqual(ext, "MOV"));
         if(is_video) settings.asset_type = TYPE_VIDEO;
         settings.input_file_count = 1;
 
@@ -194,9 +196,11 @@ int handle_image()
         {
             // correct rects positions / sizes
             const double scale = image.w > image.h ? image.w / (double)image_scaled.w : image.h / (double)image_scaled.h;
+
             for(int i = 0; i < num_rects; ++i)
             {
                 Rect* r = &rects[i];
+
                 r->x = (int)round(r->x * scale);
                 r->y = (int)round(r->y * scale);
                 r->w = (int)round(r->w * scale);
@@ -312,7 +316,6 @@ int handle_video()
     Image* images = (Image*)calloc(settings.thread_count, sizeof(Image));
     Image* images_scaled = (Image*)calloc(settings.thread_count, sizeof(Image));
 
-
     double total_time_decoding = 0.0;
     double total_time_detecting = 0.0;
     double total_time_transforming = 0.0;
@@ -323,6 +326,7 @@ int handle_video()
     for(;;)
     {
         LOGI("Decoding Chunk...");
+        arena_reset(scratch);
         stopwatch_start();
 
         // decode data
@@ -341,6 +345,58 @@ int handle_video()
         if(vid.frame_count == 0 && vid.decode_complete)
         {
             break;
+        }
+
+        // determine any video discontinuities
+        LOGI("Determining video discontinuities...");
+        
+        Image result = {0};
+        result.data = (u8 *)arena_alloc(scratch,vid.w*vid.h*3);
+        result.w = vid.w;
+        result.h = vid.h;
+        result.n = 3;
+        result.step = 3*vid.w;
+
+        for(int i = 0; i < vid.frame_count; ++i)
+        {
+            int icurr = (u64)i*vid.w*vid.h*3;
+            int iprev = i == 0 ? icurr : (u64)(i-1)*vid.w*vid.h*3;
+
+            u8 *bcurr = &vid.data[icurr];
+            u8 *bprev = &vid.data[iprev];
+
+            u32 total_r = 0;
+            u32 total_g = 0;
+            u32 total_b = 0;
+
+            // go through each pixel and compute a difference image
+            for(int j = 0; j < vid.w*vid.h; ++j)
+            {
+                int idx = j*3;
+
+                uint8_t r = ABS(bcurr[idx+0] - bprev[idx+0]);
+                uint8_t g = ABS(bcurr[idx+1] - bprev[idx+1]);
+                uint8_t b = ABS(bcurr[idx+2] - bprev[idx+2]);
+
+                total_r += r;
+                total_g += g;
+                total_b += b;
+
+                result.data[idx+0] = r;
+                result.data[idx+1] = g;
+                result.data[idx+2] = b;
+            }
+
+            LOGW("Frame histogram: %u %u %u", total_r,total_g,total_b);
+
+#if 1
+            {
+                // for now output the image file
+                char outfile[256] = {};
+                snprintf(outfile, 255, "output/debug_%04d.png",i);
+                util_write_output(&result, outfile);
+            }
+#endif
         }
 
         // run detections
@@ -363,6 +419,24 @@ int handle_video()
 
         int skip_frames = MAX(1, (int)(settings.frame_smoothing_window * vid.fps));
         LOGV("Number of skip frames: %d (Based on %f smoothing window)", skip_frames, settings.frame_smoothing_window);
+
+#if 0
+        u32 *detect_frames = (u32 *)arena_alloc(scratch, vid.frame_count*sizeof(u32));
+        u32 detect_frames_count = 0;
+
+        for(int i = 0; i < vid.frame_count; ++i)
+        {
+            int frame_advance = MIN(skip_frames, vid.frame_count - frame_counter - 1);
+            if(frame_advance <= 0)
+                break;
+
+            frame_counter += frame_advance; // always want to evaluate final frame
+            detect_frames[detect_frames_count] = frame_counter;
+
+            detect_frames_count++;
+            frame_counter++;
+        }
+#endif
 
         for(;;)
         {
@@ -420,7 +494,6 @@ int handle_video()
                 {
                     LOGW("Failed to start thread");
                 }
-
 
                 int frame_advance = MIN(skip_frames, vid.frame_count - frame_counter - 1);
                 if(frame_advance <= 0)
@@ -692,50 +765,6 @@ int handle_video()
 
                 if(bbx_file)
                 {
-#if 0
-                    if(settings.no_rotate)
-                    {
-                        if(vid.rotation == 90)
-                        {
-                            int ox = rects[j].y;
-                            int oy = (image.h - 1) - rects[j].x;
-
-                            rects[j].x = (u16)ox;
-                            rects[j].y = (u16)oy;
-
-                            SWAP(u16,rects[j].w, rects[j].h);
-
-                            for(int k = 0; k < 5; ++k)
-                            {
-                                int ox2 = rects[j].landmarks[k].y;
-                                int oy2 = (image.h - 1) - rects[j].landmarks[k].x;
-
-                                rects[j].landmarks[k].x = (u16)ox2;
-                                rects[j].landmarks[k].y = (u16)oy2;
-                            }
-                        }
-                        else if(vid.rotation == 270)
-                        {
-                            int ox = (image.w - 1) - rects[j].y;
-                            int oy = rects[j].x;
-
-                            rects[j].x = (u16)ox;
-                            rects[j].y = (u16)oy;
-
-                            SWAP(u16,rects[j].w, rects[j].h);
-
-                            for(int k = 0; k < 5; ++k)
-                            {
-                                int ox2 = (image.w - 1) - rects[j].landmarks[k].y;
-                                int oy2 = rects[j].landmarks[k].x;
-
-                                rects[j].landmarks[k].x = (u16)ox2;
-                                rects[j].landmarks[k].y = (u16)oy2;
-                            }
-
-                        }
-                    }
-#endif
                     if(i == 5000)
                     {
                         LOGW("DEBUG: Pos: [%u,%u] Size: [%u,%u] Confidence: %u", rects[j].x, rects[j].y, rects[j].w, rects[j].h, rects[j].confidence);
@@ -800,7 +829,6 @@ int handle_video()
             if(!settings.no_encoding) ffmpeg_encode_done(&vid_ctx);
             break;
         }
-
     }
 
     if(bbx_file)
@@ -820,7 +848,6 @@ int handle_video()
     LOGI("Total Time Transforming: %6.3f s [%02d%]", total_time_transforming, (int)(100.0f*total_time_transforming / total_processing_time));
     LOGI("Total Time Encoding:     %6.3f s [%02d%]", total_time_encoding, (int)(100.0f*total_time_encoding / total_processing_time));
     LOGI("Total Time:              %6.3f s", total_elapsed_time);
-
 
     // ffmpeg_close(&vid_ctx);
 
@@ -924,9 +951,9 @@ bool init(int argc, char **args)
     LOGI("  Max Buffer Size:        %lu B", settings.max_buffer_size);
     LOGI("  Box Padding Percent:    %f", settings.box_padding_pct);
     LOGI("  Frame Smoothing Window: %f", settings.frame_smoothing_window);
-    LOGI("  No Encoding:            %s", BOOLSTR(settings.no_encoding));
+    LOGI("  No Encoding:            %s", StringBool(settings.no_encoding));
     LOGI("  Downscaling:            %s (%d px)", settings.no_scale ? "No" : "Yes", settings.asset_type == TYPE_IMAGE ? settings.scaled_size_image : settings.scaled_size_video);
-    LOGI("  No Rotate:              %s", BOOLSTR(settings.no_rotate));
+    LOGI("  No Rotate:              %s", StringBool(settings.no_rotate));
     LOGI("  Bounding Box Output:    %s", settings.has_bbx_output ? settings.bbx_output : "(None)");
     LOGI("  Debug:                  %s", settings.debug ? "ON" : "OFF");
     LOGI("  Verbose:                %s", settings.verbose ? "ON" : "OFF");
@@ -938,7 +965,7 @@ bool init(int argc, char **args)
     {
         thread_arenas[i] = arena_create(ARENA_SIZE_LARGE);
     }
-    scratch = arena_create(ARENA_SIZE_MEDIUM);
+    scratch = arena_create(ARENA_SIZE_LARGE);
 
     // initialize model data
     detect_init();
@@ -993,19 +1020,19 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
             {
                 case '-':
                 {
-                    if(STR_EQUAL(&argv[i][2],"debug"))
+                    if(StringEqual(&argv[i][2],"debug"))
                         settings->debug = true;
-                    else if(STR_EQUAL(&argv[i][2],"quiet"))
+                    else if(StringEqual(&argv[i][2],"quiet"))
                         is_quiet = true;
-                    else if(STR_EQUAL(&argv[i][2],"verbose"))
+                    else if(StringEqual(&argv[i][2],"verbose"))
                         settings->verbose = true;
-                    else if(STR_EQUAL(&argv[i][2],"no_encoding"))
+                    else if(StringEqual(&argv[i][2],"no_encoding"))
                         settings->no_encoding = true;
-                    else if(STR_EQUAL(&argv[i][2],"no_scale"))
+                    else if(StringEqual(&argv[i][2],"no_scale"))
                         settings->no_scale = true;
-                    else if(STR_EQUAL(&argv[i][2],"no_rotate"))
+                    else if(StringEqual(&argv[i][2],"no_rotate"))
                         settings->no_rotate = true;
-                    else if(STR_EQUAL(&argv[i][2],"block_scale"))
+                    else if(StringEqual(&argv[i][2],"block_scale"))
                     {
                         if(i < argc-1)
                         {
@@ -1015,7 +1042,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->block_scale = f;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"blur_strength"))
+                    else if(StringEqual(&argv[i][2],"blur_strength"))
                     {
                         if(i < argc-1)
                         {
@@ -1025,7 +1052,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->blur_strength = f;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"frame_smoothing_window"))
+                    else if(StringEqual(&argv[i][2],"frame_smoothing_window"))
                     {
                         if(i < argc-1)
                         {
@@ -1035,7 +1062,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->frame_smoothing_window = f;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"image"))
+                    else if(StringEqual(&argv[i][2],"image"))
                     {
                         if(i < argc-1)
                         {
@@ -1044,7 +1071,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->has_texture = true;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"bbx_output"))
+                    else if(StringEqual(&argv[i][2],"bbx_output"))
                     {
                         if(i < argc-1)
                         {
@@ -1053,7 +1080,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->has_bbx_output = true;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"max_buffer_size"))
+                    else if(StringEqual(&argv[i][2],"max_buffer_size"))
                     {
                         if(i < argc-1)
                         {
@@ -1062,7 +1089,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             if(n > 0) settings->max_buffer_size = n;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"scaled_size"))
+                    else if(StringEqual(&argv[i][2],"scaled_size"))
                     {
                         if(i < argc-1)
                         {
@@ -1077,7 +1104,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             }
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"box_padding_pct"))
+                    else if(StringEqual(&argv[i][2],"box_padding_pct"))
                     {
                         if(i < argc-1)
                         {
@@ -1089,6 +1116,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                     }
                 }   break;
                 case 'o':
+
                     break;
                 case 'd':
                     break;
@@ -1131,11 +1159,11 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
 
                                 TransformType type = TRANSFORM_TYPE_NONE;
 
-                                if(STR_EQUAL(buf, "blackout"))      type = TRANSFORM_TYPE_BLACKOUT;
-                                else if(STR_EQUAL(buf, "blur"))     type = TRANSFORM_TYPE_BLUR;
-                                else if(STR_EQUAL(buf, "pixelate")) type = TRANSFORM_TYPE_PIXELATE;
-                                else if(STR_EQUAL(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
-                                else if(STR_EQUAL(buf, "texture"))  type = TRANSFORM_TYPE_TEXTURE;
+                                if(StringEqual(buf, "blackout"))      type = TRANSFORM_TYPE_BLACKOUT;
+                                else if(StringEqual(buf, "blur"))     type = TRANSFORM_TYPE_BLUR;
+                                else if(StringEqual(buf, "pixelate")) type = TRANSFORM_TYPE_PIXELATE;
+                                else if(StringEqual(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
+                                else if(StringEqual(buf, "texture"))  type = TRANSFORM_TYPE_TEXTURE;
 
                                 memset(buf,0,256);
                                 bufi = 0;

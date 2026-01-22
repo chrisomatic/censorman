@@ -185,7 +185,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     video->data_max_frames = max_frames;
 
     // allocat PTS buffer
-    video->pts_buffer = (i64 *)malloc(sizeof(i64) * video->data_max_frames);
+    video->pts_buffer = (s64 *)malloc(sizeof(s64) * video->data_max_frames);
 
     // Set up encoding
     // Output format (MP4 / H264)
