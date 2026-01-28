@@ -15,6 +15,41 @@ That's the power of Censor Man!
 
 ```
 
+## How to build and run
+
+1. Clone this repository
+2. Compile ffmpeg + x264 locally (needs done once)
+
+Linux
+
+```sh
+# do once
+./ffmpeg_build.sh
+
+# build censorman
+./build.sh
+```
+
+MacOS
+
+```sh
+# do once
+./ffmpeg_build.sh macos
+
+# build censorman
+./build.sh macos
+```
+
+Windows
+
+```sh
+# do once
+ffmpeg_build.cmd
+
+# build censorman
+build.cmd
+```
+
 ## Dependencies
 
 - [libfacedetection](https://github.com/ShiqiYu/libfacedetection)
