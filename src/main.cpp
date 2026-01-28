@@ -413,7 +413,7 @@ int handle_video()
         memset(images, 0, settings.thread_count*sizeof(Image));
         memset(images_scaled, 0, settings.thread_count*sizeof(Image));
 
-        bool use_scaled[settings.thread_count] = {0};
+        bool *use_scaled = (bool *)PUSH_ARRAY(frame_arena, bool, settings.thread_count);
 
         u8 *detect_buffers = (u8 *)PUSH_ARRAY(frame_arena, u8, 0x9000 * settings.thread_count);
 
