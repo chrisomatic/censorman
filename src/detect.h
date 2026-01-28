@@ -11,12 +11,13 @@ void detect_init()
 
 void *detect_faces(void* arg)
 {
-    Image* image = (Image*)arg;
+    Image *image = (Image *)arg;
+    Arena *arena = (Arena *)image->arena;
 
     int *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step, (float)(settings.confidence_threshold / 100.0f));
     int num_faces = (results ? *results : 0);
 
-    image->result = (u8*)arena_alloc((Arena*)image->arena, sizeof(int) + num_faces*sizeof(Rect));
+    image->result = (u8*)PUSH_ARRAY(arena, u8, sizeof(int) + num_faces+sizeof(Rect));
 
     int offset = 0;
 
@@ -101,13 +102,15 @@ int process_image(Image* image,Rect* ret_rects)
 
     LOGI("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
 
+    Temp scratch = scratch_begin();
+
     Image** sub_images = (Image**)calloc(settings.thread_count, sizeof(Image*));
-    u8 detect_buffers[settings.thread_count][0x9000] = {};
+    u8 *detect_buffers = (u8 *)PUSH_ARRAY(scratch.arena, u8, 0x9000 * settings.thread_count);
 
     for(int i = 0; i < settings.thread_count; ++i)
     {
         arena_reset(thread_arenas[i]);
-        sub_images[i] = (Image*)arena_alloc(thread_arenas[i], sizeof(Image));
+        sub_images[i] = (Image*)PUSH_ONE(thread_arenas[i], Image);
     }
 
     int actual_thread_count = 0;
@@ -129,7 +132,7 @@ int process_image(Image* image,Rect* ret_rects)
         // calculate offset into base image
         int offset = (y*image->w*sub_height*image->n) + x*sub_width*image->n;
 
-        sub_image->detect_buffer = detect_buffers[actual_thread_count];
+        sub_image->detect_buffer = (detect_buffers + (0x9000 * actual_thread_count));
         sub_image->data = image->data + offset;
         sub_image->w = sub_width;
         sub_image->h = sub_height;
@@ -239,6 +242,8 @@ int process_image(Image* image,Rect* ret_rects)
 
         memcpy(&ret_rects[ret_rects_count++], &total_rects[i], sizeof(Rect));
     }
+
+    scratch_end(scratch);
 
     return ret_rects_count;
 }

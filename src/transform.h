@@ -165,9 +165,11 @@ void transform_scramble(Image* image, Rect r, u32 seed)
         srand(seed);
     }
 
+    Temp scratch = scratch_begin();
+
     // initialize unprocessed list
     int num_pixels = r.w*r.h;
-    int unprocessed[num_pixels] = {};
+    int *unprocessed = (int *)PUSH_ARRAY(scratch.arena, int, num_pixels);
     int unprocessed_count = num_pixels;
 
     for(int i = 0; i < num_pixels; ++i)
@@ -200,6 +202,8 @@ void transform_scramble(Image* image, Rect r, u32 seed)
         memcpy(&unprocessed[idx2],&unprocessed[unprocessed_count-1], sizeof(int));
         unprocessed_count--;
     }
+
+    scratch_end(scratch);
 }
 
 void transform_draw_rect(Image* image, Rect r, Color c, bool filled, float opacity)
@@ -795,7 +799,7 @@ bool transform_downscale(Arena* arena, Image* source, Image* result, int scaled_
         }
         else
         {
-            result->data = (u8*)arena_alloc(arena, buffer_size);
+            result->data = (u8*)PUSH_ARRAY(arena, u8, buffer_size);
         }
 
         lanczos_downscale_rotate(source, result, a);

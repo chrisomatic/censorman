@@ -81,6 +81,7 @@ typedef wchar_t   wchar;
 #define MAX(x,y) ((x) >= (y) ? (x) : (y))
 #define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
 #define SWAP(T, a, b) do { T temp = a; a = b; b = temp; } while (0)
+#define BETWEEN(x,min,max) ((x) >= (min) && (x) <= (max))
 
 float exp_decay(float a, float b, float decay, float dt)
 {
@@ -113,6 +114,17 @@ typedef struct
     int y;
 } Point;
 
+//===================================
+// Utility
+//===================================
+
+#define KB(n)  (((u64)(n)) << 10)
+#define MB(n)  (((u64)(n)) << 20)
+#define GB(n)  (((u64)(n)) << 30)
+#define TB(n)  (((u64)(n)) << 40)
+
+#define ALIGN_UP_POW2(x,b) (((x) + (b) - 1) & (~((b) - 1)))
+
 //:==================================
 // Memory
 //:==================================
@@ -127,52 +139,65 @@ typedef struct
 // Arenas
 //:==================================
 
-#define ARENA_SIZE_TINY        16*1024 //  16K
-#define ARENA_SIZE_SMALL      128*1024 // 128K
-#define ARENA_SIZE_MEDIUM  1*1024*1024 //   1M
-#define ARENA_SIZE_LARGE  16*1024*1024 //  16M
+#define PUSH_ONE(arena,T)    arena_push((arena), sizeof(T), false)
+#define PUSH_ONE_NZ(arena,T) arena_push((arena), sizeof(T), true)
 
-#define ARENA_GROWTH_SIZE ARENA_SIZE_MEDIUM
+#define PUSH_ARRAY(arena,T,n)    arena_push((arena), (n) * sizeof(T), false)
+#define PUSH_ARRAY_NZ(arena,T,n) arena_push((arena), (n) * sizeof(T), true)
 
-typedef struct Arena
+#define ARENA_ALIGN sizeof(void*)
+
+typedef struct Arena Arena;
+struct Arena
 {
-    u8* base;
-    size_t capacity;
-    size_t offset;
-    struct Arena *next; // used for chaining arenas together
-} Arena;
+    u8* memory;         // pointer to beginning of memory block
+    u64 capacity;       // the total size of the memory block
+    u64 offset;         // current offset in memory block
+    u64 base_pos;       // absolute position for this arena's memory
+    Arena *next;        // used for chaining arenas together
+};
 
-Arena *arena_create(size_t capacity)
+typedef struct
 {
-    Arena *a = (Arena*)malloc(sizeof(Arena));
-    if(!a) return NULL;
+    Arena *arena;
+    u64 start_pos;
+} ArenaTemp;
 
-    a->base = (u8*)malloc(capacity * sizeof(u8));
+typedef ArenaTemp Temp;
+
+// global scratch arena
+Arena *_scratch_arena = {0};
+
+Arena *arena_create(u64 capacity)
+{
+    Arena *a = (Arena *)malloc(sizeof(Arena));
+
+    a->memory = (u8*)malloc(capacity);
     a->capacity = capacity;
     a->offset = 0;
+    a->base_pos = 0;
     a->next = NULL;
 
     return a;
 }
 
-void arena_destroy(Arena* arena)
+void arena_destroy(Arena *arena)
 {
     if(!arena) return;
 
-    Arena* a = arena;
-
     for(;;)
     {
-        if(a->base) free(a->base);
+        if(arena->memory) free(arena->memory);
 
-        a->base = NULL;
-        a->capacity = 0;
-        a->offset = 0;
+        arena->memory = NULL;
+        arena->capacity = 0;
+        arena->offset = 0;
+        arena->base_pos = 0;
 
-        if(a->next)
+        if(arena->next)
         {
-            Arena* tmp = a;
-            a = a->next;
+            Arena* tmp = arena;
+            arena = arena->next;
             free(tmp);
             continue;
         }
@@ -183,54 +208,110 @@ void arena_destroy(Arena* arena)
     arena = NULL;
 }
 
-void *arena_alloc(Arena* arena, size_t size)
+void* arena_push(Arena *arena, u64 size, b32 non_zero)
 {
     assert(arena);
 
-    Arena* a = arena;
+    u64 offset_aligned = ALIGN_UP_POW2(arena->offset, ARENA_ALIGN);
 
     for(;;)
     {
-        if(a->offset + size <= a->capacity)
+        if(offset_aligned + size <= arena->capacity)
             break; // enough space, we're good
-
 
         // can't fit data on current arena
         // check for a next arena
-        if(a->next)
+        if(arena->next)
         {
-            a = a->next;
+            arena = arena->next;
             continue;
         }
 
-        // allocate a new arena that doubles the arena base capacity
+        // allocate a new arena that doubles the arena memory capacity
         // or more to accommodate a large allocation
         
-        size_t new_arena_size = (a->capacity >= size ? a->capacity : size);
+        u64 new_arena_size = (arena->capacity >= size ? 2*arena->capacity : size);
 
-        a->next = (Arena*)malloc(sizeof(Arena));
-        a->next->base = (u8*)malloc(new_arena_size * sizeof(u8));
-        a->next->offset = 0;
-        a->next->capacity = new_arena_size;
+        arena->next = (Arena*)malloc(sizeof(Arena));
+        arena->next->memory = (u8*)malloc(new_arena_size * sizeof(u8));
+        arena->next->offset = 0;
+        arena->next->base_pos = arena->base_pos + arena->capacity;
+        arena->next->capacity = new_arena_size;
+        arena->next->next = NULL;
     }
 
-    void* ptr = a->base+a->offset;
-    a->offset += size;
+    void *ptr = arena->memory + offset_aligned;
+    arena->offset = offset_aligned + size;
+
+    if(!non_zero) MemoryZero(ptr, size);
 
     return ptr;
 }
 
-void arena_reset(Arena* arena)
+u64 arena_pos(Arena *arena)
 {
-    assert(arena);
+    return arena->base_pos + arena->offset;
+}
 
-    Arena* a = arena;
+
+void arena_pop_to(Arena *arena, u64 pos)
+{
     for(;;)
     {
-        a->offset = 0;
-        if(a->next)
+        if(BETWEEN(pos, arena->base_pos, arena_pos(arena)))
         {
-            a = a->next;   
+            arena->offset = (pos - arena->base_pos);
+        }
+        else if(pos < arena->base_pos)
+        {
+            arena->offset = 0;
+        }
+
+        if(arena->next)
+        {
+            arena = arena->next;
+            continue;
+        }
+        break;
+    }
+}
+
+ArenaTemp arena_temp_begin(Arena *arena)
+{
+    return (ArenaTemp){.arena = arena, .start_pos = arena_pos(arena)};
+}
+
+void arena_temp_end(ArenaTemp temp)
+{
+    arena_pop_to(temp.arena, temp.start_pos);
+}
+
+ArenaTemp scratch_begin(void)
+{
+    if(_scratch_arena == NULL)
+    {
+        _scratch_arena = arena_create(MB(64));
+    }
+
+    return arena_temp_begin(_scratch_arena);
+
+}
+
+void scratch_end(ArenaTemp scratch)
+{
+    arena_temp_end(scratch);
+}
+
+
+void arena_reset(Arena *arena)
+{
+    for(;;)
+    {
+        arena->offset = 0;
+
+        if(arena->next)
+        {
+            arena = arena->next;   
             continue;
         }
         break;
@@ -284,7 +365,7 @@ String StringFormat(Arena* arena, const char* format, ...)
     }
 
     // Allocate from arena (+1 for null terminator)
-    char* buffer = (char*)arena_alloc(arena, required_len + 1);
+    char* buffer = (char*)PUSH_ARRAY(arena, char, required_len + 1);
     if(!buffer)
     {
         return (String){ .len = 0, .data = NULL };

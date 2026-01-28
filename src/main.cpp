@@ -44,8 +44,8 @@
 // [x] Open a video file and read image frames
 // [x] Write output video file
 
-Arena *scratch = {};
 Arena *thread_arenas[MAX_ARENAS] = {};
+Arena *frame_arena = NULL;
 
 Timer timer = {};
 ProgramSettings settings = {};
@@ -70,7 +70,6 @@ int main(int argc, char** args)
     int ext_len = str_get_extension(settings.input_file_text, ext, 10);
     if(ext_len == 0)
     {
-        // load up images from folder
         LOGV("Loading image from folder %s", settings.input_file_text);
         strncpy(settings.input_directory,settings.input_file_text, strlen(settings.input_file_text));
 
@@ -81,7 +80,8 @@ int main(int argc, char** args)
         String exts[] = {ext1, ext2, ext3};
         
         String* files;
-        int count = platform_get_files_in_folder(scratch, str_from_cstr(settings.input_directory), exts, 3, &files);
+        Temp scratch = scratch_begin();
+        int count = platform_get_files_in_folder(scratch.arena, str_from_cstr(settings.input_directory), exts, 3, &files);
 
         for (int i = 0; i < count; ++i)
         {
@@ -91,7 +91,7 @@ int main(int argc, char** args)
 
         settings.input_file_count = count;
 
-        arena_reset(scratch);
+        scratch_end(scratch);
     }
     else
     {
@@ -144,10 +144,12 @@ int handle_image()
 {
     Image image = {};
 
+    Temp scratch = scratch_begin();
+
     for(int i = 0; i < settings.input_file_count; ++i)
     {
         String infile;
-        infile = StringFormat(scratch, "%s/%s", settings.input_directory, settings.input_files[i].filename);
+        infile = StringFormat(scratch.arena, "%s/%s", settings.input_directory, settings.input_files[i].filename);
 
         LOGV("infile: %.*s", infile.len, infile.data);
 
@@ -257,7 +259,7 @@ int handle_image()
 
         if(!settings.no_encoding)
         {
-            String outfile = StringFormat(scratch, "output/%s", settings.input_files[i].filename);
+            String outfile = StringFormat(scratch.arena, "output/%s", settings.input_files[i].filename);
             LOGI("outfile %d: %.*s", i, outfile.len, outfile.data);
             util_write_output(&image, outfile.data);
         }
@@ -266,14 +268,16 @@ int handle_image()
         {
             fclose(bbx_file);
         }
-
     }
+
+    scratch_end(scratch);
+
     return 0;
 }
 
 int handle_video()
 {
-    Arena *arena_results = arena_create(ARENA_SIZE_LARGE);
+    Arena *arena_results = arena_create(MB(16));
 
     LOGI("Opening video file '%s'...", settings.input_file_text);
     
@@ -326,7 +330,7 @@ int handle_video()
     for(;;)
     {
         LOGI("Decoding Chunk...");
-        arena_reset(scratch);
+        arena_reset(frame_arena);
         stopwatch_start();
 
         // decode data
@@ -347,11 +351,12 @@ int handle_video()
             break;
         }
 
+#if 0
         // determine any video discontinuities
         LOGI("Determining video discontinuities...");
         
         Image result = {0};
-        result.data = (u8 *)arena_alloc(scratch,vid.w*vid.h*3);
+        result.data = (u8 *)PUSH_ARRAY(frame_arena, u8, vid.w*vid.h*3);
         result.w = vid.w;
         result.h = vid.h;
         result.n = 3;
@@ -398,6 +403,7 @@ int handle_video()
             }
 #endif
         }
+#endif
 
         // run detections
 
@@ -409,7 +415,7 @@ int handle_video()
 
         bool use_scaled[settings.thread_count] = {0};
 
-        u8 detect_buffers[settings.thread_count][0x9000] = {};
+        u8 *detect_buffers = (u8 *)PUSH_ARRAY(frame_arena, u8, 0x9000 * settings.thread_count);
 
         u32 output_count = 0;
         u8* output_ptrs[4096] = {};
@@ -421,7 +427,7 @@ int handle_video()
         LOGV("Number of skip frames: %d (Based on %f smoothing window)", skip_frames, settings.frame_smoothing_window);
 
 #if 0
-        u32 *detect_frames = (u32 *)arena_alloc(scratch, vid.frame_count*sizeof(u32));
+        u32 *detect_frames = (u32 *)PUSH_ARRAY(frame_arena, u32, frame_count);
         u32 detect_frames_count = 0;
 
         for(int i = 0; i < vid.frame_count; ++i)
@@ -443,7 +449,7 @@ int handle_video()
             for(int i = 0; i < settings.thread_count; ++i)
             {
                 memset(&images_scaled[i], 0, sizeof(Image));
-                memset(detect_buffers[i], 0, 0x9000);
+                memset(detect_buffers+(0x9000*i), 0, 0x9000);
                 use_scaled[i] = false;
             }
 
@@ -462,7 +468,7 @@ int handle_video()
                 Image* image_scaled = &images_scaled[actual_thread_count];
 
                 // fill out the image object
-                image->detect_buffer = detect_buffers[actual_thread_count];
+                image->detect_buffer = (detect_buffers + (0x9000 * actual_thread_count));
                 image->frame_number = frame_counter;
                 image->data = &vid.data[(u64)frame_counter*vid.w*vid.h*3];
                 image->w = vid.w;
@@ -534,7 +540,7 @@ int handle_video()
                     offset += sizeof(int);
 
                     LOGV("frame number: %d, faces_found: %d", image->frame_number, _faces_found);
-                    output_ptrs[image->frame_number] = (u8 *)arena_alloc(arena_results, sizeof(u32)+(_faces_found*sizeof(Rect)));
+                    output_ptrs[image->frame_number] = (u8 *)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(_faces_found*sizeof(Rect)));
 
                     for(int j = 0; j < _faces_found; ++j)
                     {
@@ -604,7 +610,7 @@ int handle_video()
                     {
                         // allocate space for output_ptrs
                         int rc = rl0.rect_count;
-                        output_ptrs[i+f] = (u8*)arena_alloc(arena_results, sizeof(u32) + rc*sizeof(Rect));
+                        output_ptrs[i+f] = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Rect)));
                         memcpy(output_ptrs[i+f], &rc, sizeof(u32));
                         memcpy(output_ptrs[i+f] + sizeof(u32), rl0.rects, rc*sizeof(Rect));
                     }
@@ -623,7 +629,7 @@ int handle_video()
                     RectList *b = (rl0.rect_count >= rl1.rect_count) ? &rl1 : &rl0;
 
                     int rc = a->rect_count;
-                    u8 *out = (u8*)arena_alloc(arena_results, sizeof(u32) + rc*sizeof(Rect));
+                    u8 *out = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Rect)));
                     memcpy(out, &rc, sizeof(u32));
 
                     int offset = sizeof(u32);
@@ -963,9 +969,10 @@ bool init(int argc, char **args)
     // initialize memory arenas used in program
     for(int i = 0; i < settings.thread_count; ++i)
     {
-        thread_arenas[i] = arena_create(ARENA_SIZE_LARGE);
+        thread_arenas[i] = arena_create(MB(16));
     }
-    scratch = arena_create(ARENA_SIZE_LARGE);
+
+    frame_arena = arena_create(MB(16));
 
     // initialize model data
     detect_init();

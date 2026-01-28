@@ -1,3 +1,5 @@
+bin/*
 output/*
 assets/*
+third_party/ffmpeg/*
 *.bbx

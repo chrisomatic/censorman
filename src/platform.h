@@ -61,7 +61,7 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
 
     if (handle == INVALID_HANDLE_VALUE) return 0;
 
-    String* files = (String*)arena_alloc(arena, sizeof(String) * 1024); // adjust size as needed
+    String* files = (String*)PUSH_ARRAY(arena, String, 1024);
 
     do {
         if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -72,7 +72,7 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
                 has_valid_extension |= str_ends_with(name, extensions[i]);
             }
             if (has_valid_extension) {
-                char* file_copy = (char*)arena_alloc(arena, name.len + 1);
+                char* file_copy = (char*)PUSH_ARRAY(arena, char, name.len+1);
                 memcpy(file_copy, name.data, name.len);
                 file_copy[name.len] = '\0';
 
@@ -94,7 +94,7 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
     if (!dir) return 0;
 
     struct dirent* entry;
-    String* files = (String*)arena_alloc(arena, sizeof(String) * 1024); // adjust size as needed
+    String* files = (String*)PUSH_ARRAY(arena, String, 1024);
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type != DT_DIR) {
@@ -106,7 +106,7 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
                 has_valid_extension |= str_ends_with(name, extensions[i]);
             }
             if (has_valid_extension) {
-                char* file_copy = (char*)arena_alloc(arena, name.len + 1);
+                char* file_copy = (char*)PUSH_ARRAY(arena, char, name.len + 1);
                 memcpy(file_copy, name.data, name.len);
                 file_copy[name.len] = '\0';
 
