@@ -1,8 +1,6 @@
 # Censorman
 
-Detect features in images and video, and write them back with some transformations on those regions!
-
-That's the power of Censor Man!
+Command-line tool to censor faces in images and videos!
 
 ```
       "All in a day's work!"
@@ -15,10 +13,26 @@ That's the power of Censor Man!
 
 ```
 
-## How to build and run
+## Examples
 
-1. Clone this repository
-2. Compile ffmpeg + x264 locally (needs done once)
+```sh
+# blur faces in an image
+censorman assets/crowd.jpg -t blur
+
+# scramble and pixelate faces in an image
+censorman assets/crowd.jpg -t scramble,pixelate
+
+#  blur faces in video with debug boxes
+censorman assets/nosound_1face_60s.mp4 -t pixelate --debug
+```
+
+## Get Latest Builds
+
+- Linux:   [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman)
+- Windows: [censorman.exe](https://github.com/chrisomatic/censorman/releases/latest/download/censorman.exe)
+- MacOS: (soon)
+
+## How to build and run
 
 Linux
 
@@ -28,6 +42,9 @@ Linux
 
 # build censorman
 ./build.sh
+
+# run the dang program
+bin/censorman
 ```
 
 MacOS
@@ -38,6 +55,9 @@ MacOS
 
 # build censorman
 ./build.sh macos
+
+# run the dang program
+bin/censorman
 ```
 
 Windows
@@ -48,6 +68,9 @@ ffmpeg_build.cmd
 
 # build censorman
 build.cmd
+
+# run the dang program
+bin\censorman
 ```
 
 ## Dependencies
@@ -57,15 +80,18 @@ build.cmd
 - [stb\_image](https://github.com/nothings/stb/blob/master/stb_image.h)
 - [stb\_image\_write](https://github.com/nothings/stb/blob/master/stb_image_write.h)
 
-## Image Reading / Writing
+## Credits
 
-Thanks to the awesome Sean Barrett for his open source single-header libraries (https://github.com/nothings/stb/)
-
-## Face Detection
+### Face Detection
 
 This project uses the libfacedetection model created by Shiqi Yu on GitHub (https://github.com/ShiqiYu/libfacedetection)
 
-## Video
+### Image Reading / Writing
+
+Thanks to the awesome Sean Barrett for his open source single-header libraries (https://github.com/nothings/stb/)
+
+
+### Video
 
 FFMPEG is being pulled, built, and statically linked for this project
 

@@ -21,11 +21,11 @@
 // [ ] Statically compile ncnn (Tencent) inference engine
 // [ ] Add audio stream encoding (1:1)
 // [ ] Add YuNet model (.bin and .param) to compare accuracy
-// [ ] Fix builds for MacOS
 // [ ] Add --model_dir parameter for plugin system
 // [ ] Add plugin
 
 // DONE
+// [x] Fix builds for MacOS
 // [x] Get Windows support working
 // [x] Clean up CLI interface and standard output
 // [x] Use an exponential smooth instead of lerp for video frames
