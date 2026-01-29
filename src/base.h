@@ -538,7 +538,7 @@ static void print_log(LogType type, const char* fmt, ...)
 #define STR_BOOL(b)     ((b) ? "True" : "False")
 
 #define STR_FMT "%.*s"
-#define STR_ARG(s) ((s).data, (s).len)
+#define STR_ARG(s) s.len, s.data
 
 typedef struct
 {
