@@ -66,9 +66,10 @@ int main(int argc, char** args)
         return 1;
 
     // check input
-    char ext[10] = {};
-    int ext_len = str_get_extension(settings.input_file_text, ext, 10);
-    if(ext_len == 0)
+    Temp scratch = scratch_begin();
+
+    String ext = os_path_get_extension(scratch.arena, STR(settings.input_file_text));
+    if(ext.len == 0)
     {
         LOGV("Loading image from folder %s", settings.input_file_text);
         strncpy(settings.input_directory,settings.input_file_text, strlen(settings.input_file_text));
@@ -80,25 +81,27 @@ int main(int argc, char** args)
         String exts[] = {ext1, ext2, ext3};
         
         String* files;
-        Temp scratch = scratch_begin();
-        int count = platform_get_files_in_folder(scratch.arena, str_from_cstr(settings.input_directory), exts, 3, &files);
+        int count = platform_get_files_in_folder(scratch.arena, STR(settings.input_directory), exts, 3, &files);
 
         for (int i = 0; i < count; ++i)
         {
             LOGV("File %d: %.*s", i + 1, files[i].len, files[i].data);
-            strncpy(settings.input_files[i].filename, files[i].data, files[i].len);
+            strncpy(settings.input_files[i].filename, (char *)files[i].data, files[i].len);
         }
 
         settings.input_file_count = count;
-
-        scratch_end(scratch);
     }
     else
     {
         // single input file, not a folder
 
-        LOGV("File extension: %s", ext);
-        bool is_video = (StringEqual(ext, "mp4") || StringEqual(ext, "mov") || StringEqual(ext, "MP4") || StringEqual(ext, "MOV"));
+        string_to_lower(&ext);
+
+        LOGV("File extension: " STR_FMT, STR_ARG(ext));
+
+        StringArray ext_arr = string_array_create(scratch.arena, 2, S("mp4"), S("mov"));
+
+        bool is_video = string_in_array(ext, ext_arr);
         if(is_video) settings.asset_type = TYPE_VIDEO;
         settings.input_file_count = 1;
 
@@ -114,6 +117,8 @@ int main(int argc, char** args)
             }
         }
     }
+
+    scratch_end(scratch);
 
     // initialize threads
     thread_init(settings.thread_count);
@@ -149,11 +154,11 @@ int handle_image()
     for(int i = 0; i < settings.input_file_count; ++i)
     {
         String infile;
-        infile = StringFormat(scratch.arena, "%s/%s", settings.input_directory, settings.input_files[i].filename);
+        infile = string_format(scratch.arena, "%s/%s", settings.input_directory, settings.input_files[i].filename);
 
         LOGV("infile: %.*s", infile.len, infile.data);
 
-        bool loaded = util_load_image(infile.data, &image);
+        bool loaded = util_load_image((char*)infile.data, &image);
         if(!loaded) return 1;
 
         FILE *bbx_file = NULL;
@@ -259,9 +264,9 @@ int handle_image()
 
         if(!settings.no_encoding)
         {
-            String outfile = StringFormat(scratch.arena, "output/%s", settings.input_files[i].filename);
+            String outfile = string_format(scratch.arena, "output/%s", settings.input_files[i].filename);
             LOGI("outfile %d: %.*s", i, outfile.len, outfile.data);
-            util_write_output(&image, outfile.data);
+            util_write_output(&image, (char*)outfile.data);
         }
 
         if(bbx_file)
@@ -957,9 +962,9 @@ bool init(int argc, char **args)
     LOGI("  Max Buffer Size:        %lu B", settings.max_buffer_size);
     LOGI("  Box Padding Percent:    %f", settings.box_padding_pct);
     LOGI("  Frame Smoothing Window: %f", settings.frame_smoothing_window);
-    LOGI("  No Encoding:            %s", StringBool(settings.no_encoding));
+    LOGI("  No Encoding:            %s", STR_BOOL(settings.no_encoding));
     LOGI("  Downscaling:            %s (%d px)", settings.no_scale ? "No" : "Yes", settings.asset_type == TYPE_IMAGE ? settings.scaled_size_image : settings.scaled_size_video);
-    LOGI("  No Rotate:              %s", StringBool(settings.no_rotate));
+    LOGI("  No Rotate:              %s", STR_BOOL(settings.no_rotate));
     LOGI("  Bounding Box Output:    %s", settings.has_bbx_output ? settings.bbx_output : "(None)");
     LOGI("  Debug:                  %s", settings.debug ? "ON" : "OFF");
     LOGI("  Verbose:                %s", settings.verbose ? "ON" : "OFF");
@@ -1027,19 +1032,19 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
             {
                 case '-':
                 {
-                    if(StringEqual(&argv[i][2],"debug"))
+                    if(STR_EQUAL(&argv[i][2],"debug"))
                         settings->debug = true;
-                    else if(StringEqual(&argv[i][2],"quiet"))
+                    else if(STR_EQUAL(&argv[i][2],"quiet"))
                         is_quiet = true;
-                    else if(StringEqual(&argv[i][2],"verbose"))
+                    else if(STR_EQUAL(&argv[i][2],"verbose"))
                         settings->verbose = true;
-                    else if(StringEqual(&argv[i][2],"no_encoding"))
+                    else if(STR_EQUAL(&argv[i][2],"no_encoding"))
                         settings->no_encoding = true;
-                    else if(StringEqual(&argv[i][2],"no_scale"))
+                    else if(STR_EQUAL(&argv[i][2],"no_scale"))
                         settings->no_scale = true;
-                    else if(StringEqual(&argv[i][2],"no_rotate"))
+                    else if(STR_EQUAL(&argv[i][2],"no_rotate"))
                         settings->no_rotate = true;
-                    else if(StringEqual(&argv[i][2],"block_scale"))
+                    else if(STR_EQUAL(&argv[i][2],"block_scale"))
                     {
                         if(i < argc-1)
                         {
@@ -1049,7 +1054,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->block_scale = f;
                         }
                     }
-                    else if(StringEqual(&argv[i][2],"blur_strength"))
+                    else if(STR_EQUAL(&argv[i][2],"blur_strength"))
                     {
                         if(i < argc-1)
                         {
@@ -1059,7 +1064,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->blur_strength = f;
                         }
                     }
-                    else if(StringEqual(&argv[i][2],"frame_smoothing_window"))
+                    else if(STR_EQUAL(&argv[i][2],"frame_smoothing_window"))
                     {
                         if(i < argc-1)
                         {
@@ -1069,7 +1074,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->frame_smoothing_window = f;
                         }
                     }
-                    else if(StringEqual(&argv[i][2],"image"))
+                    else if(STR_EQUAL(&argv[i][2],"image"))
                     {
                         if(i < argc-1)
                         {
@@ -1078,7 +1083,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->has_texture = true;
                         }
                     }
-                    else if(StringEqual(&argv[i][2],"bbx_output"))
+                    else if(STR_EQUAL(&argv[i][2],"bbx_output"))
                     {
                         if(i < argc-1)
                         {
@@ -1087,7 +1092,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->has_bbx_output = true;
                         }
                     }
-                    else if(StringEqual(&argv[i][2],"max_buffer_size"))
+                    else if(STR_EQUAL(&argv[i][2],"max_buffer_size"))
                     {
                         if(i < argc-1)
                         {
@@ -1096,7 +1101,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             if(n > 0) settings->max_buffer_size = n;
                         }
                     }
-                    else if(StringEqual(&argv[i][2],"scaled_size"))
+                    else if(STR_EQUAL(&argv[i][2],"scaled_size"))
                     {
                         if(i < argc-1)
                         {
@@ -1111,7 +1116,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             }
                         }
                     }
-                    else if(StringEqual(&argv[i][2],"box_padding_pct"))
+                    else if(STR_EQUAL(&argv[i][2],"box_padding_pct"))
                     {
                         if(i < argc-1)
                         {
@@ -1166,11 +1171,11 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
 
                                 TransformType type = TRANSFORM_TYPE_NONE;
 
-                                if(StringEqual(buf, "blackout"))      type = TRANSFORM_TYPE_BLACKOUT;
-                                else if(StringEqual(buf, "blur"))     type = TRANSFORM_TYPE_BLUR;
-                                else if(StringEqual(buf, "pixelate")) type = TRANSFORM_TYPE_PIXELATE;
-                                else if(StringEqual(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
-                                else if(StringEqual(buf, "texture"))  type = TRANSFORM_TYPE_TEXTURE;
+                                if(STR_EQUAL(buf, "blackout"))      type = TRANSFORM_TYPE_BLACKOUT;
+                                else if(STR_EQUAL(buf, "blur"))     type = TRANSFORM_TYPE_BLUR;
+                                else if(STR_EQUAL(buf, "pixelate")) type = TRANSFORM_TYPE_PIXELATE;
+                                else if(STR_EQUAL(buf, "scramble")) type = TRANSFORM_TYPE_SCRAMBLE;
+                                else if(STR_EQUAL(buf, "texture"))  type = TRANSFORM_TYPE_TEXTURE;
 
                                 memset(buf,0,256);
                                 bufi = 0;

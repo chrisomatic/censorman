@@ -65,11 +65,11 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
 
     do {
         if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            String name = str_from_cstr(find_data.cFileName);
+            String name = STR(find_data.cFileName);
             bool has_valid_extension = false;
             for(int i = 0; i < extension_count; ++i)
             {
-                has_valid_extension |= str_ends_with(name, extensions[i]);
+                has_valid_extension |= string_ends_with(name, extensions[i]);
             }
             if (has_valid_extension) {
                 char* file_copy = (char*)PUSH_ARRAY(arena, char, name.len+1);
@@ -98,19 +98,19 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type != DT_DIR) {
-            String name = str_from_cstr(entry->d_name);
+            String name = STR(entry->d_name);
+
 
             bool has_valid_extension = false;
             for(int i = 0; i < extension_count; ++i)
             {
-                has_valid_extension |= str_ends_with(name, extensions[i]);
+                has_valid_extension |= string_ends_with(name, extensions[i]);
             }
             if (has_valid_extension) {
                 char* file_copy = (char*)PUSH_ARRAY(arena, char, name.len + 1);
                 memcpy(file_copy, name.data, name.len);
                 file_copy[name.len] = '\0';
-
-                files[file_count++] = (String){ .len = name.len, .data = file_copy };
+                files[file_count++] = (String){ .len = name.len, .data = (u8 *)file_copy };
             }
         }
     }

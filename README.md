@@ -13,7 +13,7 @@ Command-line tool to censor faces in images and videos!
 
 ```
 
-## Examples
+## Example Commands
 
 ```sh
 # blur faces in an image
@@ -25,6 +25,11 @@ censorman assets/crowd.jpg -t scramble,pixelate
 #  blur faces in video with debug boxes
 censorman assets/nosound_1face_60s.mp4 -t pixelate --debug
 ```
+
+Before Blur                |  After Blur
+:-------------------------:|:-------------------------:
+![](img/crowd.png)         | ![](img/crowd_processed.png)
+
 
 ## Get Latest Builds
 

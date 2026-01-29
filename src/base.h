@@ -319,117 +319,6 @@ void arena_reset(Arena *arena)
 }
 
 //:==================================
-// Strings
-//:==================================
-
-#define StringEmpty(x)      (x == 0 || strlen(x) == 0)
-#define StringEqual(x,y)    (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y))
-#define StringBool(b)       ((b) ? "True" : "False")
-
-#define S(literal) (String){sizeof(literal) - 1,(char*)(literal) }
-#define SA(...) (StringArray){}
-
-typedef struct
-{
-    u64 len;
-    char* data;
-} String;
-
-typedef struct
-{
-    String *v;
-    u64 count;
-    u64 total_size;
-} StringArray;
-
-String str_from_cstr(char* cstr)
-{
-    return (String){ .len = (u32)strlen(cstr), .data = (char*)cstr };
-}
-
-b32 str_ends_with(String str, String suffix) {
-    if (suffix.len > str.len) return 0;
-    return (strncmp(str.data + (str.len - suffix.len), suffix.data, suffix.len) == 0);
-}
-
-String StringFormat(Arena* arena, const char* format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    int required_len = vsnprintf(NULL, 0, format, args);
-    va_end(args);
-
-    if(required_len < 0)
-    {
-        return (String){ .len = 0, .data = NULL };
-    }
-
-    // Allocate from arena (+1 for null terminator)
-    char* buffer = (char*)PUSH_ARRAY(arena, char, required_len + 1);
-    if(!buffer)
-    {
-        return (String){ .len = 0, .data = NULL };
-    }
-
-    va_start(args, format);
-    vsnprintf(buffer, required_len + 1, format, args);
-    va_end(args);
-
-    return (String){ .len = (u32)required_len, .data = buffer };
-}
-
-int str_get_extension(const char *source, char *buf, int buf_len)
-{
-    if (!source || !buf) return 0;
-
-    int len = strlen(source);
-    if (len == 0) return 0;
-
-    // Start from the end and move backward
-    for (int i = len - 1; i >= 0; i--) {
-        if (source[i] == '.')
-        {
-            // If '.' is the last character, no extension
-            if (i == len - 1) return 0;
-
-            // Copy extension
-            int copy_len = MIN(len-i-1,buf_len-1);
-            strncpy(buf, &source[i+1], copy_len);
-            buf[copy_len] = '\0';
-            return strlen(buf);
-        }
-    }
-
-    return 0;
-}
-
-
-//:==================================
-// Arrays
-//:==================================
-
-#define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
-
-//:==================================
-// Files
-//:==================================
-
-inline int FileWriteU8(FILE* file, u8 x)   { return fwrite(&x,sizeof(u8),1,file);}
-inline int FileWriteU16(FILE* file, u16 x) { return fwrite(&x,sizeof(u16),1,file);}
-inline int FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file);}
-inline int FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
-inline int FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
-
-inline int FileWriteU32AtIndex(FILE* file, u32 x, u32 index)
-{
-    int pos = ftell(file);
-    fseek(file, index, SEEK_SET);
-    int ret = fwrite(&x,sizeof(u32),1,file);
-    fseek(file, pos, SEEK_SET);
-    return ret;
-}
-
-//:==================================
 // Timer
 //:==================================
 
@@ -636,6 +525,898 @@ static void print_log(LogType type, const char* fmt, ...)
 #define LOGI(format,...) LOG(LOG_TYPE_INFO   , LOG_FMT(I, format), ##__VA_ARGS__) // info
 #define LOGV(format,...) LOG(LOG_TYPE_VERBOSE, LOG_FMT(V, format), ##__VA_ARGS__) // verbose
 #define LOGN(format,...) LOG(LOG_TYPE_NETWORK, LOG_FMT(N, format), ##__VA_ARGS__) // network
+
+//:==================================
+// Strings
+//:==================================
+
+#define S(literal)      (String){sizeof(literal)-1, (u8*)(literal)}
+#define STR(cstr)       (String){cstring_strlen(cstr),(u8*)(cstr)}
+
+#define STR_EQUAL(x,y)  (strncmp((x),(y),strlen((x))) == 0 && strlen(x) == strlen(y)) 
+#define STR_EMPTY(x)    ((x) == 0 || cstring_strlen(x) == 0)
+#define STR_BOOL(b)     ((b) ? "True" : "False")
+
+#define STR_FMT "%.*s"
+#define STR_ARG(s) ((s).data, (s).len)
+
+typedef struct
+{
+    u64 len;
+    u8* data;
+} String;
+
+typedef struct
+{
+    u64 count;
+    String *items;
+} StringArray;
+
+typedef struct StringNode StringNode;
+struct StringNode
+{
+    String str;
+    StringNode *prev;
+    StringNode *next;
+};
+
+typedef struct
+{
+    StringNode *head;
+    StringNode *last;
+    u64 count;
+    Arena *arena;
+} StringList;
+
+b32 char_is_whitespace(u8 c);
+b32 char_is_digit(u8 c);
+b32 char_is_alpha(u8 c);
+b32 char_is_lower(u8 c);
+b32 char_is_upper(u8 c);
+u8 char_to_lower(u8 c);
+u8 char_to_upper(u8 c);
+
+String string_format(Arena *arena, const char *format, ...);
+String string_combine(Arena *arena, int count, ...);
+
+b32 string_equal(String s, String t);
+b32 string_starts_with(String str, String start);
+b32 string_ends_with(String str, String end);
+
+String string_substring(String s, u64 start, u64 len);
+String string_trim(String s);
+s64 string_get_first_index(String s, const char *find, b32 from_end);
+b32 string_in_list(String str, StringList list);
+b32 string_in_array(String str, StringArray arr);
+
+void string_to_lower(String *str);
+void string_to_upper(String *str);
+
+// Returns null-terminated C String
+char* string_to_cstr(Arena *arena, String str);
+
+void string_print(String s);
+
+StringArray string_array_create(Arena *arena, u64 count, ...);
+StringArray string_array_create_empty(Arena *arena, u64 count);
+StringArray string_split(Arena *arena, String base, const char *split);
+StringArray string_list_to_array(StringList sl);
+
+String string_eat_whitespace(String str);
+String string_advance(String str, u64 count);
+void   string_advance_in_place(String *str, u64 count);
+char   string_get_char_at_index(String str, u64 index);
+char   string_top_char(String str);
+char   string_get_char_and_advance(String *str);
+String string_advance_char(String str);
+
+s64 string_to_s64(String str);
+f64 string_to_f64(String str);
+
+u64 cstring_strlen(const char *str);
+
+
+b32 char_is_whitespace(u8 c)
+{
+    return (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+}
+
+b32 char_is_digit(u8 c)
+{
+    return (c >= '0' && c <= '9');
+}
+
+b32 char_is_alpha(u8 c)
+{
+    return (c >= 'A' && c <= 'z');
+}
+
+b32 char_is_lower(u8 c)
+{
+    return (c >= 'a' && c <= 'z');
+}
+
+b32 char_is_upper(u8 c)
+{
+    return (c >= 'A' && c <= 'Z');
+}
+
+u8 char_to_lower(u8 c)
+{
+    if(char_is_upper(c))
+    {
+        c += ('a' - 'A');
+    }
+    return c;
+}
+
+u8 char_to_upper(u8 c)
+{
+    if(char_is_lower(c))
+    {
+        c += ('A' - 'a');
+    }
+    return c;
+}
+
+u64 cstring_strlen(const char *str)
+{
+    u64 len = 0;
+    for(const char *p = str; *p; ++p) len++;
+    return len;
+}
+
+String string_format(Arena *arena, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int required_len = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    if (required_len < 0)
+    {
+        return (String){ .len = 0, .data = NULL };
+    }
+
+    char* buffer = (char*)PUSH_ARRAY(arena, char, required_len);
+    if (!buffer)
+    {
+        return (String){ .len = 0, .data = NULL };
+    }
+
+    va_start(args, format);
+    vsnprintf(buffer, required_len+1, format, args);
+    va_end(args);
+
+    return (String){ .len = (u32)required_len, .data = (u8 *)buffer };
+}
+
+char* string_to_cstr(Arena *arena, String str)
+{
+    char* cstr;
+    cstr = (char*)PUSH_ARRAY(arena, char, str.len+1); // +1 for null terminator
+    MemoryCopy(cstr,str.data, str.len);
+    return cstr;
+}
+
+void string_print(String s)
+{
+    if(s.len == 0 || !s.data) return;
+    LOGI(STR_FMT,s.len, s.data);
+}
+
+String string_combine(Arena *arena, int count, ...)
+{
+    va_list args1, args2;
+    va_start(args1, count);
+    va_copy(args2, args1);
+
+    u64 total_len = 0;
+    for(u64 i = 0; i < count; ++i)
+    {
+        String s = va_arg(args1, String);
+        total_len += s.len;
+    }
+    va_end(args1);
+
+    String str = {0};
+    str.data = (u8 *)PUSH_ARRAY(arena, u8, total_len);
+
+    for(int i = 0; i < count; ++i)
+    {
+        String s = va_arg(args2, String);
+        memcpy(&str.data[str.len],s.data, s.len);
+        str.len += s.len;
+    }
+    va_end(args2);
+
+    return str;
+}
+
+void string_to_lower(String *str)
+{
+    for(u64 i = 0; i < str->len; ++i)
+    {
+        str->data[i] = char_to_lower(str->data[i]);
+    }
+}
+
+void string_to_upper(String *str)
+{
+    for(u64 i = 0; i < str->len; ++i)
+    {
+        str->data[i] = char_to_upper(str->data[i]);
+    }
+}
+
+b32 string_starts_with(String str, String start)
+{
+    if(start.len > str.len)
+        return false;
+
+    String prefix = string_substring(str, 0, start.len);
+    return string_equal(prefix, start);
+}
+
+b32 string_ends_with(String str, String end)
+{
+    if (end.len > str.len)
+        return false;
+
+    String suffix = string_substring(str, str.len - end.len, end.len);
+    return string_equal(suffix, end);
+}
+
+s64 string_get_first_index(String s, const char *find, b32 from_end)
+{
+    String find_str = STR(find);
+
+    for(u64 i = from_end ? s.len - 1 : 0; from_end ? i >= 0 : i < s.len; i += from_end ? -1 : 1)
+    {
+        if(s.data[i] == find_str.data[0])
+        {
+            bool match = true;
+            for(u64 j = 1; j < find_str.len; ++j)
+            {
+                ++i;
+                if(i >= s.len) {
+                    match = false;
+                    break;
+                }
+
+                if(s.data[i] != find_str.data[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if(match)
+            {
+                return i;
+            }
+        }
+    }
+
+    return -1;
+}
+
+b32 string_in_list(String str, StringList list)
+{
+    StringNode *sn = list.head;
+    for(;;)
+    {
+        if(string_equal(str, sn->str))
+            return true;
+
+        if(!sn->next) break;
+        sn = sn->next;
+    }
+    return false;
+}
+
+b32 string_in_array(String str, StringArray arr)
+{
+    for(int i = 0; i < arr.count; ++i)
+    {
+        if(string_equal(str, arr.items[i]))
+            return true;
+    }
+    return false;
+}
+
+b32 string_equal(String s, String t)
+{
+    if(s.len != t.len) return false;
+
+    for(u64 i = 0; i < s.len; ++i)
+        if(s.data[i] != t.data[i])
+            return false;
+
+    return true;
+}
+
+
+String string_substring(String s, u64 start, u64 len)
+{
+    String ret = {
+        .len = len,
+        .data = s.data + start
+    };
+    return ret;
+}
+
+String string_trim(String s)
+{
+    String ret = s;
+
+    // rtrim
+    for(u8 *p = ret.data+ret.len-1; ret.len > 0 && char_is_whitespace(*p); --p, ret.len--);
+
+    // ltrim
+    for(u8 *p = ret.data; ret.len > 0 && char_is_whitespace(*p); ++p, ret.data++, ret.len--);
+
+    return ret;
+}
+
+////////////////////////////////////
+// String Conversions
+
+f64 string_to_f64(String str)
+{
+    f64 f = 0.0;
+    s32 e = 0;
+    s32 c;
+    s32 sign = 1;
+
+    str = string_eat_whitespace(str);
+
+    while(string_top_char(str) == '-')
+    {
+        str = string_advance_char(str);
+        sign *= -1;
+    }
+
+    for(;;)
+    {
+        c = string_get_char_and_advance(&str);
+
+        if(!char_is_digit(c)) break;
+
+        f = f*10.0 + (c - '0');
+    }
+
+    if (c == '.')
+    {
+        for(;;)
+        {
+            c = string_get_char_and_advance(&str);
+            if(!char_is_digit(c)) break;
+
+            f = f*10.0 + (c - '0');
+            e = e-1;
+        }
+    }
+
+    if (c == 'e' || c == 'E')
+    {
+        s32 sign = 1;
+        s32 i = 0;
+
+        c = string_get_char_and_advance(&str);
+
+        if (c == '+')
+        {
+            c = string_get_char_and_advance(&str);
+        }
+        else if (c == '-')
+        {
+            c = string_get_char_and_advance(&str);
+            sign = -1;
+        }
+
+        for(;;)
+        {
+            if(!char_is_digit(c)) break;
+            i = i*10 + (c - '0');
+            c = string_get_char_and_advance(&str);
+        }
+
+        e += i*sign;
+    }
+
+    while (e > 0)
+    {
+        f *= 10.0;
+        e--;
+    }
+
+    while (e < 0)
+    {
+        f *= 0.1;
+        e++;
+    }
+
+    f *= sign;
+
+    return f;
+}
+
+s64 string_to_s64(String str)
+{
+    s64 i = 0;
+    s32 e = 0;
+    s32 c;
+    s32 sign = 1;
+    str = string_eat_whitespace(str);
+
+    for(;;)
+    {
+        if(string_top_char(str) != '-')
+            break;
+
+        str = string_advance_char(str);
+        sign *= -1;
+    }
+
+    for(;;)
+    {
+        char c = string_get_char_and_advance(&str);
+        if(!char_is_digit(c)) break;
+
+        i = i*10 + (c - '0');
+    }
+
+    if (c == 'e' || c == 'E')
+    {
+        s32 sign = 1;
+        s32 n = 0;
+
+        c = string_get_char_and_advance(&str);
+
+        if (c == '+')
+        {
+            c = string_get_char_and_advance(&str);
+        }
+        else if (c == '-')
+        {
+            c = string_get_char_and_advance(&str);
+            sign = -1;
+        }
+
+        for(;;)
+        {
+            if(!char_is_digit(c)) break;
+            n = n*10 + (c - '0');
+            c = string_get_char_and_advance(&str);
+        }
+
+        e += n*sign;
+    }
+
+    while (e > 0)
+    {
+        i *= 10.0;
+        e--;
+    }
+
+    while (e < 0)
+    {
+        i *= 0.1;
+        e++;
+    }
+
+    i *= sign;
+
+    return i;
+}
+
+////////////////////////////////////
+// String Lists
+
+StringList string_list_create(Arena *arena)
+{
+    StringList sl = {0};
+
+    sl.head = NULL;
+    sl.last = NULL;
+    sl.count = 0;
+    sl.arena = arena;
+
+    return sl;
+}
+
+void string_list_add(StringList *sl, String str)
+{
+    if(sl->head == NULL)
+    {
+        // first element
+        sl->head = (StringNode *)PUSH_ONE(sl->arena, StringNode);
+        sl->head->prev = NULL;
+        sl->head->next = NULL;
+        sl->last = sl->head;
+    }
+    else
+    {
+        StringNode *prior_last = sl->last;
+        sl->last->next = (StringNode *)PUSH_ONE(sl->arena, StringNode);
+        sl->last = sl->last->next;
+        sl->last->next = NULL;
+        sl->last->prev = prior_last;
+    }
+
+    sl->last->str.data = str.data;
+    sl->last->str.len = str.len;
+
+    sl->count++;
+}
+
+void string_list_addf(StringList *sl, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int required_len = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    if (required_len <= 0)
+    {
+        return;
+    }
+
+    char* buffer = (char *)PUSH_ARRAY(sl->arena, char, required_len);
+    if (!buffer)
+    {
+        return;
+    }
+
+    va_start(args, format);
+    vsnprintf(buffer, required_len+1, format, args);
+    va_end(args);
+
+    String str = {(u32)required_len, (u8 *)buffer};
+
+    string_list_add(sl, str);
+
+    return;
+
+}
+
+bool string_list_remove(StringList *sl, u64 index)
+{
+    u64 idx = 0;
+
+    StringNode *sn = sl->head;
+    b32 result = false;
+
+    for(;;)
+    {
+        if(idx > index)
+            break;
+
+        if(idx == index)
+        {
+            // remove string node
+
+            if(sn->prev && sn->next)
+            {
+                sn->prev->next = sn->next;
+                sn->next->prev = sn->prev;
+            }
+            else
+            {
+                if(sn->next)
+                {
+                    sn->next->prev = NULL;
+                    if(idx == 0) sl->head = sn->next;
+                }
+
+                if(sn->prev)
+                {
+                    sn->prev->next = NULL;
+                    if(idx == sl->count - 1) sl->last = sn->prev;
+                }
+            }
+
+            sn->prev = NULL;
+            sn->next = NULL;
+
+            result = true;
+
+            // TODO: add to a free list to use
+            //       for future allocations
+        }
+
+        if(!sn->next)
+            break;
+
+        sn = sn->next;
+        idx++;
+    }
+
+    return result;
+}
+
+String string_list_get(StringList *sl, u64 index)
+{
+    u64 idx = 0;
+
+    StringNode *sn = sl->head;
+    b32 result = false;
+
+    for(;;)
+    {
+        if(idx > index)
+            break;
+
+        if(idx == index)
+            return sn->str;
+
+        if(!sn->next)
+            break;
+
+        sn = sn->next;
+        idx++;
+    }
+
+    // return empty string?
+    return (String){0, NULL};
+}
+
+String string_list_collapse(StringList *sl)
+{
+    String str = {0};
+    u64 total_size = 0;
+
+    StringNode *sn;
+   
+    sn = sl->head;
+    if(sn == NULL)
+    {
+        LOGW("StringNode is null");
+        return str;
+    }
+
+    for(;;)
+    {
+        total_size += sn->str.len;
+
+        if(!sn->next)
+            break;
+
+        sn = sn->next;
+    }
+
+    if(total_size == 0)
+        return str;
+
+    if(sl->arena)
+        str.data = (u8 *)PUSH_ARRAY(sl->arena, u8, total_size);
+    else
+        str.data = (u8 *)malloc(total_size*sizeof(u8));
+
+    sn = sl->head;
+    for(;;)
+    {
+        String *it = &sn->str;
+        memcpy(&str.data[str.len], it->data, it->len);
+        str.len += it->len;
+
+        if(!sn->next)
+            break;
+        sn = sn->next;
+    }
+
+    return str;
+}
+
+String string_eat_whitespace(String str)
+{
+    String ret = str;
+
+    for(;;)
+    {
+        if(ret.len == 0) break;
+        if(!char_is_whitespace(ret.data[0])) break;
+        ret.data += sizeof(u8);
+        ret.len--;
+    }
+
+    return ret;
+}
+
+void string_advance_in_place(String *str, u64 count)
+{
+    if(str->len < count) return;
+
+    str->len -= count;
+    str->data += count;
+}
+
+String string_advance(String str, u64 count)
+{
+    String ret = {0};
+    if(str.len < count) return ret;
+
+    ret.len = str.len - count;
+    ret.data = str.data + count;
+    return ret;
+}
+
+char string_get_char_at_index(String str, u64 index)
+{
+    char c = str.len > 0 ? str.data[index] : '\0';
+    return c;
+}
+
+char string_get_char_and_advance(String *str)
+{
+    char c = str->len > 0 ? str->data[0] : '\0';
+    string_advance_in_place(str, 1);
+    return c;
+}
+
+char string_top_char(String str)
+{
+    return string_get_char_at_index(str,0);
+}
+
+String string_advance_char(String str)
+{
+    return string_advance(str, 1);
+}
+
+StringArray string_array_create(Arena *arena, u64 count, ...)
+{
+    StringArray sa;
+    sa.count = count;
+    sa.items = (String *)PUSH_ARRAY(arena, String, count);
+
+    va_list args;
+    va_start(args, count);
+
+    for(int i = 0; i < count; ++i)
+    {
+        sa.items[i] = va_arg(args, String);
+    }
+
+    va_end(args);
+    return sa;
+}
+
+StringArray string_array_create_empty(Arena *arena, u64 count)
+{
+    StringArray sa;
+    sa.count = count;
+    sa.items = (String *)PUSH_ARRAY(arena, String, count);
+    return sa;
+}
+
+StringArray string_list_to_array(StringList sl)
+{
+    StringArray sa;
+    sa.count = sl.count;
+    sa.items = (String *)PUSH_ARRAY(sl.arena, String, sl.count);
+
+    StringNode *sn = sl.head;
+    for(int i = 0; i < sl.count; ++i)
+    {
+        MemoryCopy(&sa.items[i], &sn->str, sizeof(String));
+        if(!sn->next) break;
+        sn = sn->next;
+    }
+
+    return sa;
+}
+
+StringArray string_split(Arena *arena, String base, const char *split)
+{
+    String split_str = STR(split);
+
+    u64 num_strings = 1;
+    s64 split_indices[2048] = {0}; // @NOTE: Arbitrary limit
+
+    for(u64 i = 0; i < base.len; ++i)
+    {
+        if(base.data[i] == split_str.data[0])
+        {
+            bool match = true;
+            for(u64 j = 1; j < split_str.len; ++j)
+            {
+                ++i;
+                if(i >= base.len) {
+                    match = false;
+                    break;
+                }
+
+                if(base.data[i] != split_str.data[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if(match)
+            {
+                split_indices[num_strings] = i+1;
+                num_strings++;
+            }
+        }
+    }
+
+    split_indices[num_strings] = base.len;
+
+    StringArray sa = {0};
+    sa.items = (String *)PUSH_ARRAY(arena, String, num_strings);
+    sa.count = num_strings;
+
+    for(u64 i = 0; i < num_strings; ++i)
+    {
+        u64 string_len = split_indices[i+1] - split_indices[i] - split_str.len;
+        if(i+1 == num_strings) string_len += split_str.len;
+
+        String *str = &sa.items[i];
+        str->data = (u8 *)PUSH_ARRAY(arena, u8, string_len);
+        str->len = string_len;
+
+        memcpy(str->data, &base.data[split_indices[i]], string_len);
+    }
+
+    return sa;
+}
+
+
+//:==================================
+// Arrays
+//:==================================
+
+#define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
+
+//:==================================
+// Files
+//:==================================
+
+inline int FileWriteU8(FILE* file, u8 x)   { return fwrite(&x,sizeof(u8),1,file);}
+inline int FileWriteU16(FILE* file, u16 x) { return fwrite(&x,sizeof(u16),1,file);}
+inline int FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file);}
+inline int FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
+inline int FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
+
+inline int FileWriteU32AtIndex(FILE* file, u32 x, u32 index)
+{
+    int pos = ftell(file);
+    fseek(file, index, SEEK_SET);
+    int ret = fwrite(&x,sizeof(u32),1,file);
+    fseek(file, pos, SEEK_SET);
+    return ret;
+}
+
+///////////////////////////////////////
+// File Paths
+///////////////////////////////////////
+
+String os_path_get_extension(Arena *arena, String file_path)
+{
+    char ext[256] = {0};
+    u32 ext_i = 0;
+
+    for(int i = file_path.len - 1; i >= 0; --i)
+    {
+        char c = file_path.data[i];
+        if(c == '.') break;
+
+        ext[ext_i++] = c;
+        if(ext_i >= 256)
+            break;
+    }
+
+    String extension;
+    extension.len = ext_i;
+    extension.data = (u8 *)PUSH_ARRAY(arena, u8, ext_i);
+    MemoryCopy(extension.data, &file_path.data[file_path.len - ext_i], ext_i);
+
+    return extension;
+}
+
 
 //
 // Program-specific types
