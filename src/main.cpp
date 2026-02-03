@@ -15,7 +15,6 @@
 // [ ] Add Return Code Enum for any errors and success
 // [ ] Add padding to sub-images
 // [ ] Thread the transformations
-// [ ] Consider enabling crude first pass to address video discontinuity
 // [ ] Add lots of test images and --tester mode
 // [ ] Implement thread pool (mutex vs spin-lock)
 // [ ] Statically compile ncnn (Tencent) inference engine
@@ -25,6 +24,7 @@
 // [ ] Add plugin
 
 // DONE
+// [x] Added crude first pass to address video discontinuities
 // [x] Fix builds for MacOS
 // [x] Get Windows support working
 // [x] Clean up CLI interface and standard output
@@ -356,59 +356,7 @@ int handle_video()
             break;
         }
 
-#if 0
-        // determine any video discontinuities
-        LOGI("Determining video discontinuities...");
-        
-        Image result = {0};
-        result.data = (u8 *)PUSH_ARRAY(frame_arena, u8, vid.w*vid.h*3);
-        result.w = vid.w;
-        result.h = vid.h;
-        result.n = 3;
-        result.step = 3*vid.w;
 
-        for(int i = 0; i < vid.frame_count; ++i)
-        {
-            int icurr = (u64)i*vid.w*vid.h*3;
-            int iprev = i == 0 ? icurr : (u64)(i-1)*vid.w*vid.h*3;
-
-            u8 *bcurr = &vid.data[icurr];
-            u8 *bprev = &vid.data[iprev];
-
-            u32 total_r = 0;
-            u32 total_g = 0;
-            u32 total_b = 0;
-
-            // go through each pixel and compute a difference image
-            for(int j = 0; j < vid.w*vid.h; ++j)
-            {
-                int idx = j*3;
-
-                uint8_t r = ABS(bcurr[idx+0] - bprev[idx+0]);
-                uint8_t g = ABS(bcurr[idx+1] - bprev[idx+1]);
-                uint8_t b = ABS(bcurr[idx+2] - bprev[idx+2]);
-
-                total_r += r;
-                total_g += g;
-                total_b += b;
-
-                result.data[idx+0] = r;
-                result.data[idx+1] = g;
-                result.data[idx+2] = b;
-            }
-
-            LOGW("Frame histogram: %u %u %u", total_r,total_g,total_b);
-
-#if 1
-            {
-                // for now output the image file
-                char outfile[256] = {};
-                snprintf(outfile, 255, "output/debug_%04d.png",i);
-                util_write_output(&result, outfile);
-            }
-#endif
-        }
-#endif
 
         // run detections
 
@@ -419,7 +367,6 @@ int handle_video()
         memset(images_scaled, 0, settings.thread_count*sizeof(Image));
 
         bool *use_scaled = (bool *)PUSH_ARRAY(frame_arena, bool, settings.thread_count);
-
         u8 *detect_buffers = (u8 *)PUSH_ARRAY(frame_arena, u8, 0x9000 * settings.thread_count);
 
         u32 output_count = 0;
@@ -431,23 +378,106 @@ int handle_video()
         int skip_frames = MAX(1, (int)(settings.frame_smoothing_window * vid.fps));
         LOGV("Number of skip frames: %d (Based on %f smoothing window)", skip_frames, settings.frame_smoothing_window);
 
-#if 0
-        u32 *detect_frames = (u32 *)PUSH_ARRAY(frame_arena, u32, frame_count);
+        u32 *detect_frames = (u32 *)PUSH_ARRAY(frame_arena, u32, vid.frame_count);
         u32 detect_frames_count = 0;
+        u32 _counter = 0;
 
-        for(int i = 0; i < vid.frame_count; ++i)
+        for(;;)
         {
-            int frame_advance = MIN(skip_frames, vid.frame_count - frame_counter - 1);
+            detect_frames[detect_frames_count++] = _counter;
+
+            int frame_advance = MIN(skip_frames, vid.frame_count - _counter - 1);
             if(frame_advance <= 0)
                 break;
 
-            frame_counter += frame_advance; // always want to evaluate final frame
-            detect_frames[detect_frames_count] = frame_counter;
-
-            detect_frames_count++;
-            frame_counter++;
+            _counter += frame_advance; // always want to evaluate final frame
         }
-#endif
+
+        ArenaTemp scratch = scratch_begin();
+
+        {
+            // determine any video discontinuities
+            // ref: https://www-nlpir.nist.gov/projects/tvpubs/tvpapers03/ramonlull.paper.pdf
+            LOGI("Determining video discontinuities...");
+
+            u32 prev_histogram[4096] = {0};
+            u32 curr_histogram[4096] = {0};
+            u64 *diff_histogram = (u64 *)PUSH_ARRAY(scratch.arena, u64, vid.frame_count);
+
+            // get color histogram for each frame of video
+            // and compute a absolute difference in histogram values (summed)
+            // for all video frames
+            for(int i = 0; i < vid.frame_count; ++i)
+            {
+                int icurr = (u64)i*vid.w*vid.h*3;
+                u8 *bcurr = &vid.data[icurr];
+
+                if(i > 0)
+                {
+                    // copy curr histogram to prev
+                    memcpy(prev_histogram, curr_histogram, sizeof(u32)*4096);
+                    memset(curr_histogram, 0, sizeof(u32)*4096);
+                }
+
+                // go through each pixel and compute a difference image
+                for(int j = 0; j < vid.w*vid.h; ++j)
+                {
+                    int idx = j*3;
+
+                    u8 r_curr = bcurr[idx+0];
+                    u8 g_curr = bcurr[idx+1];
+                    u8 b_curr = bcurr[idx+2];
+
+                    // get upper 4 bits from R,G,B channels and
+                    // combine into a 12-bit number (4096 possible values) (stored in u16)
+                    // this is the index into the histogram
+                    u16 color_bucket = ((u16)(r_curr & 0xF0) << 4) | (u16)(g_curr & 0xF0) | (u16)(b_curr & 0x0F);
+                    curr_histogram[MIN(color_bucket, 4095)]++;
+                }
+
+                u64 sum_histogram = 0;
+                for(u32 j = 0; j < 4096; ++j)
+                {
+                    sum_histogram += ABS((s64)curr_histogram[j] - prev_histogram[j]);
+                }
+
+                diff_histogram[i] = sum_histogram;
+            }
+
+            // 4096 buckets that sum up to vid.w * vid.h
+            // A maximum difference between frames is vid.w * vid.h
+            // perhaps a reasonable change from frame to frame would be 10% changed
+            // to consider it a frame that should be scheduled for detection
+
+            u64 threshold = (u64)((vid.w * vid.h) * 0.2f);
+
+            for(int i = 1; i < vid.frame_count; ++i) // don't consider first frame
+            {
+                if(diff_histogram[i] >= threshold)
+                {
+                    bool in_array = false;
+                    for(int j = 0; j < detect_frames_count; ++j)
+                    {
+                        if(detect_frames[j] == i)
+                        {
+                            in_array = true;
+                            break;
+                        }
+                    }
+                    if(!in_array)
+                    {
+                        detect_frames[detect_frames_count++] = i;
+                    }
+                }
+            }
+        }
+
+        scratch_end(scratch);
+
+        ARRAY_SORT(detect_frames, u32, detect_frames_count, false);
+
+        u32 detect_frames_index = 0;
+        frame_counter = detect_frames[detect_frames_count++];
 
         for(;;)
         {
@@ -458,7 +488,7 @@ int handle_video()
                 use_scaled[i] = false;
             }
 
-            if(frame_counter >= vid.frame_count-1)
+            if(detect_frames_index >= detect_frames_count)
                 break;
 
             actual_thread_count = 0;
@@ -506,11 +536,15 @@ int handle_video()
                     LOGW("Failed to start thread");
                 }
 
+                // always want to evaluate final frame
+                /*
                 int frame_advance = MIN(skip_frames, vid.frame_count - frame_counter - 1);
                 if(frame_advance <= 0)
                     break;
 
-                frame_counter += frame_advance; // always want to evaluate final frame
+                frame_counter += frame_advance;
+                */
+                frame_counter = detect_frames[detect_frames_index++];
             }
 
             LOGV("Joining Threads.");
@@ -1032,7 +1066,12 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
             {
                 case '-':
                 {
-                    if(STR_EQUAL(&argv[i][2],"debug"))
+                    if(STR_EQUAL(&argv[i][2],"help"))
+                    {
+                        print_help();
+                        return false;
+                    }
+                    else if(STR_EQUAL(&argv[i][2],"debug"))
                         settings->debug = true;
                     else if(STR_EQUAL(&argv[i][2],"quiet"))
                         is_quiet = true;
@@ -1126,6 +1165,10 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                             settings->box_padding_pct = f;
                         }
                     }
+                    else
+                    {
+                        LOGW("Unrecognized flag: %s", &argv[i][2]);
+                    }
                 }   break;
                 case 'o':
 
@@ -1201,6 +1244,7 @@ bool parse_args(ProgramSettings* settings, int argc, char* argv[])
                     }
                 }   break;
                 default:
+                    LOGW("Unrecognized Option: %c", argv[i][1]);
                     break;
             }
         }

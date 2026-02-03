@@ -1369,7 +1369,26 @@ StringArray string_split(Arena *arena, String base, const char *split)
 // Arrays
 //:==================================
 
-#define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
+#define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+
+#define ARRAY_SORT(arr, type, count, desc) do { \
+    type i, key, j; \
+    for (i = 1; i < count; ++i) \
+    { \
+        key = arr[i]; \
+        j = i - 1; \
+        for(;;) \
+        { \
+            if(j < 0) break; \
+            if(!desc && arr[j] <= key) break; \
+            if(desc  && arr[j] >= key) break; \
+            arr[j + 1] = arr[j]; \
+            j = j - 1; \
+        } \
+        arr[j + 1] = key; \
+    } \
+    } while(0)
+
 
 //:==================================
 // Files

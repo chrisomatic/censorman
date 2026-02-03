@@ -850,7 +850,7 @@ void transform_rect_upscale_rotate_inverse(Rect* r,u16 det_w, u16 det_h, u16 ori
         {r->landmarks[4].x, r->landmarks[4].y}
     };
 
-    for (int i = 0; i < ArrayCount(points); ++i)
+    for (int i = 0; i < ARRAY_COUNT(points); ++i)
     {
         float fx = points[i].x;
         float fy = points[i].y;
