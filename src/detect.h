@@ -4,6 +4,60 @@
 #include "util.h"
 #include "facedetectcnn.h"
 
+#include "ncnn/net.h"
+
+typedef struct
+{
+    ncnn::Net net;
+    bool initialized;
+} Model;
+
+Model yunet = {};
+
+void detect_init2()
+{
+    if(yunet.net.load_param("models/yunet.param") != 0)
+    {
+        LOGE("Failed to load YuNET param file.");
+        return;
+    }
+
+    if(yunet.net.load_model("models/yunet.bin") != 0)
+    {
+        LOGE("Failed to load YuNET bin file.");
+        return;
+    }
+
+    yunet.initialized = true;
+}
+
+void *detect_faces2(void *arg)
+{
+    Image *image = (Image *)arg;
+
+    ncnn::Mat in = ncnn::Mat::from_pixels_resize(image->data, ncnn::Mat::PIXEL_BGR2RGB, image->w, image->h, 320, 320);
+
+    // const float mean_vals[3] = { 103.94f, 116.78f, 123.68f };
+    // const float norm_vals[3] = { 0.017f, 0.017f, 0.017f };
+    const float mean_vals[3] = {0.f, 0.f, 0.f};
+    const float norm_vals[3] = {1.f, 1.f, 1.f};
+    in.substract_mean_normalize(mean_vals, norm_vals);
+
+    ncnn::Extractor ex = yunet.net.create_extractor();
+    ex.input("in0", in); // 'input' is the input node name in param file
+
+    ncnn::Mat score_map;
+    ncnn::Mat location_map;
+    ncnn::Mat landmarks_map;
+
+    // Extract outputs (names depend on your param file)
+    ex.extract("out0", score_map);
+    ex.extract("out1", location_map);
+    ex.extract("out2", landmarks_map);
+
+    return NULL;
+}
+
 void detect_init()
 {
     facedetect_init(); // copies model data to be used

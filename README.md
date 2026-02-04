@@ -1,6 +1,6 @@
 # Censorman
 
-Command-line tool to censor faces in images and videos!
+Command-line tool to censor faces in __images__ and __videos__!
 
 ```
       "All in a day's work!"
@@ -29,6 +29,10 @@ censorman assets/nosound_1face_60s.mp4 -t pixelate --debug
 Before Blur                |  After Blur
 :-------------------------:|:-------------------------:
 ![](img/crowd.png)         | ![](img/crowd_processed.png)
+
+Video example
+
+![](img/vid_processed.gif)
 
 
 ## Get Latest Builds
