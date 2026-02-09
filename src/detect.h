@@ -9,7 +9,7 @@
 typedef struct
 {
     ncnn::Net net;
-    bool initialized;
+    b32 initialized;
 } Model;
 
 Model yunet = {};
@@ -37,10 +37,10 @@ void *detect_faces2(void *arg)
 
     ncnn::Mat in = ncnn::Mat::from_pixels_resize(image->data, ncnn::Mat::PIXEL_BGR2RGB, image->w, image->h, 320, 320);
 
-    // const float mean_vals[3] = { 103.94f, 116.78f, 123.68f };
-    // const float norm_vals[3] = { 0.017f, 0.017f, 0.017f };
-    const float mean_vals[3] = {0.f, 0.f, 0.f};
-    const float norm_vals[3] = {1.f, 1.f, 1.f};
+    // const f32 mean_vals[3] = { 103.94f, 116.78f, 123.68f };
+    // const f32 norm_vals[3] = { 0.017f, 0.017f, 0.017f };
+    const f32 mean_vals[3] = {0.f, 0.f, 0.f};
+    const f32 norm_vals[3] = {1.f, 1.f, 1.f};
     in.substract_mean_normalize(mean_vals, norm_vals);
 
     ncnn::Extractor ex = yunet.net.create_extractor();
@@ -68,17 +68,17 @@ void *detect_faces(void* arg)
     Image *image = (Image *)arg;
     Arena *arena = (Arena *)image->arena;
 
-    int *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step, (float)(settings.confidence_threshold / 100.0f));
-    int num_faces = (results ? *results : 0);
+    s32 *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step, (f32)(settings.confidence_threshold / 100.0f));
+    s32 num_faces = (results ? *results : 0);
 
-    image->result = (u8*)PUSH_ARRAY(arena, u8, sizeof(int) + num_faces+sizeof(Rect));
+    image->result = (u8*)PUSH_ARRAY(arena, u8, sizeof(s32) + num_faces+sizeof(Rect));
 
-    int offset = 0;
+    s32 offset = 0;
 
-    memcpy(image->result, &num_faces, sizeof(int));
-    offset += sizeof(int);
+    memcpy(image->result, &num_faces, sizeof(s32));
+    offset += sizeof(s32);
 
-    for(int i = 0; i < num_faces; ++i)
+    for(s32 i = 0; i < num_faces; ++i)
     {
         short *p = ((short*)(results+1)) + 16*i;
 
@@ -108,7 +108,7 @@ void *detect_faces(void* arg)
 }
 
 // Returns number of rects
-int process_image(Image* image,Rect* ret_rects)
+s32 process_image(Image* image,Rect* ret_rects)
 {
     if(!threads) return 0;
 
@@ -116,8 +116,8 @@ int process_image(Image* image,Rect* ret_rects)
 
     // Determine image subdivision
 
-    int rows = 0;
-    int cols = 0;
+    s32 rows = 0;
+    s32 cols = 0;
 
     switch(settings.thread_count)
     {
@@ -141,18 +141,18 @@ int process_image(Image* image,Rect* ret_rects)
             break;
     }
 
-    bool is_vert = (image->h >= image->w);
+    b32 is_vert = (image->h >= image->w);
 
     if(is_vert)
     {
         // swap rows/cols
-        int tmp = rows;
+        s32 tmp = rows;
         rows = cols;
         cols = tmp;
     }
 
-    int sub_width  = ceil(image->w / cols);
-    int sub_height = ceil(image->h / rows);
+    s32 sub_width  = ceil(image->w / cols);
+    s32 sub_height = ceil(image->h / rows);
 
     LOGI("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
 
@@ -161,30 +161,30 @@ int process_image(Image* image,Rect* ret_rects)
     Image** sub_images = (Image**)calloc(settings.thread_count, sizeof(Image*));
     u8 *detect_buffers = (u8 *)PUSH_ARRAY(scratch.arena, u8, 0x9000 * settings.thread_count);
 
-    for(int i = 0; i < settings.thread_count; ++i)
+    for(s32 i = 0; i < settings.thread_count; ++i)
     {
         arena_reset(thread_arenas[i]);
         sub_images[i] = (Image*)PUSH_ONE(thread_arenas[i], Image);
     }
 
-    int actual_thread_count = 0;
-    int x = 0;
-    int y = 0;
+    s32 actual_thread_count = 0;
+    s32 x = 0;
+    s32 y = 0;
 
     LOGI("Detecting faces... (threads: %d)", settings.thread_count);
 
-    const float padding_factor = 0.1;
-    int padding = MAX(sub_width, sub_height)*padding_factor;
+    const f32 padding_factor = 0.1;
+    s32 padding = MAX(sub_width, sub_height)*padding_factor;
 
     timer_begin(&timer);
 
-    for(int i = 0; i < settings.thread_count; ++i)
+    for(s32 i = 0; i < settings.thread_count; ++i)
     {
         Arena* arena = thread_arenas[actual_thread_count];
         Image* sub_image = sub_images[actual_thread_count];
 
         // calculate offset into base image
-        int offset = (y*image->w*sub_height*image->n) + x*sub_width*image->n;
+        s32 offset = (y*image->w*sub_height*image->n) + x*sub_width*image->n;
 
         sub_image->detect_buffer = (detect_buffers + (0x9000 * actual_thread_count));
         sub_image->data = image->data + offset;
@@ -214,30 +214,30 @@ int process_image(Image* image,Rect* ret_rects)
         }
     }
 
-    for(int i = 0; i < settings.thread_count; ++i)
+    for(s32 i = 0; i < settings.thread_count; ++i)
     {
         //LOGI("Thread %d joined", i);
         thread_join(threads[i]);
     }
 
-    double detection_time = timer_get_elapsed(&timer);
+    f64 detection_time = timer_get_elapsed(&timer);
     LOGI("detection time: %.3f ms", detection_time*1000.0f);
 
     Rect total_rects[1024] = {};
-    int num_faces = 0;
+    s32 num_faces = 0;
 
     // collect face box results
-    for(int i = 0; i < actual_thread_count; ++i)
+    for(s32 i = 0; i < actual_thread_count; ++i)
     {
         Image* sub_image = sub_images[i];
         if(sub_image && sub_image->result)
         {
             u8* ret_rects = sub_image->result;
-            int offset = 0;
-            int sub_faces_found = *((int*)(ret_rects));
-            offset += sizeof(int);
+            s32 offset = 0;
+            s32 sub_faces_found = *((s32*)(ret_rects));
+            offset += sizeof(s32);
 
-            for(int j = 0; j < sub_faces_found; ++j)
+            for(s32 j = 0; j < sub_faces_found; ++j)
             {
                 Rect* r = (Rect*)(ret_rects+offset);
                 if(r->x >= image->w || r->y >= image->h)
@@ -255,46 +255,15 @@ int process_image(Image* image,Rect* ret_rects)
 
     reverse_rgb_order(image);
 
-    // sort and filter out detected boxes
-    util_sort_rects(num_faces, total_rects, false);
-
-    // NMS (Non-Maximum Suppression)
-    // Conlidate detection regions
-
-    bool removed_rects[1024] = {};
-    int num_removed = 0;
-
-    for(int i = 0; i < num_faces; ++i)
+    s32 ret_rects_count = 0;
+    for(s32 i  = 0; i < num_faces; ++i)
     {
-        if(removed_rects[i])
-            continue;
+        Rect *ret_rect = &ret_rects[ret_rects_count];
+        Rect *rect = &total_rects[i];
 
-        Rect* a = &total_rects[i];
+        MemoryCopy(ret_rect, rect, sizeof(Rect));
 
-        for(int j = i+1; j < num_faces; ++j)
-        {
-            Rect* b = &total_rects[j];
-            float iou = calc_iou(a,b);
-
-            if(iou > settings.nms_iou_threshold)
-            {
-                // remove the less confidence box
-                int idx = (a->confidence < b->confidence ? i : j);
-                removed_rects[idx] = true;
-                num_removed++;
-            }
-        }
-    }
-
-    LOGI("NMS removed %d rects", num_removed);
-
-    int ret_rects_count = 0;
-    for(int i  = 0; i < num_faces; ++i)
-    {
-        if(removed_rects[i])
-            continue;
-
-        memcpy(&ret_rects[ret_rects_count++], &total_rects[i], sizeof(Rect));
+        ret_rects_count++;
     }
 
     scratch_end(scratch);

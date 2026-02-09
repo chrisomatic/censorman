@@ -7,9 +7,9 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-bool util_load_image(char* input_file, Image* image)
+b32 util_load_image(char* input_file, Image* image)
 {
-    int w,h,n;
+    s32 w,h,n;
     u8* data = stbi_load(input_file, &w, &h, &n, 0);
 
     if(!data)
@@ -29,7 +29,7 @@ bool util_load_image(char* input_file, Image* image)
     // pack RGB (remove alpha channel if needed)
     image->data = (u8*)malloc(w*h*3*sizeof(u8));
 
-    for(int i = 0; i < w*h; ++i)
+    for(s32 i = 0; i < w*h; ++i)
     {
         image->data[i*3+0] = data[i*n+0];
         image->data[i*3+1] = data[i*n+1];
@@ -48,10 +48,16 @@ bool util_load_image(char* input_file, Image* image)
     return true;
 }
 
-bool util_write_output(Image* image, const char* output_file)
+b32 util_write_output(Image* image, String output_file)
 {
-    int step = image->w*image->n;
-    int res = stbi_write_png(output_file, image->w, image->h, image->n, image->data, step);
+    ArenaTemp scratch = scratch_begin();
+
+    char * output_file_cstr = string_to_cstr(scratch.arena, output_file);
+
+    s32 step = image->w*image->n;
+    s32 res = stbi_write_png(output_file_cstr, image->w, image->h, image->n, image->data, step);
+
+    scratch_end(scratch);
 
     if(res == 0)
     {
@@ -61,10 +67,10 @@ bool util_write_output(Image* image, const char* output_file)
     return true;
 }
 
-void util_sort_rects(int num_rects, Rect* rects, bool asc)
+void util_sort_rects(s32 num_rects, Rect* rects, b32 asc)
 {
     // insertion sort
-    int i, j;
+    s32 i, j;
     Rect key;
 
     for (i = 1; i < num_rects; ++i)
@@ -110,7 +116,7 @@ void util_write_bbx_to_file(FILE* file, Rect* r)
     FileWriteU16(file, r->h);
     FileWriteU16(file, r->confidence);
 
-    for(int i = 0; i < 5; ++i)
+    for(s32 i = 0; i < 5; ++i)
     {
         FileWriteU16(file, r->landmarks[i].x);
         FileWriteU16(file, r->landmarks[i].y);
@@ -118,14 +124,14 @@ void util_write_bbx_to_file(FILE* file, Rect* r)
     FileWriteU8(file, r->interpolated ? 0x01 : 0x00);
 }
 
-int util_get_core_count()
+s32 util_get_core_count()
 {
 #if _WIN32
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
     return sysinfo.dwNumberOfProcessors;
 #else
-    long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
+    s64 nprocs = sysconf(_SC_NPROCESSORS_ONLN);
     if(nprocs < 1) nprocs = 8;
     return nprocs;
 #endif

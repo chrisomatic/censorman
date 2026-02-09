@@ -26,7 +26,7 @@ typedef struct
     AVFrame           *frame;
     AVFrame           *rgb_frame;
     AVPacket          *pkt;
-    int               video_stream_index;
+    s32               video_stream_index;
 
     // encoding
 
@@ -42,9 +42,9 @@ typedef struct
 
 } VideoCtx;
 
-int _get_rotation(AVStream *st);
+s32 _get_rotation(AVStream *st);
 
-bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoCtx *vid_ctx)
+b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video, VideoCtx *vid_ctx)
 {
     //
     // Initialize video context data
@@ -74,9 +74,10 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
 
     vid_ctx->video_stream_index = -1;
 
-    if(avformat_open_input(&vid_ctx->fmt_ctx, filename, NULL, NULL) < 0)
+    char *filename_cstr = string_to_cstr(arena, filename);
+    if(avformat_open_input(&vid_ctx->fmt_ctx, filename_cstr, NULL, NULL) < 0)
     {
-        LOGE("Could not open input file '%s'", filename);
+        LOGE("Could not open input file '" STR_FMT "'", STR_ARG(filename));
         return false;
     }
 
@@ -87,7 +88,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
         return false;
     }
 
-    for(int i = 0; i < vid_ctx->fmt_ctx->nb_streams; ++i)
+    for(s32 i = 0; i < vid_ctx->fmt_ctx->nb_streams; ++i)
     {
         if (vid_ctx->fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
         {
@@ -113,8 +114,8 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
         fps.den = 1;
     }
 
-    int64_t nb_frames = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->nb_frames;
-    video->fps = fps.num / (double)fps.den;
+    s64 nb_frames = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->nb_frames;
+    video->fps = fps.num / (f64)fps.den;
     video->rotation = _get_rotation(st);
 
     enum AVCodecID codec_id = vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id;
@@ -149,15 +150,15 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
         return false;
     }
 
-    int width = vid_ctx->codec_ctx->width;
-    int height = vid_ctx->codec_ctx->height;
+    s32 width = vid_ctx->codec_ctx->width;
+    s32 height = vid_ctx->codec_ctx->height;
     u64 rgb_stride = (u64)width * 3;
     u64 frame_rgb_size = rgb_stride * height;
-    int max_frames = floor(settings.max_buffer_size / (double)frame_rgb_size);
+    s32 max_frames = floor(settings.max_buffer_size / (f64)frame_rgb_size);
 
     // Allocate buffer for up to max frames
 
-    u8 *rgb_data = (u8 *)malloc((u64)frame_rgb_size * max_frames);
+    u8 *rgb_data = (u8 *)PUSH_ARRAY(arena, u8, (u64)frame_rgb_size * max_frames);
     if(!rgb_data)
     {
         LOGE("Failed to allocate RGB buffer of size %lu", (u64)frame_rgb_size * max_frames);
@@ -171,7 +172,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     vid_ctx->pkt = av_packet_alloc();
 
     u8 *rgb_planes[4];
-    int rgb_linesize[4];
+    s32 rgb_linesize[4];
     av_image_fill_arrays(rgb_planes, rgb_linesize, rgb_data, AV_PIX_FMT_RGB24, width, height, 1);
 
     vid_ctx->sws_ctx = sws_getContext(width, height, vid_ctx->codec_ctx->pix_fmt,
@@ -184,8 +185,8 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     video->data = rgb_data;
     video->data_max_frames = max_frames;
 
-    // allocat PTS buffer
-    video->pts_buffer = (s64 *)malloc(sizeof(s64) * video->data_max_frames);
+    // allocate PTS buffer
+    video->pts_buffer = (s64 *)PUSH_ARRAY(arena, s64, video->data_max_frames);
 
     // Set up encoding
     // Output format (MP4 / H264)
@@ -238,7 +239,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
         LOGI("Video Details:");
         LOGI("  Size:        %d, %d", width, height);
         LOGI("  Frame count: %ld", nb_frames);
-        LOGI("  FPS:         %f", fps.num / (double)fps.den);
+        LOGI("  FPS:         %f", fps.num / (f64)fps.den);
         LOGI("  Rotation:    %d", video->rotation);
         LOGI("  Codec:       %s (%d)", avcodec_get_name(codec_id), codec_id);
 
@@ -264,7 +265,7 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
         av_dict_set(&vid_ctx->enc_opts, "preset", "superfast", 0); // ultrafast, superfast, fast, medium, slow, placebo
         av_dict_set(&vid_ctx->enc_opts, "tune", "zerolatency", 0);
 
-        int ret;
+        s32 ret;
 
         // Open encoder
         if((ret = avcodec_open2(vid_ctx->enc_codec_ctx, vid_ctx->enc_codec, &vid_ctx->enc_opts)) < 0)
@@ -348,19 +349,19 @@ bool ffmpeg_open(const char *filename, const char *outfile, Video *video, VideoC
     return true;
 }
 
-bool ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
+b32 ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
 {
     if(!video->data) return false;
 
-    int width  = vid_ctx->codec_ctx->width;
-    int height = vid_ctx->codec_ctx->height;
-    int rgb_stride = width * 3;
-    int frame_rgb_size = rgb_stride * height;
+    s32 width  = vid_ctx->codec_ctx->width;
+    s32 height = vid_ctx->codec_ctx->height;
+    s32 rgb_stride = width * 3;
+    s32 frame_rgb_size = rgb_stride * height;
 
     u32 frame_count = 0;
-    int ret;
-    bool eof_reached = false; // track end of file
-    bool hit_max_buffer = false;
+    s32 ret;
+    b32 eof_reached = false; // track end of file
+    b32 hit_max_buffer = false;
 
     AVFrame *frame = vid_ctx->frame;
     AVPacket *pkt  = vid_ctx->pkt;
@@ -393,7 +394,7 @@ bool ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
             // Convert to RGB
             u8 *dp = video->data + (u64)frame_count * frame_rgb_size;
             u8 *dest_data[4] = { dp, NULL, NULL, NULL };
-            int dest_linesize[4] = { rgb_stride, 0, 0, 0 };
+            s32 dest_linesize[4] = { rgb_stride, 0, 0, 0 };
             sws_scale(vid_ctx->sws_ctx, (const u8 *const*)frame->data, frame->linesize,
                       0, height, dest_data, dest_linesize);
 
@@ -414,7 +415,7 @@ bool ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
         {
             u8 *dp = video->data + (u64)frame_count * frame_rgb_size;
             u8 *dest_data[4] = { dp, NULL, NULL, NULL };
-            int dest_linesize[4] = { rgb_stride, 0, 0, 0 };
+            s32 dest_linesize[4] = { rgb_stride, 0, 0, 0 };
             sws_scale(vid_ctx->sws_ctx, (const u8 *const*)frame->data, frame->linesize,
                       0, height, dest_data, dest_linesize);
 
@@ -429,17 +430,17 @@ bool ffmpeg_decode_ctx(Video *video, VideoCtx *vid_ctx)
     return (frame_count > 0);
 }
 
-bool ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
+b32 ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
 {
     if (!video->data || video->frame_count == 0) return false;
 
-    int width = video->w;
-    int height = video->h;
-    int rgb_stride = width * 3;
-    int frame_rgb_size = rgb_stride * height;
-    int ret;
+    s32 width = video->w;
+    s32 height = video->h;
+    s32 rgb_stride = width * 3;
+    s32 frame_rgb_size = rgb_stride * height;
+    s32 ret;
 
-    for (int i = 0; i < video->frame_count; ++i)
+    for (s32 i = 0; i < video->frame_count; ++i)
     {
         av_frame_make_writable(vid_ctx->enc_frame);
 
@@ -500,9 +501,9 @@ bool ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
     return true;
 }
 
-bool ffmpeg_encode_done(VideoCtx *vid_ctx)
+b32 ffmpeg_encode_done(VideoCtx *vid_ctx)
 {
-    int ret;
+    s32 ret;
 
     // Flush encoder: send NULL until encoder returns AVERROR_EOF
     ret = avcodec_send_frame(vid_ctx->enc_codec_ctx, NULL);
@@ -578,16 +579,16 @@ void ffmpeg_close(VideoCtx *ctx)
 // Helper functions
 //:========================
 
-int _get_rotation(AVStream *st)
+s32 _get_rotation(AVStream *st)
 {
     // 1. Try side_data in codecpar
-    for (int i = 0; i < st->codecpar->nb_coded_side_data; i++) {
+    for (s32 i = 0; i < st->codecpar->nb_coded_side_data; i++) {
         const AVPacketSideData *sd = &st->codecpar->coded_side_data[i];
         if (sd->type == AV_PKT_DATA_DISPLAYMATRIX) {
-            if (sd->size >= sizeof(int32_t) * 9) {
-                double angle = av_display_rotation_get((const int32_t*)sd->data);
+            if (sd->size >= sizeof(s32) * 9) {
+                f64 angle = av_display_rotation_get((const s32*)sd->data);
                 // Normalize (FFmpeg returns e.g. 0.000001, — round)
-                int ang = (int)round(angle);
+                s32 ang = (s32)round(angle);
                 // make sure it's one of 0,90,180,270
                 ang = ((ang % 360) + 360) % 360;
                 if (ang == 0 || ang == 90 || ang == 180 || ang == 270)
@@ -601,7 +602,7 @@ int _get_rotation(AVStream *st)
     // 2. Fallback: metadata “rotate” tag
     AVDictionaryEntry *tag = av_dict_get(st->metadata, "rotate", NULL, 0);
     if (tag && tag->value) {
-        int ang = atoi(tag->value);
+        s32 ang = atoi(tag->value);
         ang = ((ang % 360) + 360) % 360;
         if (ang == 0 || ang == 90 || ang == 180 || ang == 270)
             return ang;

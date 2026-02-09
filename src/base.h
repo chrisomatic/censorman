@@ -83,22 +83,22 @@ typedef wchar_t   wchar;
 #define SWAP(T, a, b) do { T temp = a; a = b; b = temp; } while (0)
 #define BETWEEN(x,min,max) ((x) >= (min) && (x) <= (max))
 
-float exp_decay(float a, float b, float decay, float dt)
+f32 exp_decay(f32 a, f32 b, f32 decay, f32 dt)
 {
     return b + (a - b)*exp(-decay*dt);
 }
 
-float lerp(float a, float b, float t)
+f32 lerp(f32 a, f32 b, f32 t)
 {
     t = CLAMP(t,0.0,1.0);
-    float r = (1.0-t)*a+(t*b);
+    f32 r = (1.0-t)*a+(t*b);
     return r;
 }
 
-float exponential_smooth(float start, float end, float alpha, int frame)
+f32 exponential_smooth(f32 start, f32 end, f32 alpha, s32 frame)
 {
     alpha = CLAMP(alpha, 0.0f, 1.0f);
-    float factor = powf(1.0f - alpha, frame + 1);
+    f32 factor = powf(1.0f - alpha, frame + 1);
     return end - (end - start) * factor;
 }
 
@@ -110,8 +110,8 @@ typedef struct
 
 typedef struct
 {
-    int x;
-    int y;
+    s32 x;
+    s32 y;
 } Point;
 
 //===================================
@@ -324,22 +324,22 @@ void arena_reset(Arena *arena)
 
 typedef struct
 {
-    double time_start;
-    double time_last;
+    f64 time_start;
+    f64 time_last;
 } Timer;
 
 void timer_init(void);
 
 void timer_begin(Timer* timer);
-double timer_get_elapsed(Timer* timer);
-void timer_delay_us(int us);
-double timer_get_time();
+f64 timer_get_elapsed(Timer* timer);
+void timer_delay_us(s32 us);
+f64 timer_get_time();
 
 static struct
 {
-    bool monotonic;
-    uint64_t  frequency;
-    uint64_t  offset;
+    b32 monotonic;
+    u64 frequency;
+    u64 offset;
 } _timer;
 
 #if _WIN32
@@ -357,10 +357,10 @@ void usleep(__int64 usec)
 }
 #endif
 
-static uint64_t get_timer_value(void)
+static u64 get_timer_value(void)
 {
 #if _WIN32
-    uint64_t counter;
+    u64 counter;
     QueryPerformanceCounter((LARGE_INTEGER*)&counter);
     return counter;
 #else
@@ -369,7 +369,7 @@ static uint64_t get_timer_value(void)
     {
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
-        return (uint64_t)ts.tv_sec * (uint64_t)1000000000 + (uint64_t)ts.tv_nsec;
+        return (u64)ts.tv_sec * (u64)1000000000 + (u64)ts.tv_nsec;
     }
     else
 #endif
@@ -377,7 +377,7 @@ static uint64_t get_timer_value(void)
     {
         struct timeval tv;
         gettimeofday(&tv, NULL);
-        return (uint64_t) tv.tv_sec * (uint64_t) 1000000 + (uint64_t) tv.tv_usec;
+        return (u64) tv.tv_sec * (u64) 1000000 + (u64) tv.tv_usec;
 
     }
 #endif
@@ -386,7 +386,7 @@ static uint64_t get_timer_value(void)
 void timer_init(void)
 {
 #if _WIN32
-    uint64_t freq;
+    u64 freq;
     QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
     _timer.monotonic = false;
     _timer.frequency = freq;
@@ -413,9 +413,9 @@ void timer_init(void)
 
 }
 
-static double get_time()
+static f64 get_time()
 {
-    return (double) (get_timer_value() - _timer.offset) / (double)_timer.frequency;
+    return (f64) (get_timer_value() - _timer.offset) / (f64)_timer.frequency;
 }
 
 void timer_begin(Timer* timer)
@@ -424,30 +424,30 @@ void timer_begin(Timer* timer)
     timer->time_last = timer->time_start;
 }
 
-double timer_get_time()
+f64 timer_get_time()
 {
     return get_time();
 }
 
-double timer_get_elapsed(Timer* timer)
+f64 timer_get_elapsed(Timer* timer)
 {
-    double time_curr = get_time();
+    f64 time_curr = get_time();
     return time_curr - timer->time_start;
 }
 
-void timer_delay_us(int us)
+void timer_delay_us(s32 us)
 {
     usleep(us);
 }
 
-double __stopwatch_t0;
+f64 __stopwatch_t0;
 
 void stopwatch_start()
 {
     __stopwatch_t0 = timer_get_time();
 }
 
-double stopwatch_time()
+f64 stopwatch_time()
 {
     return (timer_get_time() - __stopwatch_t0);
 }
@@ -499,10 +499,10 @@ typedef enum
 } LogType;
 
 LogType log_level = LOG_TYPE_INFO;
-static bool is_quiet = false;
+static b32 is_quiet = false;
 
 static Timer log_timer = {};
-static void log_init(int log_level)
+static void log_init(s32 log_level)
 {
     timer_begin(&log_timer);
 }
@@ -577,7 +577,9 @@ u8 char_to_lower(u8 c);
 u8 char_to_upper(u8 c);
 
 String string_format(Arena *arena, const char *format, ...);
-String string_combine(Arena *arena, int count, ...);
+String string_combine(Arena *arena, s32 count, ...);
+
+String string_zero();
 
 b32 string_equal(String s, String t);
 b32 string_starts_with(String str, String start);
@@ -586,6 +588,9 @@ b32 string_ends_with(String str, String end);
 String string_substring(String s, u64 start, u64 len);
 String string_trim(String s);
 s64 string_get_first_index(String s, const char *find, b32 from_end);
+b32 string_contains(String s, String find);
+String string_replace(Arena *arena, String str, String find, String replacement);
+
 b32 string_in_list(String str, StringList list);
 b32 string_in_array(String str, StringArray arr);
 
@@ -666,11 +671,27 @@ u64 cstring_strlen(const char *str)
     return len;
 }
 
+String string_zero()
+{
+    String str = {0};
+    return str;
+}
+
+String string_copy(Arena *arena,String str)
+{
+    String ret = {0};
+    ret.len = str.len;
+    ret.data = (u8 *)PUSH_ARRAY(arena, u8, str.len);
+    MemoryCopy(ret.data, str.data, str.len);
+
+    return ret;
+}
+
 String string_format(Arena *arena, const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    int required_len = vsnprintf(NULL, 0, format, args);
+    s32 required_len = vsnprintf(NULL, 0, format, args);
     va_end(args);
 
     if (required_len < 0)
@@ -705,7 +726,7 @@ void string_print(String s)
     LOGI(STR_FMT,s.len, s.data);
 }
 
-String string_combine(Arena *arena, int count, ...)
+String string_combine(Arena *arena, s32 count, ...)
 {
     va_list args1, args2;
     va_start(args1, count);
@@ -722,7 +743,7 @@ String string_combine(Arena *arena, int count, ...)
     String str = {0};
     str.data = (u8 *)PUSH_ARRAY(arena, u8, total_len);
 
-    for(int i = 0; i < count; ++i)
+    for(s32 i = 0; i < count; ++i)
     {
         String s = va_arg(args2, String);
         memcpy(&str.data[str.len],s.data, s.len);
@@ -775,7 +796,7 @@ s64 string_get_first_index(String s, const char *find, b32 from_end)
     {
         if(s.data[i] == find_str.data[0])
         {
-            bool match = true;
+            b32 match = true;
             for(u64 j = 1; j < find_str.len; ++j)
             {
                 ++i;
@@ -801,6 +822,82 @@ s64 string_get_first_index(String s, const char *find, b32 from_end)
     return -1;
 }
 
+b32 string_contains(String s, String find)
+{
+    if(find.len == 0) return false;
+
+    for(int i = 0; i < s.len; ++i)
+    {
+        String sub = string_substring(s, i,find.len);
+        if(string_equal(sub, find))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+String string_replace(Arena *arena, String str, String find, String replacement)
+{
+    if(find.len == 0)
+    {
+        // return a copy of the data
+        return string_copy(arena, str);
+    }
+
+    // find number of instances
+    u64 *instances = (u64 *)PUSH_ARRAY(arena, u64, str.len); // total possible in indices
+    u32 instance_count = 0;
+
+    for(u64 i = 0; i < str.len; ++i)
+    {
+        String sub = string_substring(str, i, find.len);
+        if(string_equal(sub, find))
+        {
+            // found instance of 'find' string
+            instances[instance_count++] = i;
+        }
+    }
+
+    s64 new_len = str.len + ((replacement.len - find.len)*instance_count);
+    if(new_len <= 0)
+    {
+        return string_zero();
+    }
+
+    // allocate space for new string
+    String new_str = {0};
+    new_str.len = (u64)new_len;
+    new_str.data = (u8 *)PUSH_ARRAY(arena, u8, new_len);
+
+    u64 str_index = 0;
+    u64 new_index = 0;
+
+    u32 i = 0;
+    for(;;)
+    {
+        if(i >= instance_count)
+        {
+            // copy any remaining string after last instance
+            MemoryCopy(new_str.data + new_index , str.data + str_index , str.len - str_index);
+            break;
+        }
+        u64 instance_index = instances[i];
+        MemoryCopy(new_str.data + new_index, str.data + str_index, instance_index - str_index);
+        new_index += instance_index - str_index;
+        str_index = instance_index;
+
+        MemoryCopy(new_str.data + new_index, replacement.data, replacement.len);
+        new_index += replacement.len;
+        str_index += find.len;
+
+        i++;
+    }
+
+    return new_str;
+}
+
 b32 string_in_list(String str, StringList list)
 {
     StringNode *sn = list.head;
@@ -817,7 +914,7 @@ b32 string_in_list(String str, StringList list)
 
 b32 string_in_array(String str, StringArray arr)
 {
-    for(int i = 0; i < arr.count; ++i)
+    for(s32 i = 0; i < arr.count; ++i)
     {
         if(string_equal(str, arr.items[i]))
             return true;
@@ -1055,7 +1152,7 @@ void string_list_addf(StringList *sl, const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    int required_len = vsnprintf(NULL, 0, format, args);
+    s32 required_len = vsnprintf(NULL, 0, format, args);
     va_end(args);
 
     if (required_len <= 0)
@@ -1081,7 +1178,7 @@ void string_list_addf(StringList *sl, const char *format, ...)
 
 }
 
-bool string_list_remove(StringList *sl, u64 index)
+b32 string_list_remove(StringList *sl, u64 index)
 {
     u64 idx = 0;
 
@@ -1274,7 +1371,7 @@ StringArray string_array_create(Arena *arena, u64 count, ...)
     va_list args;
     va_start(args, count);
 
-    for(int i = 0; i < count; ++i)
+    for(s32 i = 0; i < count; ++i)
     {
         sa.items[i] = va_arg(args, String);
     }
@@ -1298,7 +1395,7 @@ StringArray string_list_to_array(StringList sl)
     sa.items = (String *)PUSH_ARRAY(sl.arena, String, sl.count);
 
     StringNode *sn = sl.head;
-    for(int i = 0; i < sl.count; ++i)
+    for(s32 i = 0; i < sl.count; ++i)
     {
         MemoryCopy(&sa.items[i], &sn->str, sizeof(String));
         if(!sn->next) break;
@@ -1319,7 +1416,7 @@ StringArray string_split(Arena *arena, String base, const char *split)
     {
         if(base.data[i] == split_str.data[0])
         {
-            bool match = true;
+            b32 match = true;
             for(u64 j = 1; j < split_str.len; ++j)
             {
                 ++i;
@@ -1394,17 +1491,17 @@ StringArray string_split(Arena *arena, String base, const char *split)
 // Files
 //:==================================
 
-inline int FileWriteU8(FILE* file, u8 x)   { return fwrite(&x,sizeof(u8),1,file);}
-inline int FileWriteU16(FILE* file, u16 x) { return fwrite(&x,sizeof(u16),1,file);}
-inline int FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file);}
-inline int FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
-inline int FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
+inline s32 FileWriteU8(FILE* file, u8 x)   { return fwrite(&x,sizeof(u8),1,file);}
+inline s32 FileWriteU16(FILE* file, u16 x) { return fwrite(&x,sizeof(u16),1,file);}
+inline s32 FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file);}
+inline s32 FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
+inline s32 FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
 
-inline int FileWriteU32AtIndex(FILE* file, u32 x, u32 index)
+inline s32 FileWriteU32AtIndex(FILE* file, u32 x, u32 index)
 {
-    int pos = ftell(file);
+    s32 pos = ftell(file);
     fseek(file, index, SEEK_SET);
-    int ret = fwrite(&x,sizeof(u32),1,file);
+    s32 ret = fwrite(&x,sizeof(u32),1,file);
     fseek(file, pos, SEEK_SET);
     return ret;
 }
@@ -1418,7 +1515,7 @@ String os_path_get_extension(Arena *arena, String file_path)
     char ext[256] = {0};
     u32 ext_i = 0;
 
-    for(int i = file_path.len - 1; i >= 0; --i)
+    for(s32 i = file_path.len - 1; i >= 0; --i)
     {
         char c = file_path.data[i];
         if(c == '.') break;
@@ -1480,13 +1577,13 @@ inline const char* transform_type_to_str(TransformType t)
 
 typedef struct
 {
-    int x;
-    int y;
-    int w;
-    int h;
-    int confidence;
+    s32 x;
+    s32 y;
+    s32 w;
+    s32 h;
+    s32 confidence;
     Point landmarks[5];
-    bool interpolated;
+    b32 interpolated;
 } Rect;
 
 typedef struct
@@ -1498,21 +1595,21 @@ typedef struct
 typedef struct
 {
     u8 *data;
-    int w;
-    int h;
-    int n; // channels
-    int step; // number of bytes to advance to next row
-    int rotation; // 0, 90, 180, 270
+    s32 w;
+    s32 h;
+    s32 n; // channels
+    s32 step; // number of bytes to advance to next row
+    s32 rotation; // 0, 90, 180, 270
 
-    float scale_x;
-    float scale_y;
+    f32 scale_x;
+    f32 scale_y;
 
     // used for sub-image thread processing
     u8 *detect_buffer;
     u8 subx; // position in larger image
     u8 suby; // position in larger image
     void* arena;
-    bool scaled; // determine if image was scaled
+    b32 scaled; // determine if image was scaled
     u32 frame_number; // used for video reconstruction
     u8* result;
 } Image;
@@ -1526,9 +1623,9 @@ typedef struct {
     f32 fps;
     u8* data;               // RGB buffer for current chunk
     s64* pts_buffer;        // PTS for each frame in current chunk
-    int rotation;
-    int data_max_frames;    // max frames in current buffer
-    bool decode_complete;
+    s32 rotation;
+    s32 data_max_frames;    // max frames in current buffer
+    b32 decode_complete;
 } Video;
 
 typedef struct
@@ -1547,7 +1644,7 @@ typedef struct
 
 typedef struct
 {
-    char filename[101];
+    String filename;
     Image image;
 } InputFile;
 
@@ -1557,45 +1654,45 @@ typedef struct
     DetectClass classification;
 
     Transform transforms[10];
-    int transform_count;
+    s32 transform_count;
 
-    char input_file_text[256];
-    char input_directory[256];
+    String input_file_text;
+    String input_directory;
     InputFile input_files[100];
-    int input_file_count;
-    int thread_count;
+    s32 input_file_count;
+    s32 thread_count;
 
     u16 confidence_threshold;
-    float nms_iou_threshold;
+    f32 nms_iou_threshold;
 
-    bool has_texture;
+    b32 has_texture;
     char texture_image_path[256];
 
-    float block_scale; // 0.0 - 1.0
-    float blur_strength; // 0.0 - 1.0
-    float box_padding_pct; // 0.0 - 1.0
-    float frame_smoothing_window; // 0.0 - 1.0
+    f32 block_scale; // 0.0 - 1.0
+    f32 blur_strength; // 0.0 - 1.0
+    f32 box_padding_pct; // 0.0 - 1.0
+    f32 frame_smoothing_window; // 0.0 - 1.0
 
     u32 scaled_size_image;
     u32 scaled_size_video;
 
     u64 max_buffer_size;
 
-    char bbx_output[256];
-    bool has_bbx_output;
+    String bbx_output;
+    b32 has_bbx_output;
 
-    bool no_encoding;
-    bool no_scale;
-    bool no_rotate;
-    bool debug;
-    bool verbose;
+    b32 no_encoding;
+    b32 no_scale;
+    b32 no_rotate;
+    b32 debug;
+    b32 verbose;
 
 } ProgramSettings;
 
 typedef struct
 {
-    bool success;
-    int err_code;
+    b32 success;
+    s32 err_code;
 } FunctionResult;
 
 #define MAX_ARENAS 64

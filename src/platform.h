@@ -6,19 +6,19 @@
 
 HANDLE *threads  = NULL;
 
-bool thread_init(int count)
+b32 thread_init(s32 count)
 {
     threads = (HANDLE *)calloc(count,sizeof(HANDLE));
     return false;
 }
 
-int thread_create(HANDLE *thread, void *(func)(void *), void *arg)
+s32 thread_create(HANDLE *thread, void *(func)(void *), void *arg)
 {
     *thread = CreateThread(NULL, 0, func, arg, 0, NULL);
     return (*thread != NULL);
 }
 
-int thread_join(HANDLE thread)
+s32 thread_join(HANDLE thread)
 {
     return WaitForSingleObject(thread, INFINITE);
 }
@@ -27,18 +27,18 @@ int thread_join(HANDLE thread)
 
 pthread_t *threads = NULL;
 
-bool thread_init(int count)
+b32 thread_init(s32 count)
 {
     threads = (pthread_t *)calloc(count,sizeof(pthread_t));
     return (threads != NULL);
 }
 
-int thread_create(pthread_t *thread, void *(func)(void *), void *arg)
+s32 thread_create(pthread_t *thread, void *(func)(void *), void *arg)
 {
     return (pthread_create(thread, NULL, func, arg));
 }
 
-int thread_join(pthread_t thread)
+s32 thread_join(pthread_t thread)
 {
     return (pthread_join(thread,NULL));
 }
@@ -46,9 +46,9 @@ int thread_join(pthread_t thread)
 #endif
 
 
-int platform_get_files_in_folder(Arena* arena, String folder_path, String* extensions, int extension_count, String** out_files)
+s32 platform_get_files_in_folder(Arena* arena, String folder_path, String* extensions, s32 extension_count, String** out_files)
 {
-    int file_count = 0;
+    s32 file_count = 0;
 
 #if PLATFORM == PLATFORM_WINDOWS
 
@@ -66,8 +66,8 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
     do {
         if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             String name = STR(find_data.cFileName);
-            bool has_valid_extension = false;
-            for(int i = 0; i < extension_count; ++i)
+            b32 has_valid_extension = false;
+            for(s32 i = 0; i < extension_count; ++i)
             {
                 has_valid_extension |= string_ends_with(name, extensions[i]);
             }
@@ -101,8 +101,8 @@ int platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
             String name = STR(entry->d_name);
 
 
-            bool has_valid_extension = false;
-            for(int i = 0; i < extension_count; ++i)
+            b32 has_valid_extension = false;
+            for(s32 i = 0; i < extension_count; ++i)
             {
                 has_valid_extension |= string_ends_with(name, extensions[i]);
             }
