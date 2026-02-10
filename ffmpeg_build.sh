@@ -63,13 +63,16 @@ if [ "$1" = "win32" ]; then
   --enable-demuxer=mov \
   --enable-decoder=h264 \
   --enable-decoder=hevc \
+  --enable-decoder=vp9 \
   --enable-parser=h264 \
   --enable-parser=hevc \
   --enable-muxer=mp4 \
   --enable-encoder=libx264 \
   --enable-encoder=mpeg4 \
+  --enable-encoder=libvpx-vp9 \
   --enable-gpl \
   --enable-libx264 \
+  --enable-libvpx \
   --enable-bsfs \
   --toolchain=msvc \
   --arch=x86_64 \
@@ -101,13 +104,16 @@ else
   --enable-demuxer=mov \
   --enable-decoder=h264 \
   --enable-decoder=hevc \
+  --enable-decoder=vp9 \
   --enable-parser=h264 \
   --enable-parser=hevc \
   --enable-muxer=mp4 \
   --enable-encoder=libx264 \
   --enable-encoder=mpeg4 \
+  --enable-encoder=libvpx-vp9 \
   --enable-gpl \
   --enable-libx264 \
+  --enable-libvpx \
   --enable-bsfs \
   --cc=gcc
 
