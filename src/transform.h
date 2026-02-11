@@ -134,7 +134,7 @@ Color get_blended_color(u8* data, Color c, f32 opacity)
     return ret_color;
 }
 
-f32 calc_iou(Rect* a, Rect* b)
+f32 calc_iou(Box* a, Box* b)
 {
     u16 inter_x1 = MAX(a->x, b->x);
     u16 inter_y1 = MAX(a->y, b->y);
@@ -155,7 +155,7 @@ f32 calc_iou(Rect* a, Rect* b)
     return inter_area / (f32)union_area;
 }
 
-void transform_scramble(Image* image, Rect r, u32 seed)
+void transform_scramble(Image* image, Box r, u32 seed)
 {
     u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
 
@@ -206,7 +206,7 @@ void transform_scramble(Image* image, Rect r, u32 seed)
     scratch_end(scratch);
 }
 
-void transform_draw_rect(Image* image, Rect r, Color c, b32 filled, f32 opacity)
+void transform_draw_box(Image* image, Box r, Color c, b32 filled, f32 opacity)
 {
     u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
     u8* curr = start;
@@ -443,7 +443,7 @@ void transform_draw_circle(Image* image, u16 x, u16 y, u16 radius, Color c, b32 
     }
 }
 
-void transform_pixelate(Image* image, Rect r, f32 block_scale)
+void transform_pixelate(Image* image, Box r, f32 block_scale)
 {
     u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
     u8* curr = start;
@@ -484,7 +484,7 @@ void transform_pixelate(Image* image, Rect r, f32 block_scale)
             {
                 if(curr > limit)
                 {
-                    LOGV("Hit end of image!");
+                    logv("Hit end of image!");
                     break;
                 }
                 for(s32 i = 0; i < block_size_x; ++i)
@@ -521,13 +521,13 @@ void transform_pixelate(Image* image, Rect r, f32 block_scale)
     }
 }
 
-void transform_stretch_image(Image *dst, Image *src, Rect r)
+void transform_stretch_image(Image *dst, Image *src, Box r)
 {
     // Scaling factors
     f32 scaleX = (f32)src->w / r.w;
     f32 scaleY = (f32)src->h / r.h;
 
-    // Iterate through the destination rectangle
+    // Iterate through the destination box
     for (s32 dy = 0; dy < r.h; ++dy)
     {
         for (s32 dx = 0; dx < r.w; ++dx)
@@ -809,7 +809,7 @@ b32 transform_downscale(Arena* arena, Image* source, Image* result, s32 scaled_s
 }
 
 
-void transform_rect_upscale_rotate_inverse(Rect* r,u16 det_w, u16 det_h, u16 orig_w, u16 orig_h, s32 rotation)
+void transform_box_upscale_rotate_inverse(Box* r,u16 det_w, u16 det_h, u16 orig_w, u16 orig_h, s32 rotation)
 {
     f32 scale_x, scale_y;
 
@@ -831,12 +831,12 @@ void transform_rect_upscale_rotate_inverse(Rect* r,u16 det_w, u16 det_h, u16 ori
             break;
     }
 
-    // printf("Rect before transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+    // printf("Box before transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
 
     f32 minx = 1e9f, miny = 1e9f;
     f32 maxx = -1e9f, maxy = -1e9f;
 
-    // Collect all points: rect corners + landmarks
+    // Collect all points: box corners + landmarks
     Point points[] =
     {
         {r->x, r->y},
@@ -909,7 +909,7 @@ void transform_rect_upscale_rotate_inverse(Rect* r,u16 det_w, u16 det_h, u16 ori
     r->w = maxx - minx;
     r->h = maxy - miny;
 
-    // printf("Rect after transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
+    // printf("Box after transform: %u %u %u %u\n", r->x, r->y, r->w, r->h);
 }
 
 // Generate 1D Gaussian kernel
@@ -931,7 +931,7 @@ static void generate_kernel(f32 sigma, f32 **kernel, s32 *k_size)
 }
 
 // Convolution pass in horizontal or vertical direction, restricted to ROI
-static void convolve_roi(Image *src, Image *dst,Rect *roi, f32 *kernel, s32 k_size,s32 horizontal)
+static void convolve_roi(Image *src, Image *dst,Box *roi, f32 *kernel, s32 k_size,s32 horizontal)
 {
     s32 radius = k_size / 2;
 
@@ -967,7 +967,7 @@ static void convolve_roi(Image *src, Image *dst,Rect *roi, f32 *kernel, s32 k_si
     }
 }
 
-void transform_gaussian_blur(Image *image, Rect *r)
+void transform_gaussian_blur(Image *image, Box *r)
 {
     if (!image || !r) return;
     if (r->x >= image->w || r->y >= image->h) return;
@@ -999,7 +999,7 @@ void transform_gaussian_blur(Image *image, Rect *r)
     free(kernel);
 }
 
-void transform_box_blur(Image *image, Rect *r, u8 *buffer)
+void transform_box_blur(Image *image, Box *r, u8 *buffer)
 {
     if(!buffer) return;
 
@@ -1100,7 +1100,7 @@ void transform_box_blur(Image *image, Rect *r, u8 *buffer)
     free(v_indices);
 }
 
-void transform_apply(Image* image, s32 num_rects, Rect* rects, TransformType transform)
+void transform_apply(Image* image, s32 num_boxes, Box* boxes, TransformType transform)
 {
     u8 *buffer = NULL;
     
@@ -1109,13 +1109,13 @@ void transform_apply(Image* image, s32 num_rects, Rect* rects, TransformType tra
         buffer = (u8 *)malloc(image->step * image->h);  
     }
 
-    for(s32 i = 0; i < num_rects; ++i)
+    for(s32 i = 0; i < num_boxes; ++i)
     {
-        Rect r = rects[i];
+        Box r = boxes[i];
 
         switch(transform)
         {
-            case TRANSFORM_TYPE_BLACKOUT:       transform_draw_rect(image, r,(Color){0,0,0,255}, true, 1.0); break;
+            case TRANSFORM_TYPE_BLACKOUT:       transform_draw_box(image, r,(Color){0,0,0,255}, true, 1.0); break;
             case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, settings.block_scale); break;
             case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
             case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO: seed

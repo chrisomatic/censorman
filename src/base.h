@@ -1,15 +1,15 @@
 #pragma once
 
-#define PLATFORM_WINDOWS  1
-#define PLATFORM_MAC      2
-#define PLATFORM_UNIX     3
+#define OS_WINDOWS  1
+#define OS_MAC      2
+#define OS_UNIX     3
 
 #if defined(_WIN32)
-#define PLATFORM PLATFORM_WINDOWS
+#define OS OS_WINDOWS
 #elif defined(__APPLE__)
-#define PLATFORM PLATFORM_MAC
+#define OS OS_MAC
 #else
-#define PLATFORM PLATFORM_UNIX
+#define OS OS_UNIX
 #endif
 
 #include <stdlib.h>
@@ -20,7 +20,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include <math.h>
-#if PLATFORM == PLATFORM_WINDOWS
+#if OS == OS_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <profileapi.h>
@@ -33,6 +33,7 @@
 #include <sys/time.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <pthread.h>
 #endif
 
@@ -71,6 +72,16 @@ typedef wchar_t   wchar;
 #define DEBUG()   printf("[DEBUG] %s %s(): %d\n", __FILE__, __func__, __LINE__)
 
 //:==================================
+// Bit-wise helpers
+//:==================================
+
+#define BIT_SET(base,n)    ((base) |= (1UL<<(n)))
+#define BIT_CLR(base,n)    ((base) &= ~(1UL<<(n)))
+#define BIT_FLIP(base,n)   ((base) ^= (1UL<<(n)))
+#define BIT_CHECK(base,n)  ((base) & (n) == (n))
+#define BIT_IS_SET(base,n) ((base) & (1UL<<(n)))
+
+//:==================================
 // Math
 //:==================================
 
@@ -101,18 +112,6 @@ f32 exponential_smooth(f32 start, f32 end, f32 alpha, s32 frame)
     f32 factor = powf(1.0f - alpha, frame + 1);
     return end - (end - start) * factor;
 }
-
-typedef struct
-{
-    u16 x;
-    u16 y;
-} PointU16;
-
-typedef struct
-{
-    s32 x;
-    s32 y;
-} Point;
 
 //===================================
 // Utility
@@ -518,13 +517,13 @@ static void print_log(LogType type, const char* fmt, ...)
     va_end(args);
 }
 
-#define LOG(type, format, ...) print_log(type, format, __FILENAME__, __LINE__, timer_get_elapsed(&log_timer), ##__VA_ARGS__)
+#define log(type, format, ...) print_log(type, format, __FILENAME__, __LINE__, timer_get_elapsed(&log_timer), ##__VA_ARGS__)
 
-#define LOGE(format,...) LOG(LOG_TYPE_ERROR,   LOG_FMT(E, format), ##__VA_ARGS__) // error
-#define LOGW(format,...) LOG(LOG_TYPE_WARNING, LOG_FMT(W, format), ##__VA_ARGS__) // warning
-#define LOGI(format,...) LOG(LOG_TYPE_INFO   , LOG_FMT(I, format), ##__VA_ARGS__) // info
-#define LOGV(format,...) LOG(LOG_TYPE_VERBOSE, LOG_FMT(V, format), ##__VA_ARGS__) // verbose
-#define LOGN(format,...) LOG(LOG_TYPE_NETWORK, LOG_FMT(N, format), ##__VA_ARGS__) // network
+#define loge(format,...) log(LOG_TYPE_ERROR,   LOG_FMT(E, format), ##__VA_ARGS__) // error
+#define logw(format,...) log(LOG_TYPE_WARNING, LOG_FMT(W, format), ##__VA_ARGS__) // warning
+#define logi(format,...) log(LOG_TYPE_INFO   , LOG_FMT(I, format), ##__VA_ARGS__) // info
+#define logv(format,...) log(LOG_TYPE_VERBOSE, LOG_FMT(V, format), ##__VA_ARGS__) // verbose
+#define logn(format,...) log(LOG_TYPE_NETWORK, LOG_FMT(N, format), ##__VA_ARGS__) // network
 
 //:==================================
 // Strings
@@ -577,9 +576,9 @@ u8 char_to_lower(u8 c);
 u8 char_to_upper(u8 c);
 
 String string_format(Arena *arena, const char *format, ...);
-String string_combine(Arena *arena, s32 count, ...);
+String string_concat(Arena *arena, s32 count, ...);
 
-String string_zero();
+String string_nil();
 
 b32 string_equal(String s, String t);
 b32 string_starts_with(String str, String start);
@@ -602,9 +601,10 @@ char* string_to_cstr(Arena *arena, String str);
 
 void string_print(String s);
 
+StringArray string_array_nil();
 StringArray string_array_create(Arena *arena, u64 count, ...);
 StringArray string_array_create_empty(Arena *arena, u64 count);
-StringArray string_split(Arena *arena, String base, const char *split);
+StringArray string_split(Arena *arena, String base, String split);
 StringArray string_list_to_array(StringList sl);
 
 String string_eat_whitespace(String str);
@@ -671,7 +671,7 @@ u64 cstring_strlen(const char *str)
     return len;
 }
 
-String string_zero()
+String string_nil()
 {
     String str = {0};
     return str;
@@ -723,10 +723,10 @@ char* string_to_cstr(Arena *arena, String str)
 void string_print(String s)
 {
     if(s.len == 0 || !s.data) return;
-    LOGI(STR_FMT,s.len, s.data);
+    logi(STR_FMT,s.len, s.data);
 }
 
-String string_combine(Arena *arena, s32 count, ...)
+String string_concat(Arena *arena, s32 count, ...)
 {
     va_list args1, args2;
     va_start(args1, count);
@@ -746,7 +746,7 @@ String string_combine(Arena *arena, s32 count, ...)
     for(s32 i = 0; i < count; ++i)
     {
         String s = va_arg(args2, String);
-        memcpy(&str.data[str.len],s.data, s.len);
+        MemoryCopy(&str.data[str.len],s.data, s.len);
         str.len += s.len;
     }
     va_end(args2);
@@ -863,7 +863,7 @@ String string_replace(Arena *arena, String str, String find, String replacement)
     s64 new_len = str.len + ((replacement.len - find.len)*instance_count);
     if(new_len <= 0)
     {
-        return string_zero();
+        return string_nil();
     }
 
     // allocate space for new string
@@ -1269,7 +1269,7 @@ String string_list_collapse(StringList *sl)
     sn = sl->head;
     if(sn == NULL)
     {
-        LOGW("StringNode is null");
+        logw("StringNode is null");
         return str;
     }
 
@@ -1295,7 +1295,7 @@ String string_list_collapse(StringList *sl)
     for(;;)
     {
         String *it = &sn->str;
-        memcpy(&str.data[str.len], it->data, it->len);
+        MemoryCopy(&str.data[str.len], it->data, it->len);
         str.len += it->len;
 
         if(!sn->next)
@@ -1362,6 +1362,12 @@ String string_advance_char(String str)
     return string_advance(str, 1);
 }
 
+StringArray string_array_nil()
+{
+    StringArray sa = {0};
+    return sa;
+}
+
 StringArray string_array_create(Arena *arena, u64 count, ...)
 {
     StringArray sa;
@@ -1405,19 +1411,17 @@ StringArray string_list_to_array(StringList sl)
     return sa;
 }
 
-StringArray string_split(Arena *arena, String base, const char *split)
+StringArray string_split(Arena *arena, String base, String split)
 {
-    String split_str = STR(split);
-
     u64 num_strings = 1;
     s64 split_indices[2048] = {0}; // @NOTE: Arbitrary limit
 
     for(u64 i = 0; i < base.len; ++i)
     {
-        if(base.data[i] == split_str.data[0])
+        if(base.data[i] == split.data[0])
         {
             b32 match = true;
-            for(u64 j = 1; j < split_str.len; ++j)
+            for(u64 j = 1; j < split.len; ++j)
             {
                 ++i;
                 if(i >= base.len) {
@@ -1425,7 +1429,7 @@ StringArray string_split(Arena *arena, String base, const char *split)
                     break;
                 }
 
-                if(base.data[i] != split_str.data[j])
+                if(base.data[i] != split.data[j])
                 {
                     match = false;
                     break;
@@ -1448,14 +1452,14 @@ StringArray string_split(Arena *arena, String base, const char *split)
 
     for(u64 i = 0; i < num_strings; ++i)
     {
-        u64 string_len = split_indices[i+1] - split_indices[i] - split_str.len;
-        if(i+1 == num_strings) string_len += split_str.len;
+        u64 string_len = split_indices[i+1] - split_indices[i] - split.len;
+        if(i+1 == num_strings) string_len += split.len;
 
         String *str = &sa.items[i];
         str->data = (u8 *)PUSH_ARRAY(arena, u8, string_len);
         str->len = string_len;
 
-        memcpy(str->data, &base.data[split_indices[i]], string_len);
+        MemoryCopy(str->data, &base.data[split_indices[i]], string_len);
     }
 
     return sa;
@@ -1487,23 +1491,565 @@ StringArray string_split(Arena *arena, String base, const char *split)
     } while(0)
 
 
-//:==================================
+///////////////////////////////////////
 // Files
-//:==================================
+///////////////////////////////////////
 
-inline s32 FileWriteU8(FILE* file, u8 x)   { return fwrite(&x,sizeof(u8),1,file);}
-inline s32 FileWriteU16(FILE* file, u16 x) { return fwrite(&x,sizeof(u16),1,file);}
-inline s32 FileWriteU32(FILE* file, u32 x) { return fwrite(&x,sizeof(u32),1,file);}
-inline s32 FileWriteF32(FILE* file, f32 x) { return fwrite(&x,sizeof(f32),1,file);}
-inline s32 FileWriteStr(FILE* file, const char* s) { return fwrite(s,sizeof(char),strlen(s),file);}
-
-inline s32 FileWriteU32AtIndex(FILE* file, u32 x, u32 index)
+typedef enum
 {
-    s32 pos = ftell(file);
-    fseek(file, index, SEEK_SET);
-    s32 ret = fwrite(&x,sizeof(u32),1,file);
-    fseek(file, pos, SEEK_SET);
+    OS_READABLE = (1 << 0),
+    OS_WRITABLE = (1 << 1),
+} OS_FileProps;
+
+typedef struct OS_File OS_File;
+
+#if OS == OS_WINDOWS
+struct OS_File
+{
+    HANDLE handle;
+    OS_FileProps props;
+    b32 is_valid;
+};
+
+#else
+struct OS_File
+{
+    s32 handle;
+    OS_FileProps props;
+    b32 is_valid;
+};
+#endif
+
+b32         os_file_exists(char *file_path);
+OS_File     os_file_open(char *file_path, OS_FileProps props);
+OS_File     os_file_create_and_open(char *file_path, OS_FileProps props);
+b32         os_file_create(char *file_path);
+b32         os_file_create_directory(char *dir_path);
+void        os_file_close(OS_File *file);
+
+s64         os_file_get_size(OS_File *file);
+s64         os_file_get_length_to_char(OS_File *file, char c);
+
+String      os_file_read_to_string(Arena *arena, OS_File *file);
+String      os_file_read_line(Arena *arena, OS_File *file);
+StringArray os_file_read_lines(Arena *arena, OS_File *file);
+
+s64 os_file_get_pos(OS_File *file);
+void os_file_set_pos(OS_File *file, s64 pos);
+void os_file_reset_pos(OS_File *file);
+
+OS_File os_file_nil();
+OS_File os_file_open_readonly(char *file_path);
+OS_File os_file_open_writeonly(char *file_path);
+OS_File os_file_open_readwrite(char *file_path);
+OS_File os_file_create_and_open(char *file_path, OS_FileProps props);
+
+inline s32 os_file_write(OS_File *file, void *data, s32 size);
+inline s32 os_file_write_u8(OS_File* file, u8 x);
+inline s32 os_file_write_u16(OS_File* file, u16 x);
+inline s32 os_file_write_u32(OS_File* file, u32 x);
+inline s32 os_file_write_f32(OS_File* file, f32 x);
+inline s32 os_file_write_str(OS_File* file, String str);
+inline s32 os_file_write_u32_at_index(OS_File* file, u32 x, u32 index);
+
+String      os_get_current_directory();
+StringArray os_get_files_in_directory(Arena *arena, String directory);
+StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArray extensions);
+
+///////////////////////////////////////
+// Paths
+///////////////////////////////////////
+
+String os_path_get_extension(Arena *arena, String file_path);
+
+#if OS == OS_WINDOWS
+
+static u32 _map_props_to_access(OS_FileProps props)
+{
+    u32 access = 0x0;
+
+    if(BIT_CHECK(props, OS_READABLE) && BIT_CHECK(props, OS_WRITABLE))
+        access = GENERIC_READ | GENERIC_WRITE;
+    else if(BIT_CHECK(props, OS_WRITABLE))
+        access = GENERIC_WRITE;
+    else if(BIT_CHECK(props, OS_READABLE))
+        access = GENERIC_READ;
+
+    return access;
+}
+
+OS_File os_file_open(char *file_path, OS_FileProps props)
+{
+    u32 access = _map_props_to_access(props);
+    if(access == 0x0)
+        return os_file_nil();
+
+    HANDLE handle;
+    handle = CreateFile(file_path, access, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    OS_File file = {
+        .handle = (void *)handle,
+        .props = props
+    };
+
+    file.is_valid = (handle != INVALID_HANDLE);
+    return file;
+}
+
+OS_File os_file_create_and_open(char *file_path, OS_FileProps props)
+{
+    u32 access = _map_props_to_access(props);
+
+    HANDLE handle;
+    handle = CreateFile(file_path, access, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    OS_File file = {
+        .handle = (void *)handle,
+        .props = props
+    };
+
+    file.is_valid = (handle != INVALID_HANDLE);
+    return file;
+}
+
+b32 os_file_create(char *file_path)
+{
+    HANDLE handle;
+    handle = CreateFile(file_path, NULL, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    b32 is_valid = (handle != INVALID_HANDLE);
+
+    if(is_valid) CloseHandle(handle);
+    return is_valid;
+}
+
+b32 os_file_create_directory(char *dir_path)
+{
+    s32 ret = CreateDirectory(dir_path, NULL);
+    return (ret != 0);
+}
+
+b32 os_file_exists(char *file_path)
+{
+    DWORD dwAttrib = GetFileAttributes(file_path);
+    return (dwAttrib != INVALID_FILE_ATTRIBUTES);
+}
+
+void os_file_close(OS_File *file)
+{
+    if(file->handle)
+    {
+        CloseHandle(file->handle);
+    }
+}
+
+s64 os_file_get_size(OS_File *file)
+{
+    if(!file->handle)
+        return 0;
+
+    LARGE_INTEGER size;
+    if(GetFileSizeEx(file->handle, &size) == FALSE)
+        return 0;
+
+    return (s64)(size.QuadPart);
+}
+
+s64 os_file_get_pos(OS_File *file)
+{
+    LARGE_INTEGER dist;
+    LARGE_INTEGER fp;
+
+    dist.QuadPart = 0;
+    SetFilePointerEx(file->handle, dist, &fp, FILE_CURRENT);
+
+    return (s64)(fp.QuadPart);
+}
+
+void os_file_set_pos(OS_File *file, s64 pos)
+{
+    SetFilePointer(file->handle, pos, NULL, FILE_BEGIN);
+    return;
+}
+
+s32 os_file_read_char(OS_File *file)
+{
+    s32 c = 0;
+    BOOL result = ReadFile(file->handle, &c, 1, NULL, NULL);
+    return result ? c : -1;
+}
+
+String os_file_read_to_string(Arena *arena, OS_File *file)
+{
+    s64 size = os_file_get_size(file);
+
+    String ret = {0};
+
+    if(size == 0)
+        return ret;
+
+    ret.data = PUSH_ARRAY(arena, u8, size);
+
+    DWORD bytes_read;
+    BOOL result = ReadFile(file->handle, ret.data, size, &bytes_read, NULL);
+
+    ret.len = (u64)(result ? bytes_read : 0);
+
     return ret;
+}
+
+s32 os_file_write(OS_File *file, void *data, s32 size)
+{
+    DWORD dwSize = (DWORD)size;
+    DWORD bytes_written;
+    BOOL result;
+
+    result = WriteFile(file->handle, data, dwSize, &bytes_written, NULL);
+    return (s32)bytes_written;
+}
+
+StringArray os_get_files_in_directory(Arena *arena, String directory)
+{
+    String search_pattern = string_concat(arena, 2, directory, S("\\*"));
+    char *search_pattern_cstr = string_to_cstr(arena, search_pattern);
+
+    WIN32_FIND_DATAA find_data;
+    HANDLE handle = FindFirstFileA(search_pattern_cstr, &find_data);
+    
+    if(handle == INVALID_HANDLE_VALUE)
+        return string_array_nil();
+
+    StringList sl = string_list_create(arena);
+
+    for(;;)
+    {
+        b32 is_file = !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+        if(is_file)
+        {
+            String file_name = STR(find_data.cFileName);
+            string_list_add(&sl, file_name);
+        }
+
+        if(!FileNextFileA(handle, &find_data))
+            break;
+    };
+
+    return string_list_to_array(sl);
+}
+
+String os_get_current_directory()
+{
+    TCHAR Buffer[MAX_PATH];
+    DWORD dwRet;
+    dwRet = GetCurrentDirectory(MAX_PATH, Buffer);
+
+    if(dwRet == 0)
+    {
+        loge("GetCurrentDirectory failed (%d)", GetLastError());
+        return string_nil();
+    }
+
+    if(dwRet > BUFSIZE)
+    {
+        loge("Buffer too small; needed %d characters", dwRet);
+        return string_nil();
+    }
+
+    return STR(Buffer);
+}
+
+#else
+
+static s32 _map_props_to_access(OS_FileProps props)
+{
+    s32 access = -1;
+
+    if(BIT_CHECK(props, OS_READABLE) && BIT_CHECK(props, OS_WRITABLE))
+        access = O_RDWR;
+    else if(BIT_CHECK(props, OS_WRITABLE))
+        access = O_WRONLY;
+    else if(BIT_CHECK(props, OS_READABLE))
+        access = O_RDONLY;
+
+    return access;
+}
+
+OS_File os_file_open(char *file_path, OS_FileProps props)
+{
+    s32 access = _map_props_to_access(props);
+
+    if(access == -1)
+        return os_file_nil();
+
+    s32 fd = open(file_path, access);
+
+    OS_File file = {
+        .handle = fd,
+        .props = props
+    };
+
+    file.is_valid = (fd > -1);
+    return file;
+}
+
+OS_File os_file_create_and_open(char *file_path, OS_FileProps props)
+{
+    s32 access = _map_props_to_access(props);
+    if(access == -1) access = O_CREAT | O_TRUNC;
+
+    s32 fd = open(file_path, access, 0644);
+
+    OS_File file = {
+        .handle = fd,
+        .props = props
+    };
+
+    file.is_valid = (fd > -1);
+    return file;
+}
+
+b32 os_file_create(char *file_path)
+{
+    s32 access = O_CREAT | O_TRUNC;
+    s32 fd = open(file_path, access, 0644);
+    b32 is_valid = (fd > -1);
+    if(is_valid) close(fd);
+    return is_valid;
+}
+
+b32 os_file_create_directory(char *dir_path)
+{
+    s32 err = mkdir(dir_path, 0644);
+    return (err == 0);
+}
+
+b32 os_file_exists(char *file_path)
+{
+     if(access(file_path, F_OK)) return true;
+     else return false;
+}
+
+void os_file_close(OS_File *file)
+{
+    close(file->handle);
+}
+
+s64 os_file_get_size(OS_File *file)
+{
+    s64 pos = os_file_get_pos(file);
+    os_file_reset_pos(file);
+    s64 size = lseek(file->handle, 0, SEEK_END);
+    os_file_set_pos(file, pos);
+
+    return size;
+}
+
+s64 os_file_get_pos(OS_File *file)
+{
+    if(!file->handle)
+        return 0;
+
+    return (s64)lseek(file->handle, 0, SEEK_CUR);
+}
+
+void os_file_set_pos(OS_File *file, s64 pos)
+{
+    lseek(file->handle, pos, SEEK_SET);
+    return;
+}
+
+s32 os_file_read_char(OS_File *file)
+{
+    u8 c = '\0';
+    s32 bytes_read = read(file->handle, &c, sizeof(u8));
+    return c;
+}
+
+String os_file_read_to_string(Arena *arena, OS_File *file)
+{
+    s64 size = os_file_get_size(file);
+
+    String ret = {0};
+    ret.data = (u8 *)PUSH_ARRAY(arena, u8, size);
+    ret.len = (u64)size;
+
+    s32 c;
+    u64 i = 0;
+
+    for(;;)
+    {
+        c = os_file_read_char(file);
+        if(c == 0)
+            break;
+
+        ret.data[i++] = c;
+    }
+
+    ret.len = (u64)i;
+
+    return ret;
+}
+
+s32 os_file_write(OS_File *file, void *data, s32 size)
+{
+    return write(file->handle, data, size);
+}
+
+String os_get_current_directory()
+{
+    char cwd[1024] = {0};
+    if(!getcwd(cwd, sizeof(cwd)))
+        return string_nil();
+
+    String str = STR(cwd);
+    return str;
+}
+
+StringArray os_get_files_in_directory(Arena *arena, String directory)
+{
+    char *directory_cstr = string_to_cstr(arena, directory);
+    DIR* dir = opendir(directory_cstr);
+    if(!dir) return string_array_nil();;
+
+    struct dirent *entry = NULL;
+
+    StringList sl = string_list_create(arena);
+
+    for(;;)
+    {
+        entry = readdir(dir);
+        if(!entry) break;
+
+        b32 is_file = (entry->d_type != DT_DIR);
+        if(is_file)
+        {
+            String file_name = STR(entry->d_name);
+            string_list_add(&sl, file_name);
+        }
+    };
+
+    return string_list_to_array(sl);
+}
+
+#endif
+
+///////////////////////////////////////
+// File Helpers
+///////////////////////////////////////
+
+OS_File os_file_nil()
+{
+    OS_File file = {0};
+    return file;
+}
+
+OS_File os_file_open_readonly(char *file_path)
+{
+    return os_file_open(file_path, OS_READABLE);
+}
+
+OS_File os_file_open_writeonly(char *file_path)
+{
+    return os_file_open(file_path, OS_WRITABLE);
+}
+
+OS_File os_file_open_readwrite(char *file_path)
+{
+    return os_file_open(file_path, (OS_FileProps)(OS_READABLE | OS_WRITABLE));
+}
+
+void os_file_reset_pos(OS_File *file)
+{
+    os_file_set_pos(file, 0);
+}
+
+s64 os_file_get_length_to_char(OS_File *file, char c)
+{
+    s64 pos = os_file_get_pos(file);
+    s64 len = 0;
+
+    for(;;)
+    {
+        s32 n = os_file_read_char(file);
+
+        if(n == 0 || n == -1 || n == EOF) { len = 0; break; }
+        if(n == c) break;
+            
+        len++;
+    }
+
+    os_file_set_pos(file, pos);
+
+    return len;
+}
+
+String os_file_read_line(Arena *arena, OS_File *file)
+{
+    String str = {0};
+
+    s64 len = os_file_get_length_to_char(file, '\n');
+    if(len == 0) return str;
+
+    str.data = (u8 *)PUSH_ARRAY(arena, u8, len);
+
+    for(s64 i = 0; i < len; ++i)
+    {
+        s32 c = os_file_read_char(file);
+        str.data[str.len++] = (u8)c;
+    }
+
+    os_file_read_char(file); // read one more to discard newline
+
+    return str;
+}
+
+StringArray os_file_read_lines(Arena *arena, OS_File *file)
+{
+    String str = os_file_read_to_string(arena, file);
+    StringArray sa = string_split(arena, str, S("\n"));
+
+    return sa;
+}
+
+inline s32 os_file_write_u8(OS_File* file, u8 x)   { return os_file_write(file, &x, sizeof(u8)); }
+inline s32 os_file_write_u16(OS_File* file, u16 x) { return os_file_write(file, &x, sizeof(u16)); }
+inline s32 os_file_write_u32(OS_File* file, u32 x) { return os_file_write(file, &x, sizeof(u32)); }
+inline s32 os_file_write_f32(OS_File* file, f32 x) { return os_file_write(file, &x, sizeof(f32)); }
+inline s32 os_file_write_str(OS_File* file, String str) { return os_file_write(file, str.data, str.len); }
+inline s32 os_file_write_u32_at_index(OS_File* file, u32 x, u32 index)
+{
+    s64 pos = os_file_get_pos(file);
+    os_file_set_pos(file, index);
+    s32 ret = os_file_write_u32(file, x);
+    os_file_set_pos(file, pos);
+    return ret;
+}
+
+StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArray extensions)
+{
+    StringArray files = os_get_files_in_directory(arena, directory);
+
+    StringList filtered = string_list_create(arena);
+
+    for(int i = 0; i < files.count; ++i)
+    {
+        String file = files.items[i];
+        string_to_lower(&file);
+
+        for(int j = 0; j < extensions.count; ++j)
+        {
+            String ext = extensions.items[j];
+            if(ext.len == 0) continue;
+
+            if(string_ends_with(file, ext))
+            {
+                // add to new list
+                string_list_add(&filtered, file);
+            }
+        }
+    }
+
+    return string_list_to_array(filtered);
 }
 
 ///////////////////////////////////////
@@ -1515,7 +2061,7 @@ String os_path_get_extension(Arena *arena, String file_path)
     char ext[256] = {0};
     u32 ext_i = 0;
 
-    for(s32 i = file_path.len - 1; i >= 0; --i)
+    for(int i = file_path.len - 1; i >= 0; --i)
     {
         char c = file_path.data[i];
         if(c == '.') break;
@@ -1534,9 +2080,14 @@ String os_path_get_extension(Arena *arena, String file_path)
 }
 
 
-//
+
+#ifdef __cplusplus
+}
+#endif
+
+//////////////////////////////
 // Program-specific types
-//
+//////////////////////////////
 
 typedef enum
 {
@@ -1564,16 +2115,28 @@ inline const char* transform_type_to_str(TransformType t)
 {
     switch(t)
     {
-        case TRANSFORM_TYPE_NONE: return "None";
-        case TRANSFORM_TYPE_BLACKOUT: return "Black Out";
-        case TRANSFORM_TYPE_BLUR: return "Blur";
-        case TRANSFORM_TYPE_PIXELATE: return "Pixelate";
-        case TRANSFORM_TYPE_SCRAMBLE: return "Scramble";
+        case TRANSFORM_TYPE_NONE:           return "None";
+        case TRANSFORM_TYPE_BLACKOUT:       return "Black Out";
+        case TRANSFORM_TYPE_BLUR:           return "Blur";
+        case TRANSFORM_TYPE_PIXELATE:       return "Pixelate";
+        case TRANSFORM_TYPE_SCRAMBLE:       return "Scramble";
         case TRANSFORM_TYPE_SCRAMBLE_FIXED: return "Scramble (Fixed Seed)";
-        case TRANSFORM_TYPE_TEXTURE: return "Texture";
-        default: return "Unknown";
+        case TRANSFORM_TYPE_TEXTURE:        return "Texture";
+        default:                            return "Unknown";
     }
 }
+
+typedef struct
+{
+    u16 x;
+    u16 y;
+} PointU16;
+
+typedef struct
+{
+    s32 x;
+    s32 y;
+} Point;
 
 typedef struct
 {
@@ -1584,13 +2147,13 @@ typedef struct
     s32 confidence;
     Point landmarks[5];
     b32 interpolated;
-} Rect;
+} Box;
 
 typedef struct
 {
-    u32 rect_count;
-    Rect* rects;
-} RectList;
+    u32 box_count;
+    Box* boxes;
+} BoxList;
 
 typedef struct
 {
@@ -1658,7 +2221,10 @@ typedef struct
 
     String input_file_text;
     String input_directory;
+    String output_file_path;
+
     InputFile input_files[100];
+
     s32 input_file_count;
     s32 thread_count;
 
@@ -1711,9 +2277,4 @@ extern pthread_t *threads;
 extern Timer timer;
 extern Arena* thread_arenas[MAX_ARENAS];
 extern Image texture_image;
-
-                                                          
-#ifdef __cplusplus
-}
-#endif
 

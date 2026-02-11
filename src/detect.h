@@ -1,9 +1,12 @@
 #include "base.h"
 #include "platform.h"
-#include "transform.h"
 #include "util.h"
+#include "transform.h"
 #include "facedetectcnn.h"
 
+#define ENABLE_NCNN 0
+
+#if ENABLE_NCNN
 #include "ncnn/net.h"
 
 typedef struct
@@ -18,13 +21,13 @@ void detect_init2()
 {
     if(yunet.net.load_param("models/yunet.param") != 0)
     {
-        LOGE("Failed to load YuNET param file.");
+        loge("Failed to load YuNET param file.");
         return;
     }
 
     if(yunet.net.load_model("models/yunet.bin") != 0)
     {
-        LOGE("Failed to load YuNET bin file.");
+        loge("Failed to load YuNET bin file.");
         return;
     }
 
@@ -57,6 +60,7 @@ void *detect_faces2(void *arg)
 
     return NULL;
 }
+#endif
 
 void detect_init()
 {
@@ -71,7 +75,7 @@ void *detect_faces(void* arg)
     s32 *results = facedetect_cnn(image->detect_buffer,image->data,image->w,image->h,image->step, (f32)(settings.confidence_threshold / 100.0f));
     s32 num_faces = (results ? *results : 0);
 
-    image->result = (u8*)PUSH_ARRAY(arena, u8, sizeof(s32) + num_faces+sizeof(Rect));
+    image->result = (u8*)PUSH_ARRAY(arena, u8, sizeof(s32) + num_faces+sizeof(Box));
 
     s32 offset = 0;
 
@@ -82,7 +86,7 @@ void *detect_faces(void* arg)
     {
         short *p = ((short*)(results+1)) + 16*i;
 
-        Rect *r = (Rect*)(image->result+offset);
+        Box *r = (Box*)(image->result+offset);
 
         r->confidence = p[0];
         r->x = p[1] + (image->subx*image->w);
@@ -101,14 +105,14 @@ void *detect_faces(void* arg)
         r->landmarks[4].x = p[13] + (image->subx*image->w);
         r->landmarks[4].y = p[14] + (image->suby*image->h);
 
-        offset += sizeof(Rect);
+        offset += sizeof(Box);
     }
 
     return NULL;
 }
 
-// Returns number of rects
-s32 process_image(Image* image,Rect* ret_rects)
+// Returns number of boxes
+s32 process_image(Image* image,Box* ret_boxes)
 {
     if(!threads) return 0;
 
@@ -154,7 +158,7 @@ s32 process_image(Image* image,Rect* ret_rects)
     s32 sub_width  = ceil(image->w / cols);
     s32 sub_height = ceil(image->h / rows);
 
-    LOGI("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
+    logi("Image sub-size: (%d, %d), config: %dx%d", sub_width, sub_height, rows, cols);
 
     Temp scratch = scratch_begin();
 
@@ -171,7 +175,7 @@ s32 process_image(Image* image,Rect* ret_rects)
     s32 x = 0;
     s32 y = 0;
 
-    LOGI("Detecting faces... (threads: %d)", settings.thread_count);
+    logi("Detecting faces... (threads: %d)", settings.thread_count);
 
     const f32 padding_factor = 0.1;
     s32 padding = MAX(sub_width, sub_height)*padding_factor;
@@ -198,12 +202,12 @@ s32 process_image(Image* image,Rect* ret_rects)
 
         if(thread_create(&threads[actual_thread_count], detect_faces, (void*)sub_image) == 0)
         {
-            //LOGI("Thread %d started (%d, %d)", i, x, y);
+            //logi("Thread %d started (%d, %d)", i, x, y);
             actual_thread_count++;
         }
         else
         {
-            LOGW("Failed to start thread");
+            logw("Failed to start thread");
         }
 
         x++;
@@ -216,14 +220,14 @@ s32 process_image(Image* image,Rect* ret_rects)
 
     for(s32 i = 0; i < settings.thread_count; ++i)
     {
-        //LOGI("Thread %d joined", i);
+        //logi("Thread %d joined", i);
         thread_join(threads[i]);
     }
 
     f64 detection_time = timer_get_elapsed(&timer);
-    LOGI("detection time: %.3f ms", detection_time*1000.0f);
+    logi("detection time: %.3f ms", detection_time*1000.0f);
 
-    Rect total_rects[1024] = {};
+    Box total_boxes[1024] = {};
     s32 num_faces = 0;
 
     // collect face box results
@@ -232,22 +236,22 @@ s32 process_image(Image* image,Rect* ret_rects)
         Image* sub_image = sub_images[i];
         if(sub_image && sub_image->result)
         {
-            u8* ret_rects = sub_image->result;
+            u8* ret_boxes = sub_image->result;
             s32 offset = 0;
-            s32 sub_faces_found = *((s32*)(ret_rects));
+            s32 sub_faces_found = *((s32*)(ret_boxes));
             offset += sizeof(s32);
 
             for(s32 j = 0; j < sub_faces_found; ++j)
             {
-                Rect* r = (Rect*)(ret_rects+offset);
+                Box* r = (Box*)(ret_boxes+offset);
                 if(r->x >= image->w || r->y >= image->h)
                     continue;
 
                 if(r->x + r->w > image->w) r->w = image->w - r->x - 1;
                 if(r->y + r->h > image->h) r->h = image->h - r->y - 1;
 
-                memcpy(&total_rects[num_faces],r,sizeof(Rect));
-                offset += sizeof(Rect);
+                memcpy(&total_boxes[num_faces],r,sizeof(Box));
+                offset += sizeof(Box);
                 num_faces++;
             }
         }
@@ -255,19 +259,19 @@ s32 process_image(Image* image,Rect* ret_rects)
 
     reverse_rgb_order(image);
 
-    s32 ret_rects_count = 0;
-    for(s32 i  = 0; i < num_faces; ++i)
+    s32 ret_boxes_count = 0;
+    for(s32 i = 0; i < num_faces; ++i)
     {
-        Rect *ret_rect = &ret_rects[ret_rects_count];
-        Rect *rect = &total_rects[i];
+        Box *ret_box = &ret_boxes[ret_boxes_count];
+        Box *box = &total_boxes[i];
 
-        MemoryCopy(ret_rect, rect, sizeof(Rect));
+        MemoryCopy(ret_box, box, sizeof(Box));
 
-        ret_rects_count++;
+        ret_boxes_count++;
     }
 
     scratch_end(scratch);
 
-    return ret_rects_count;
+    return ret_boxes_count;
 }
 

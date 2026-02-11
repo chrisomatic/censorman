@@ -2,7 +2,7 @@
 
 #include "base.h"
 
-#if 0 //PLATFORM == PLATFORM_WINDOWS
+#if 0 //OS == OS_WINDOWS
 
 HANDLE *threads  = NULL;
 
@@ -50,7 +50,7 @@ s32 platform_get_files_in_folder(Arena* arena, String folder_path, String* exten
 {
     s32 file_count = 0;
 
-#if PLATFORM == PLATFORM_WINDOWS
+#if OS == OS_WINDOWS
 
     // Construct search pattern (e.g., "folder_path\*")
     char search_path[1024];

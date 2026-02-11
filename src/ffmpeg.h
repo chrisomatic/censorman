@@ -8,13 +8,6 @@ extern "C" {
 #include <libavutil/dict.h>
 }
 
-#include <stdbool.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-
-#include "base.h"
-
 typedef struct
 {
     // decoding 
@@ -77,13 +70,13 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
     char *filename_cstr = string_to_cstr(arena, filename);
     if(avformat_open_input(&vid_ctx->fmt_ctx, filename_cstr, NULL, NULL) < 0)
     {
-        LOGE("Could not open input file '" STR_FMT "'", STR_ARG(filename));
+        loge("Could not open input file '" STR_FMT "'", STR_ARG(filename));
         return false;
     }
 
     if(avformat_find_stream_info(vid_ctx->fmt_ctx, NULL) < 0)
     {
-        LOGE("Could not find stream info");
+        loge("Could not find stream info");
         avformat_close_input(&vid_ctx->fmt_ctx);
         return false;
     }
@@ -99,7 +92,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
 
     if(vid_ctx->video_stream_index == -1)
     {
-        LOGE("No video stream found");
+        loge("No video stream found");
         avformat_close_input(&vid_ctx->fmt_ctx);
         return false;
     }
@@ -123,7 +116,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
     vid_ctx->codec = avcodec_find_decoder(vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_index]->codecpar->codec_id);
     if(!vid_ctx->codec)
     {
-        LOGE("Unsupported codec");
+        loge("Unsupported codec");
         avformat_close_input(&vid_ctx->fmt_ctx);
         return false;
     }
@@ -131,7 +124,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
     vid_ctx->codec_ctx = avcodec_alloc_context3(vid_ctx->codec);
     if(!vid_ctx->codec_ctx)
     {
-        LOGE("Could not allocate codec context");
+        loge("Could not allocate codec context");
         avformat_close_input(&vid_ctx->fmt_ctx);
         return false;
     }
@@ -144,7 +137,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
 
     if (avcodec_open2(vid_ctx->codec_ctx, vid_ctx->codec, NULL) < 0)
     {
-        LOGE("Could not open codec");
+        loge("Could not open codec");
         avcodec_free_context(&vid_ctx->codec_ctx);
         avformat_close_input(&vid_ctx->fmt_ctx);
         return false;
@@ -161,7 +154,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
     u8 *rgb_data = (u8 *)PUSH_ARRAY(arena, u8, (u64)frame_rgb_size * max_frames);
     if(!rgb_data)
     {
-        LOGE("Failed to allocate RGB buffer of size %lu", (u64)frame_rgb_size * max_frames);
+        loge("Failed to allocate RGB buffer of size %lu", (u64)frame_rgb_size * max_frames);
         avcodec_free_context(&vid_ctx->codec_ctx);
         avformat_close_input(&vid_ctx->fmt_ctx);
         return false;
@@ -196,7 +189,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
         avformat_alloc_output_context2(&vid_ctx->enc_fmt_ctx, NULL, "mp4", outfile);
         if(!vid_ctx->enc_fmt_ctx)
         {
-            LOGE("Could not deduce output format");
+            loge("Could not deduce output format");
             return false;
         }
 
@@ -214,7 +207,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
 
         if(!vid_ctx->enc_codec)
         {
-            LOGE("Encoder not found");
+            loge("Encoder not found");
             avformat_free_context(vid_ctx->enc_fmt_ctx);
             return false;
         }
@@ -223,7 +216,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
         vid_ctx->enc_video_st = avformat_new_stream(vid_ctx->enc_fmt_ctx, NULL);
         if(!vid_ctx->enc_video_st)
         {
-            LOGE("Could not create stream");
+            loge("Could not create stream");
             avformat_free_context(vid_ctx->enc_fmt_ctx);
             return false;
         }
@@ -231,17 +224,17 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
         vid_ctx->enc_codec_ctx = avcodec_alloc_context3(vid_ctx->enc_codec);
         if(!vid_ctx->enc_codec_ctx)
         {
-            LOGE("Could not allocate codec context");
+            loge("Could not allocate codec context");
             avformat_free_context(vid_ctx->enc_fmt_ctx);
             return false;
         }
 
-        LOGI("Video Details:");
-        LOGI("  Size:        %d, %d", width, height);
-        LOGI("  Frame count: %ld", nb_frames);
-        LOGI("  FPS:         %f", fps.num / (f64)fps.den);
-        LOGI("  Rotation:    %d", video->rotation);
-        LOGI("  Codec:       %s (%d)", avcodec_get_name(codec_id), codec_id);
+        logi("Video Details:");
+        logi("  Size:        %d, %d", width, height);
+        logi("  Frame count: %ld", nb_frames);
+        logi("  FPS:         %f", fps.num / (f64)fps.den);
+        logi("  Rotation:    %d", video->rotation);
+        logi("  Codec:       %s (%d)", avcodec_get_name(codec_id), codec_id);
 
         // Basic encoding settings
 
@@ -270,7 +263,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
         // Open encoder
         if((ret = avcodec_open2(vid_ctx->enc_codec_ctx, vid_ctx->enc_codec, &vid_ctx->enc_opts)) < 0)
         {
-            LOGE("Could not open encoder");
+            loge("Could not open encoder");
             avcodec_free_context(&vid_ctx->enc_codec_ctx);
             avformat_free_context(vid_ctx->enc_fmt_ctx);
             return false;
@@ -280,7 +273,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
         ret = avcodec_parameters_from_context(vid_ctx->enc_video_st->codecpar, vid_ctx->enc_codec_ctx);
         if(ret < 0)
         {
-            LOGE("Could not copy codec parameters");
+            loge("Could not copy codec parameters");
             avcodec_free_context(&vid_ctx->enc_codec_ctx);
             avformat_free_context(vid_ctx->enc_fmt_ctx);
             return false;
@@ -296,7 +289,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
         {
             if(avio_open(&vid_ctx->enc_fmt_ctx->pb, outfile, AVIO_FLAG_WRITE) < 0)
             {
-                LOGE("Could not open output file '%s'", outfile);
+                loge("Could not open output file '%s'", outfile);
                 avcodec_free_context(&vid_ctx->enc_codec_ctx);
                 avformat_free_context(vid_ctx->enc_fmt_ctx);
                 return false;
@@ -306,7 +299,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
         // Write header
         if(avformat_write_header(vid_ctx->enc_fmt_ctx, NULL) < 0)
         {
-            LOGE("Error occurred writing header");
+            loge("Error occurred writing header");
             avio_close(vid_ctx->enc_fmt_ctx->pb);
             avcodec_free_context(&vid_ctx->enc_codec_ctx);
             avformat_free_context(vid_ctx->enc_fmt_ctx);
@@ -320,7 +313,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
 
         if(!vid_ctx->enc_frame || !vid_ctx->enc_frame_src || !vid_ctx->enc_pkt)
         {
-            LOGE("Could not allocate frame/packet");
+            loge("Could not allocate frame/packet");
             return false;
         }
 
@@ -339,7 +332,7 @@ b32 ffmpeg_open(Arena *arena, String filename, const char *outfile, Video *video
 
         if(!vid_ctx->enc_sws_ctx)
         {
-            LOGE("Could not init sws context");
+            loge("Could not init sws context");
             return false;
         }
 
@@ -452,7 +445,7 @@ b32 ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
         ret = sws_scale_frame(vid_ctx->enc_sws_ctx, vid_ctx->enc_frame, vid_ctx->enc_frame_src);
         if(ret < 0)
         {
-            LOGW("Error scaling frame %d", i);
+            logw("Error scaling frame %d", i);
             continue;
         }
 
@@ -466,7 +459,7 @@ b32 ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
         {
             char err[AV_ERROR_MAX_STRING_SIZE];
             av_strerror(ret, err, sizeof(err));
-            LOGE("Error sending frame to encoder: %s", err);
+            loge("Error sending frame to encoder: %s", err);
             continue;
         }
 
@@ -480,7 +473,7 @@ b32 ffmpeg_encode_ctx(Video *video, VideoCtx *vid_ctx)
             {
                 char err[AV_ERROR_MAX_STRING_SIZE];
                 av_strerror(ret, err, sizeof(err));
-                LOGE("Error encoding frame: %s", err);
+                loge("Error encoding frame: %s", err);
                 break;
             }
 
@@ -518,7 +511,7 @@ b32 ffmpeg_encode_done(VideoCtx *vid_ctx)
         {
             char err[AV_ERROR_MAX_STRING_SIZE];
             av_strerror(ret, err, sizeof(err));
-            LOGE("Error flushing encoder: %s", err);
+            loge("Error flushing encoder: %s", err);
             break;
         }
 

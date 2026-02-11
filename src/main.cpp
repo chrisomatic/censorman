@@ -2,6 +2,7 @@
 
 #include "base.h"
 #include "platform.h"
+
 #include "detect.h"
 #include "ffmpeg.h"
 #include "transform.h"
@@ -24,6 +25,7 @@
 // [ ] Add plugin
 
 // DONE
+// [x] Implement --out_file settings
 // [x] Added crude first pass to address video discontinuities
 // [x] Fix builds for MacOS
 // [x] Get Windows support working
@@ -37,12 +39,16 @@
 // [x] Fix pixelate transform
 // [x] Fix raster font on rotated videos
 // [x] Add raster font for debug output
-// [x] Lerping rects in video
+// [x] Lerping boxes in video
 // [x] Add scramble transform
 // [x] Add blur transform
 // [x] Add image scaling function
 // [x] Open a video file and read image frames
 // [x] Write output video file
+
+extern Timer timer;
+extern Arena* thread_arenas[MAX_ARENAS];
+extern Image texture_image;
 
 Arena *thread_arenas[MAX_ARENAS] = {};
 Arena *frame_arena = NULL;
@@ -57,14 +63,13 @@ b32 init(s32 argc, char **args);
 b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[]);
 s32 handle_image();
 s32 handle_video();
-void draw_debugging_info(Image* image, Rect* rects, s32 num_rects);
+void draw_debugging_info(Image* image, Box* boxes, s32 num_boxes);
 
 s32 main(s32 argc, char** args)
 {
     b32 initialized = init(argc, args);
     if(!initialized)
         return 1;
-
 
     if(settings.asset_type == TYPE_IMAGE)
     {
@@ -87,33 +92,34 @@ s32 handle_image()
     for(s32 i = 0; i < settings.input_file_count; ++i)
     {
         String infile;
-        infile = string_combine(scratch.arena, 3, settings.input_directory, S("/"), settings.input_files[i].filename);
+        infile = string_concat(scratch.arena, 3, settings.input_directory, S("/"), settings.input_files[i].filename);
 
-        LOGV("infile: " STR_FMT, STR_ARG(infile));
+        logv("infile: " STR_FMT, STR_ARG(infile));
 
         b32 loaded = util_load_image((char*)infile.data, &image);
         if(!loaded) return 1;
 
-        FILE *bbx_file = NULL;
+        OS_File bbx_file = {};
 
         if(settings.has_bbx_output)
         {
             // open bbx file for output
             char *bbx_cstr = string_to_cstr(scratch.arena, settings.bbx_output);
-            bbx_file = fopen(bbx_cstr,"wb");
-            if(!bbx_file)
+            bbx_file = os_file_open_writeonly(bbx_cstr);
+
+            if(!bbx_file.is_valid)
             {
-                LOGW("Failed to open Bounding Boxes file for writing " STR_FMT, STR_ARG(settings.bbx_output));
+                logw("Failed to open Bounding Boxes file for writing " STR_FMT, STR_ARG(settings.bbx_output));
             }
             else
             {
                 // write file header
-                FileWriteStr(bbx_file, "BBX");
-                FileWriteU8(bbx_file,  BBX_VERSION);
-                FileWriteU16(bbx_file, (u16)image.w);
-                FileWriteU16(bbx_file, (u16)image.h);
-                FileWriteF32(bbx_file, 0.0);
-                FileWriteU32(bbx_file, 1); // only one frame for an image
+                os_file_write_str(&bbx_file, S("BBX"));
+                os_file_write_u8(&bbx_file,  BBX_VERSION);
+                os_file_write_u16(&bbx_file, (u16)image.w);
+                os_file_write_u16(&bbx_file, (u16)image.h);
+                os_file_write_f32(&bbx_file, 0.0);
+                os_file_write_u32(&bbx_file, 1); // only one frame for an image
             }
         }
 
@@ -125,22 +131,22 @@ s32 handle_image()
         {
             stopwatch_start();
             use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size,0); // @TODO: rotation
-            LOGV("Downscale took %.3f ms", stopwatch_time()*1000.0);
+            logv("Downscale took %.3f ms", stopwatch_time()*1000.0);
             //util_write_output(&image_scaled, S("output/out_scaled.png"));
         }
 
-        Rect rects[256] = {};
-        s32 num_rects = use_scaled_image ? process_image(&image_scaled, rects) : process_image(&image, rects);
-        LOGV("Found %d rects", num_rects);
+        Box boxes[256] = {};
+        s32 num_boxes = use_scaled_image ? process_image(&image_scaled, boxes) : process_image(&image, boxes);
+        logv("Found %d boxes", num_boxes);
 
         if(use_scaled_image)
         {
-            // correct rects positions / sizes
+            // correct boxes positions / sizes
             const f64 scale = image.w > image.h ? image.w / (f64)image_scaled.w : image.h / (f64)image_scaled.h;
 
-            for(s32 i = 0; i < num_rects; ++i)
+            for(s32 i = 0; i < num_boxes; ++i)
             {
-                Rect* r = &rects[i];
+                Box* r = &boxes[i];
 
                 r->x = (s32)round(r->x * scale);
                 r->y = (s32)round(r->y * scale);
@@ -154,10 +160,10 @@ s32 handle_image()
                 }
 
                 // add padding if needed
-                const f32 rect_pad_pct = settings.box_padding_pct;
+                const f32 box_pad_pct = settings.box_padding_pct;
 
-                f32 sw = (f32)r->w * rect_pad_pct;
-                f32 sh = (f32)r->h * rect_pad_pct;
+                f32 sw = (f32)r->w * box_pad_pct;
+                f32 sh = (f32)r->h * box_pad_pct;
 
                 r->x -= (s32)(sw/2.0);
                 r->y -= (s32)(sw/2.0);
@@ -173,39 +179,52 @@ s32 handle_image()
             }
         }
 
-        if(bbx_file)
+        if(bbx_file.is_valid)
         {
-            FileWriteU32(bbx_file, 0); // frame index
-            FileWriteU16(bbx_file, num_rects);
+            os_file_write_u32(&bbx_file, 0); // frame index
+            os_file_write_u16(&bbx_file, num_boxes);
 
-            for(s32 i  = 0; i < num_rects; ++i)
+            for(s32 i  = 0; i < num_boxes; ++i)
             {
-                util_write_bbx_to_file(bbx_file, &rects[i]);
+                util_write_bbx_to_file(&bbx_file, &boxes[i]);
             }
         }
 
         for(s32 i = 0; i < settings.transform_count; ++i)
         {
             Transform* t = &settings.transforms[i];
-            LOGV("Applying %s transform...", transform_type_to_str(t->type));
-            transform_apply(&image, num_rects, rects,t->type);
+            logv("Applying %s transform...", transform_type_to_str(t->type));
+            transform_apply(&image, num_boxes, boxes,t->type);
         }
 
         if(settings.debug)
         {
-            draw_debugging_info(&image, rects, num_rects);
+            draw_debugging_info(&image, boxes, num_boxes);
         }
 
         if(!settings.no_encoding)
         {
-            String outfile = string_format(scratch.arena, "output/" STR_FMT, STR_ARG(settings.input_files[i].filename));
-            LOGI("outfile %d: " STR_FMT, i, STR_ARG(outfile));
+            String outfile = settings.output_file_path;
+            if(outfile.len == 0)
+            {
+                // no outfile specified, use default
+                char *output_dir_cstr = "output";
+                String output_directory = STR(output_dir_cstr);
+                if(!os_file_exists(output_dir_cstr))
+                {
+                    os_file_create_directory(output_dir_cstr);
+                }
+
+                outfile = string_concat(scratch.arena, 3, output_directory, S("/"), settings.input_files[i].filename);
+            }
+
+            logi("outfile %d: " STR_FMT, i, STR_ARG(outfile));
             util_write_output(&image, outfile);
         }
 
-        if(bbx_file)
+        if(bbx_file.is_valid)
         {
-            fclose(bbx_file);
+            os_file_close(&bbx_file);
         }
     }
 
@@ -218,7 +237,7 @@ s32 handle_video()
 {
     Arena *arena_results = arena_create(MB(16));
 
-    LOGI("Opening video file '" STR_FMT "'...", STR_ARG(settings.input_file_text));
+    logi("Opening video file '" STR_FMT "'...", STR_ARG(settings.input_file_text));
     
     Video vid = {};
     VideoCtx vid_ctx = {};
@@ -229,31 +248,31 @@ s32 handle_video()
     b32 opened = ffmpeg_open(perm_arena, settings.input_file_text, "output/out.mp4", &vid, &vid_ctx);
     if(!opened)
     {
-        LOGE("Failed to open stream for video " STR_FMT, STR_ARG(settings.input_file_text));
+        loge("Failed to open stream for video " STR_FMT, STR_ARG(settings.input_file_text));
         return 1;
     }
 
-    LOGI("Opened. [%6.3f s]", stopwatch_time());
+    logi("Opened. [%6.3f s]", stopwatch_time());
 
-    FILE *bbx_file = NULL;
+    OS_File bbx_file = {};
     if(settings.has_bbx_output)
     {
         // open bbx file for output
         char *bbx_output_cstr = string_to_cstr(perm_arena, settings.bbx_output);
-        bbx_file = fopen(bbx_output_cstr,"wb");
-        if(!bbx_file)
+        bbx_file = os_file_open_writeonly(bbx_output_cstr);
+        if(!bbx_file.is_valid)
         {
-            LOGW("Failed to open Bounding Boxes file for writing " STR_FMT, STR_ARG(settings.bbx_output));
+            logw("Failed to open Bounding Boxes file for writing " STR_FMT, STR_ARG(settings.bbx_output));
         }
         else
         {
             // write file header
-            FileWriteStr(bbx_file, "BBX");
-            FileWriteU8(bbx_file,  BBX_VERSION);
-            FileWriteU16(bbx_file, (u16)vid.w);
-            FileWriteU16(bbx_file, (u16)vid.h);
-            FileWriteF32(bbx_file, (f32)vid.fps);
-            FileWriteU32(bbx_file, 0x00000000); // stub for frame count
+            os_file_write_str(&bbx_file, S("BBX"));
+            os_file_write_u8(&bbx_file,  BBX_VERSION);
+            os_file_write_u16(&bbx_file, (u16)vid.w);
+            os_file_write_u16(&bbx_file, (u16)vid.h);
+            os_file_write_f32(&bbx_file, (f32)vid.fps);
+            os_file_write_u32(&bbx_file, 0x00000000); // stub for frame count
         }
     }
 
@@ -269,7 +288,7 @@ s32 handle_video()
 
     for(;;)
     {
-        LOGI("Decoding Chunk...");
+        logi("Decoding Chunk...");
         arena_reset(frame_arena);
         stopwatch_start();
 
@@ -277,13 +296,13 @@ s32 handle_video()
         b32 decoded = ffmpeg_decode_ctx(&vid, &vid_ctx);
         if(!decoded)
         {
-            LOGE("Failed to decode video " STR_FMT, STR_ARG(settings.input_file_text));
+            loge("Failed to decode video " STR_FMT, STR_ARG(settings.input_file_text));
             break;
         }
 
         f64 decode_time = stopwatch_time();
         total_time_decoding += decode_time;
-        LOGI("Decoded Chunk (Size: %d). [%6.3f s] ", vid.frame_count, decode_time);
+        logi("Decoded Chunk (Size: %d). [%6.3f s] ", vid.frame_count, decode_time);
 
         // If no frames were decoded, we are done
         if(vid.frame_count == 0 && vid.decode_complete)
@@ -293,7 +312,7 @@ s32 handle_video()
 
         // run detections
 
-        LOGI("Detecting faces...");
+        logi("Detecting faces...");
         stopwatch_start();
 
         memset(images, 0, settings.thread_count*sizeof(Image));
@@ -309,7 +328,7 @@ s32 handle_video()
         s32 actual_thread_count;
 
         s32 skip_frames = MAX(1, (s32)(settings.frame_smoothing_window * vid.fps));
-        LOGV("Number of skip frames: %d (Based on %f smoothing window)", skip_frames, settings.frame_smoothing_window);
+        logv("Number of skip frames: %d (Based on %f smoothing window)", skip_frames, settings.frame_smoothing_window);
 
         u32 *detect_frames = (u32 *)PUSH_ARRAY(frame_arena, u32, vid.frame_count);
         u32 detect_frames_count = 0;
@@ -331,7 +350,7 @@ s32 handle_video()
         {
             // determine any video discontinuities
             // ref: https://www-nlpir.nist.gov/projects/tvpubs/tvpapers03/ramonlull.paper.pdf
-            LOGI("Determining video discontinuities...");
+            logi("Determining video discontinuities...");
 
             u32 prev_histogram[4096] = {0};
             u32 curr_histogram[4096] = {0};
@@ -461,7 +480,7 @@ s32 handle_video()
                 }
                 else
                 {
-                    LOGW("Failed to start thread");
+                    logw("Failed to start thread");
                 }
 
                 // always want to evaluate final frame
@@ -475,16 +494,16 @@ s32 handle_video()
                 frame_counter = detect_frames[detect_frames_index++];
             }
 
-            LOGV("Joining Threads.");
+            logv("Joining Threads.");
             
             // join all threads back
             for(s32 i = 0; i < actual_thread_count; ++i)
             {
-                LOGV("Joining Thread %d...", i);
+                logv("Joining Thread %d...", i);
                 thread_join(threads[i]);
             }
 
-            LOGV("Threads joined!");
+            logv("Threads joined!");
             
             // Gather results
 
@@ -500,26 +519,26 @@ s32 handle_video()
 
                 if(image && image->result)
                 {
-                    u8* ret_rects = image->result;
+                    u8* ret_boxes = image->result;
 
                     s32 offset = 0;
-                    s32 _faces_found = *((s32*)(ret_rects));
+                    s32 _faces_found = *((s32*)(ret_boxes));
                     offset += sizeof(s32);
 
-                    LOGV("frame number: %d, faces_found: %d", image->frame_number, _faces_found);
-                    output_ptrs[image->frame_number] = (u8 *)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(_faces_found*sizeof(Rect)));
+                    logv("frame number: %d, faces_found: %d", image->frame_number, _faces_found);
+                    output_ptrs[image->frame_number] = (u8 *)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(_faces_found*sizeof(Box)));
 
                     for(s32 j = 0; j < _faces_found; ++j)
                     {
-                        Rect* r = (Rect*)(ret_rects+offset);
+                        Box* r = (Box*)(ret_boxes+offset);
 
                         if(use_scaled[i])
                         {
                             const f32 scale = vid.w > vid.h ? vid.w / (f32)image->w : vid.h / (f32)image->h;
-                            transform_rect_upscale_rotate_inverse(r, image->w, image->h, vid.w, vid.h, image->rotation);
+                            transform_box_upscale_rotate_inverse(r, image->w, image->h, vid.w, vid.h, image->rotation);
                         }
 
-                        memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Rect)); offset += sizeof(Rect);
+                        memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Box)); offset += sizeof(Box);
                         num_faces++;
                     }
 
@@ -530,33 +549,33 @@ s32 handle_video()
                 }
             }
 
-            LOGV("[Frame %d/%d]: num_faces: %d", frame_counter+1, vid.frame_count, num_faces);
+            logv("[Frame %d/%d]: num_faces: %d", frame_counter+1, vid.frame_count, num_faces);
         }
 
         f64 detect_time = stopwatch_time();
         total_time_detecting += detect_time;
-        LOGI("Detection done. [%6.3f s]", detect_time);
+        logi("Detection done. [%6.3f s]", detect_time);
         
         //  
         //  |------|------|------|
         // rl0     x      x     rl1
         //
 
-        RectList rl0 = {};
-        RectList rl1 = {};
+        BoxList rl0 = {};
+        BoxList rl1 = {};
 
         for (s32 i = 0; i < vid.frame_count; )
         {
             u8 *ptr = output_ptrs[i];
 
             // rl0 <- previous frame
-            memcpy(&rl0, &rl1, sizeof(RectList));
+            memcpy(&rl0, &rl1, sizeof(BoxList));
 
             if (ptr)
             {
                 // valid frame, rl1 <- current frame
-                memcpy(&rl1.rect_count, ptr, sizeof(u32));
-                rl1.rects = (Rect*)(ptr + sizeof(u32));
+                memcpy(&rl1.box_count, ptr, sizeof(u32));
+                rl1.boxes = (Box*)(ptr + sizeof(u32));
 
                 i++; // advance to next frame
                 continue;
@@ -576,27 +595,27 @@ s32 handle_video()
                     for (s32 f = 0; f < frames_in_between; ++f)
                     {
                         // allocate space for output_ptrs
-                        s32 rc = rl0.rect_count;
-                        output_ptrs[i+f] = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Rect)));
+                        s32 rc = rl0.box_count;
+                        output_ptrs[i+f] = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Box)));
                         memcpy(output_ptrs[i+f], &rc, sizeof(u32));
-                        memcpy(output_ptrs[i+f] + sizeof(u32), rl0.rects, rc*sizeof(Rect));
+                        memcpy(output_ptrs[i+f] + sizeof(u32), rl0.boxes, rc*sizeof(Box));
                     }
                     break; // reached end of video
                 }
 
                 // Set rl1 to the next valid frame
-                memcpy(&rl1.rect_count, output_ptrs[j], sizeof(u32));
-                rl1.rects = (Rect*)(output_ptrs[j] + sizeof(u32));
+                memcpy(&rl1.box_count, output_ptrs[j], sizeof(u32));
+                rl1.boxes = (Box*)(output_ptrs[j] + sizeof(u32));
 
                 // Now interpolate frames between rl0 and rl1
                 for (s32 f = 0; f < frames_in_between; ++f)
                 {
-                    // Decide which rect list is bigger
-                    RectList *a = (rl0.rect_count >= rl1.rect_count) ? &rl0 : &rl1;
-                    RectList *b = (rl0.rect_count >= rl1.rect_count) ? &rl1 : &rl0;
+                    // Decide which box list is bigger
+                    BoxList *a = (rl0.box_count >= rl1.box_count) ? &rl0 : &rl1;
+                    BoxList *b = (rl0.box_count >= rl1.box_count) ? &rl1 : &rl0;
 
-                    s32 rc = a->rect_count;
-                    u8 *out = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Rect)));
+                    s32 rc = a->box_count;
+                    u8 *out = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Box)));
                     memcpy(out, &rc, sizeof(u32));
 
                     s32 offset = sizeof(u32);
@@ -604,21 +623,21 @@ s32 handle_video()
                     s32 matched_count = 0;
                     s32 matches[256] = {};
 
-                    // Exponential smoothing / lerp for matched rects
-                    for (s32 k = 0; k < a->rect_count; ++k)
+                    // Exponential smoothing / lerp for matched boxes
+                    for (s32 k = 0; k < a->box_count; ++k)
                     {
                         f32 min_mv = FLT_MAX;
                         s32 min_index = -1;
 
-                        for (s32 l = 0; l < b->rect_count; ++l)
+                        for (s32 l = 0; l < b->box_count; ++l)
                         {
                             b32 already_matched = false;
                             for (s32 m = 0; m < matched_count; ++m)
                                 if (matches[m] == l) { already_matched = true; break; }
                             if (already_matched) continue;
 
-                            Rect *ra = &a->rects[k];
-                            Rect *rb = &b->rects[l];
+                            Box *ra = &a->boxes[k];
+                            Box *rb = &b->boxes[l];
 
                             f32 dx = ABS(ra->x - rb->x);
                             f32 dy = ABS(ra->y - rb->y);
@@ -633,16 +652,16 @@ s32 handle_video()
                             }
                         }
 
-                        Rect *rg = (Rect*)(out + offset);
-                        offset += sizeof(Rect);
+                        Box *rg = (Box*)(out + offset);
+                        offset += sizeof(Box);
 
                         if (min_index >= 0)
                         {
                             // mark as matched
                             matches[matched_count++] = min_index;
 
-                            Rect *ra = &a->rects[k];
-                            Rect *rb = &b->rects[min_index];
+                            Box *ra = &a->boxes[k];
+                            Box *rb = &b->boxes[min_index];
 
                             const f32 alpha = 0.2f; // smoothing
                             rg->x = (s32)exponential_smooth((f32)ra->x, (f32)rb->x, alpha, f);
@@ -660,7 +679,7 @@ s32 handle_video()
                         else
                         {
                             // No match, just copy forward from a
-                            memcpy(rg, &a->rects[k], sizeof(Rect));
+                            memcpy(rg, &a->boxes[k], sizeof(Box));
                         }
                     }
 
@@ -673,13 +692,13 @@ s32 handle_video()
             }
         }
 
-        s32 zero_rects_frames = 0;
+        s32 zero_boxes_frames = 0;
 
         // perform transformations
-        LOGI("Applying transformations...");
+        logi("Applying transformations...");
         stopwatch_start();
 
-        LOGV("Iterating through video frames (Total: %d)", vid.frame_count);
+        logv("Iterating through video frames (Total: %d)", vid.frame_count);
         for(s32 i = 0; i < vid.frame_count; ++i)
         {
             // Get frame
@@ -692,109 +711,105 @@ s32 handle_video()
             image.n = 3;
             image.step = 3*image.w;
             
-            // Get Rects
+            // Get Boxes
             u8 *ptr = output_ptrs[i];
 
             if(!ptr)
             {
-                LOGV("No output at Frame %d", i);
+                logv("No output at Frame %d", i);
                 continue;
             }
 
-            u32 num_rects = 0;
-            memcpy((u8*)&num_rects, ptr, sizeof(u32));
+            u32 num_boxes = 0;
+            memcpy((u8*)&num_boxes, ptr, sizeof(u32));
             ptr += sizeof(u32);
-            Rect *rects = (Rect *)(ptr); 
+            Box *boxes = (Box *)(ptr); 
 
-            if(bbx_file)
+            if(bbx_file.is_valid)
             {
-                FileWriteU32(bbx_file, total_frames_processed+i); // frame index
-                FileWriteU16(bbx_file, num_rects);
+                os_file_write_u32(&bbx_file, total_frames_processed+i); // frame index
+                os_file_write_u16(&bbx_file, num_boxes);
             }
 
             // add padding if needed
-            const f32 rect_pad_pct = settings.box_padding_pct;
+            const f32 box_pad_pct = settings.box_padding_pct;
 
-            for(s32 j = 0; j < num_rects; ++j)
+            for(s32 j = 0; j < num_boxes; ++j)
             {
-                f32 sw = (f32)rects[j].w * rect_pad_pct;
-                f32 sh = (f32)rects[j].h * rect_pad_pct;
+                f32 sw = (f32)boxes[j].w * box_pad_pct;
+                f32 sh = (f32)boxes[j].h * box_pad_pct;
 
-                rects[j].x -= (s32)(sw/2.0);
-                rects[j].y -= (s32)(sw/2.0);
-                rects[j].w += sw;
-                rects[j].h += sh;
+                boxes[j].x -= (s32)(sw/2.0);
+                boxes[j].y -= (s32)(sw/2.0);
+                boxes[j].w += sw;
+                boxes[j].h += sh;
 
                 b32 no_rotate = (settings.no_rotate && (vid.rotation == 90 || vid.rotation == 270));
                 s32 w = no_rotate ? image.h : image.w;
                 s32 h = no_rotate ? image.w : image.h;
 
-                if(rects[j].x < 0) rects[j].x = 0;
-                if(rects[j].x >= w) rects[j].x = w-1;
-                if(rects[j].y < 0) rects[j].y = 0;
-                if(rects[j].y >= h) rects[j].y = h-1;
-                if(rects[j].x+rects[j].w >= w) rects[j].w = (w-rects[j].x-1);
-                if(rects[j].y+rects[j].h >= h) rects[j].h = (h-rects[j].y-1);
+                if(boxes[j].x < 0) boxes[j].x = 0;
+                if(boxes[j].x >= w) boxes[j].x = w-1;
+                if(boxes[j].y < 0) boxes[j].y = 0;
+                if(boxes[j].y >= h) boxes[j].y = h-1;
+                if(boxes[j].x+boxes[j].w >= w) boxes[j].w = (w-boxes[j].x-1);
+                if(boxes[j].y+boxes[j].h >= h) boxes[j].h = (h-boxes[j].y-1);
 
-                if(bbx_file)
+                if(bbx_file.is_valid)
                 {
-                    if(i == 5000)
-                    {
-                        LOGW("DEBUG: Pos: [%u,%u] Size: [%u,%u] Confidence: %u", rects[j].x, rects[j].y, rects[j].w, rects[j].h, rects[j].confidence);
-                    }
-                    util_write_bbx_to_file(bbx_file, &rects[j]);
+                    util_write_bbx_to_file(&bbx_file, &boxes[j]);
                 }
 
-                LOGV("[Frame %d][Rect %d] %u %u %u %u (%u%)", i, j, rects[j].x, rects[j].y, rects[j].w, rects[j].h, rects[j].confidence);
+                logv("[Frame %d][Box %d] %u %u %u %u (%u%)", i, j, boxes[j].x, boxes[j].y, boxes[j].w, boxes[j].h, boxes[j].confidence);
             }
 
-            if(num_rects == 0)
+            if(num_boxes == 0)
             {
-                zero_rects_frames++;
+                zero_boxes_frames++;
             }
 
             // Apply transformations
             for(s32 j = 0; j < settings.transform_count; ++j)
             {
                 Transform* t = &settings.transforms[j];
-                transform_apply(&image, num_rects, rects,t->type);
+                transform_apply(&image, num_boxes, boxes,t->type);
             }
 
             if(settings.debug)
             {
-                draw_debugging_info(&image, rects, num_rects);
+                draw_debugging_info(&image, boxes, num_boxes);
             }
         }
 
-        LOGV("Number of zero rect frames: %d", zero_rects_frames);
+        logv("Number of zero box frames: %d", zero_boxes_frames);
 
         f64 transform_time = stopwatch_time();
         total_time_transforming += transform_time;
-        LOGI("Transformations done. [%6.3f s]", transform_time);
+        logi("Transformations done. [%6.3f s]", transform_time);
 
         total_frames_processed += vid.frame_count;
-        if(bbx_file)
+        if(bbx_file.is_valid)
         {
-            fflush(bbx_file);
+            fsync(bbx_file.handle);
         }
 
         if(!settings.no_encoding)
         {
-            LOGI("Encoding chunk...");
+            logi("Encoding chunk...");
             stopwatch_start();
             b32 encoded = ffmpeg_encode_ctx(&vid, &vid_ctx);
             if(!encoded)
             {
-                LOGE("Failed to write output file");
+                loge("Failed to write output file");
                 return 1;
             }
 
             f64 encode_time = stopwatch_time();
             total_time_encoding += encode_time;
-            LOGI("Encode done. [%6.3f s]", encode_time);
+            logi("Encode done. [%6.3f s]", encode_time);
         }
 
-        LOGI("Progress: %d / %d [%d%]", total_frames_processed, vid.total_frame_count, (s32)(100.0f*total_frames_processed / (f32)vid.total_frame_count));
+        logi("Progress: %d / %d [%d%]", total_frames_processed, vid.total_frame_count, (s32)(100.0f*total_frames_processed / (f32)vid.total_frame_count));
 
         // exit if video is done
         if(vid.decode_complete)
@@ -804,30 +819,30 @@ s32 handle_video()
         }
     }
 
-    if(bbx_file)
+    if(bbx_file.is_valid)
     {
         // Write the total frame count in the header after done
-        FileWriteU32AtIndex(bbx_file, total_frames_processed, BBX_FRAME_COUNT_OFFSET);
-        fclose(bbx_file);
+        os_file_write_u32_at_index(&bbx_file, total_frames_processed, BBX_FRAME_COUNT_OFFSET);
+        os_file_close(&bbx_file);
     }
 
     f64 total_processing_time = total_time_decoding + total_time_detecting + total_time_transforming + total_time_encoding;
     f64 total_elapsed_time = timer_get_time() - begin_time;
 
-    LOGI("Complete!");
+    logi("Complete!");
 
-    LOGI("Total Time Decoding:     %6.3f s [%02d%]", total_time_decoding, (s32)(100.0f*total_time_decoding / total_processing_time));
-    LOGI("Total Time Detecting:    %6.3f s [%02d%]", total_time_detecting, (s32)(100.0f*total_time_detecting / total_processing_time));
-    LOGI("Total Time Transforming: %6.3f s [%02d%]", total_time_transforming, (s32)(100.0f*total_time_transforming / total_processing_time));
-    LOGI("Total Time Encoding:     %6.3f s [%02d%]", total_time_encoding, (s32)(100.0f*total_time_encoding / total_processing_time));
-    LOGI("Total Time:              %6.3f s", total_elapsed_time);
+    logi("Total Time Decoding:     %6.3f s [%02d%]", total_time_decoding, (s32)(100.0f*total_time_decoding / total_processing_time));
+    logi("Total Time Detecting:    %6.3f s [%02d%]", total_time_detecting, (s32)(100.0f*total_time_detecting / total_processing_time));
+    logi("Total Time Transforming: %6.3f s [%02d%]", total_time_transforming, (s32)(100.0f*total_time_transforming / total_processing_time));
+    logi("Total Time Encoding:     %6.3f s [%02d%]", total_time_encoding, (s32)(100.0f*total_time_encoding / total_processing_time));
+    logi("Total Time:              %6.3f s", total_elapsed_time);
 
     // ffmpeg_close(&vid_ctx);
 
     return 0;
 }
 
-void draw_debugging_info(Image* image, Rect* rects, s32 num_rects)
+void draw_debugging_info(Image* image, Box* boxes, s32 num_boxes)
 {
     Color color_list[] = {
         {255,0,0,255},
@@ -840,16 +855,16 @@ void draw_debugging_info(Image* image, Rect* rects, s32 num_rects)
     Color color_bad  = {255,0,0,255};
     Color color_good = {0,255,0,255};
 
-    for(s32 j = num_rects - 1; j >= 0; --j)
+    for(s32 j = num_boxes - 1; j >= 0; --j)
     {
-        Color color = transform_blend_color(color_bad, color_good, (rects[j].confidence / 100.0f));
+        Color color = transform_blend_color(color_bad, color_good, (boxes[j].confidence / 100.0f));
 
-        transform_draw_rect(image, rects[j],color, false, 1.0);
-        transform_draw_string(image, rects[j].x+1, rects[j].y+1, color,"%u", rects[j].confidence);
+        transform_draw_box(image, boxes[j],color, false, 1.0);
+        transform_draw_string(image, boxes[j].x+1, boxes[j].y+1, color,"%u", boxes[j].confidence);
 
         for(s32 l = 0; l < 5; ++l)
         {
-            Point *lm = &rects[j].landmarks[l];
+            Point *lm = &boxes[j].landmarks[l];
             transform_draw_circle(image, lm->x, lm->y, 2, color_list[l], true, 1.0);
         }
     }
@@ -869,21 +884,22 @@ b32 init(s32 argc, char **args)
     // print title
     if(!is_quiet)
     {
-        LOGI("[CENSORMAN V%d]", CENSORMAN_VERSION);
-        LOGI("    _O_");
-        LOGI("  /|-x-|\\");
-        LOGI(" /  \\_/  \\");
-        LOGI("    / \\");
-        LOGI("  _/   \\_");
+        logi("[CENSORMAN V%d]", CENSORMAN_VERSION);
+        logi("    _O_");
+        logi("  /|-X-|\\");
+        logi(" /  \\_/  \\");
+        logi("    / \\");
+        logi("  _/   \\_");
     }
 
     // set default settings
-    settings.input_file_text = string_zero();
-    settings.bbx_output = string_zero();
+    settings.input_file_text = string_nil();
+    settings.bbx_output = string_nil();
 
     settings.thread_count           = MAX(1, util_get_core_count()*2); // default to num_cores
     settings.asset_type             = TYPE_IMAGE;
     settings.classification         = CLASS_FACE;
+    settings.output_file_path       = string_nil();
     settings.transform_count        = 0;
     settings.debug                  = false;
     settings.confidence_threshold   = 20;
@@ -933,7 +949,7 @@ b32 init(s32 argc, char **args)
 
     if(ext.len == 0)
     {
-        LOGV("Loading image from folder " STR_FMT, STR_ARG(settings.input_file_text));
+        logv("Loading image from folder " STR_FMT, STR_ARG(settings.input_file_text));
 
         settings.input_directory = settings.input_file_text;
 
@@ -943,7 +959,7 @@ b32 init(s32 argc, char **args)
 
         for (s32 i = 0; i < count; ++i)
         {
-            LOGV("File %d: " STR_FMT, i + 1, STR_ARG(files[i]));
+            logv("File %d: " STR_FMT, i + 1, STR_ARG(files[i]));
             settings.input_files[i].filename = files[i];
         }
 
@@ -953,7 +969,7 @@ b32 init(s32 argc, char **args)
     {
         // single input file, not a folder
         string_to_lower(&ext);
-        LOGV("File extension: " STR_FMT, STR_ARG(ext));
+        logv("File extension: " STR_FMT, STR_ARG(ext));
 
         StringArray ext_arr = string_array_create(scratch.arena, 2, S("mp4"), S("mov"));
         b32 is_video = string_in_array(ext, ext_arr);
@@ -973,33 +989,33 @@ b32 init(s32 argc, char **args)
         b32 loaded = util_load_image(settings.texture_image_path, &texture_image);
         if(!loaded)
         {
-            LOGW("Failed to load texture image %s", settings.texture_image_path);
+            logw("Failed to load texture image %s", settings.texture_image_path);
             settings.has_texture = false;
         }
     }
     
     // print settings
-    LOGI("");
-    LOGI("=============== Settings ===============");
-    LOGI("  File Count:             %d", settings.input_file_count);
-    LOGI("  Asset Type:             %s", settings.asset_type == TYPE_IMAGE ? "Image" : "Video");
-    LOGI("  Thread Count:           %d", settings.thread_count);
-    LOGI("  Confidence Threshold:   %d", settings.confidence_threshold);
-    LOGI("  Blur Strength:          %f", settings.blur_strength);
-    LOGI("  NMS IOU Threshold:      %f", settings.nms_iou_threshold);
-    LOGI("  Block Scale:            %f", settings.block_scale);
-    LOGI("  Texture:                %s", settings.has_texture ? settings.texture_image_path : "(None)");
-    LOGI("  Max Buffer Size:        %lu B", settings.max_buffer_size);
-    LOGI("  Box Padding Percent:    %f", settings.box_padding_pct);
-    LOGI("  Frame Smoothing Window: %f", settings.frame_smoothing_window);
-    LOGI("  No Encoding:            %s", STR_BOOL(settings.no_encoding));
-    LOGI("  Downscaling:            %s (%d px)", settings.no_scale ? "No" : "Yes", settings.asset_type == TYPE_IMAGE ? settings.scaled_size_image : settings.scaled_size_video);
-    LOGI("  No Rotate:              %s", STR_BOOL(settings.no_rotate));
-    LOGI("  Bounding Box Output:    " STR_FMT, STR_ARG(settings.bbx_output));
-    LOGI("  Debug:                  %s", settings.debug ? "ON" : "OFF");
-    LOGI("  Verbose:                %s", settings.verbose ? "ON" : "OFF");
-    LOGI("========================================");
-    LOGI("");
+    logi("");
+    logi("=============== Settings ===============");
+    logi("  File Count:             %d", settings.input_file_count);
+    logi("  Asset Type:             %s", settings.asset_type == TYPE_IMAGE ? "Image" : "Video");
+    logi("  Thread Count:           %d", settings.thread_count);
+    logi("  Confidence Threshold:   %d", settings.confidence_threshold);
+    logi("  Blur Strength:          %f", settings.blur_strength);
+    logi("  NMS IOU Threshold:      %f", settings.nms_iou_threshold);
+    logi("  Block Scale:            %f", settings.block_scale);
+    logi("  Texture:                %s", settings.has_texture ? settings.texture_image_path : "(None)");
+    logi("  Max Buffer Size:        %lu B", settings.max_buffer_size);
+    logi("  Box Padding Percent:    %f", settings.box_padding_pct);
+    logi("  Frame Smoothing Window: %f", settings.frame_smoothing_window);
+    logi("  No Encoding:            %s", STR_BOOL(settings.no_encoding));
+    logi("  Downscaling:            %s (%d px)", settings.no_scale ? "No" : "Yes", settings.asset_type == TYPE_IMAGE ? settings.scaled_size_image : settings.scaled_size_video);
+    logi("  No Rotate:              %s", STR_BOOL(settings.no_rotate));
+    logi("  Bounding Box Output:    " STR_FMT, STR_ARG(settings.bbx_output));
+    logi("  Debug:                  %s", settings.debug ? "ON" : "OFF");
+    logi("  Verbose:                %s", settings.verbose ? "ON" : "OFF");
+    logi("========================================");
+    logi("");
 
 
     return true;
@@ -1069,6 +1085,14 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                         settings->no_scale = true;
                     else if(STR_EQUAL(&argv[i][2],"no_rotate"))
                         settings->no_rotate = true;
+                    else if(STR_EQUAL(&argv[i][2],"out_file"))
+                    {
+                        if(i < argc-1)
+                        {
+                            i++;
+                            settings->output_file_path = STR(argv[i]);
+                        }
+                    }
                     else if(STR_EQUAL(&argv[i][2],"block_scale"))
                     {
                         if(i < argc-1)
@@ -1153,7 +1177,7 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                     }
                     else
                     {
-                        LOGW("Unrecognized flag: %s", &argv[i][2]);
+                        logw("Unrecognized flag: %s", &argv[i][2]);
                     }
                 }   break;
                 case 'o':
@@ -1216,7 +1240,7 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                                 }
                                 else
                                 {
-                                    LOGW("Transform type is None (string: %s)", buf);
+                                    logw("Transform type is None (string: %s)", buf);
                                 }
                             }
                         }
@@ -1230,7 +1254,7 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                     }
                 }   break;
                 default:
-                    LOGW("Unrecognized Option: %c", argv[i][1]);
+                    logw("Unrecognized Option: %c", argv[i][1]);
                     break;
             }
         }
