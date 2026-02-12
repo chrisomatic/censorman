@@ -1,5 +1,5 @@
 #include "base.h"
-#include "platform.h"
+#include "os.h"
 #include "util.h"
 #include "transform.h"
 #include "facedetectcnn.h"

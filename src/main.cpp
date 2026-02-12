@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #include "base.h"
-#include "platform.h"
+#include "os.h"
 
 #include "detect.h"
 #include "ffmpeg.h"
@@ -11,15 +11,15 @@
 #define CENSORMAN_VERSION 2
 
 // TODO
-// [ ] Add a output_size CLI parameter
 // [ ] Optimize memory usage for --no_encoding
 // [ ] Add Return Code Enum for any errors and success
 // [ ] Add padding to sub-images
 // [ ] Thread the transformations
 // [ ] Add lots of test images and --tester mode
 // [ ] Implement thread pool (mutex vs spin-lock)
-// [ ] Statically compile ncnn (Tencent) inference engine
 // [ ] Add audio stream encoding (1:1)
+// [ ] Add a output_size CLI parameter
+// [ ] Statically compile ncnn (Tencent) inference engine
 // [ ] Add YuNet model (.bin and .param) to compare accuracy
 // [ ] Add --model_dir parameter for plugin system
 // [ ] Add plugin
@@ -96,7 +96,9 @@ s32 handle_image()
 
         logv("infile: " STR_FMT, STR_ARG(infile));
 
-        b32 loaded = util_load_image((char*)infile.data, &image);
+        char *cstr = string_to_cstr(scratch.arena, infile);
+
+        b32 loaded = util_load_image(cstr, &image);
         if(!loaded) return 1;
 
         OS_File bbx_file = {};
@@ -114,12 +116,12 @@ s32 handle_image()
             else
             {
                 // write file header
-                os_file_write_str(&bbx_file, S("BBX"));
-                os_file_write_u8(&bbx_file,  BBX_VERSION);
-                os_file_write_u16(&bbx_file, (u16)image.w);
-                os_file_write_u16(&bbx_file, (u16)image.h);
-                os_file_write_f32(&bbx_file, 0.0);
-                os_file_write_u32(&bbx_file, 1); // only one frame for an image
+                os_file_write_str(bbx_file, S("BBX"));
+                os_file_write_u8(bbx_file,  BBX_VERSION);
+                os_file_write_u16(bbx_file, (u16)image.w);
+                os_file_write_u16(bbx_file, (u16)image.h);
+                os_file_write_f32(bbx_file, 0.0);
+                os_file_write_u32(bbx_file, 1); // only one frame for an image
             }
         }
 
@@ -181,12 +183,12 @@ s32 handle_image()
 
         if(bbx_file.is_valid)
         {
-            os_file_write_u32(&bbx_file, 0); // frame index
-            os_file_write_u16(&bbx_file, num_boxes);
+            os_file_write_u32(bbx_file, 0); // frame index
+            os_file_write_u16(bbx_file, num_boxes);
 
             for(s32 i  = 0; i < num_boxes; ++i)
             {
-                util_write_bbx_to_file(&bbx_file, &boxes[i]);
+                util_write_bbx_to_file(bbx_file, &boxes[i]);
             }
         }
 
@@ -204,27 +206,27 @@ s32 handle_image()
 
         if(!settings.no_encoding)
         {
-            String outfile = settings.output_file_path;
-            if(outfile.len == 0)
+            b32 multiple_files = (settings.input_file_count > 1);
+            b32 specified_output = (settings.output_file_path.len > 0);
+
+            String outfile = {0};
+            if(!multiple_files && specified_output)
             {
-                // no outfile specified, use default
-                char *output_dir_cstr = "output";
-                String output_directory = STR(output_dir_cstr);
-                if(!os_file_exists(output_dir_cstr))
-                {
-                    os_file_create_directory(output_dir_cstr);
-                }
-
-                outfile = string_concat(scratch.arena, 3, output_directory, S("/"), settings.input_files[i].filename);
+                outfile = settings.output_file_path;
             }
-
+            else
+            {
+                logv("input_files[%d] filename: " STR_FMT, i, STR_ARG(settings.input_files[i].filename));
+                outfile = string_concat(scratch.arena, 3, settings.output_directory, S("/"), settings.input_files[i].filename);
+            }
+            
             logi("outfile %d: " STR_FMT, i, STR_ARG(outfile));
             util_write_output(&image, outfile);
         }
 
         if(bbx_file.is_valid)
         {
-            os_file_close(&bbx_file);
+            os_file_close(bbx_file);
         }
     }
 
@@ -267,12 +269,12 @@ s32 handle_video()
         else
         {
             // write file header
-            os_file_write_str(&bbx_file, S("BBX"));
-            os_file_write_u8(&bbx_file,  BBX_VERSION);
-            os_file_write_u16(&bbx_file, (u16)vid.w);
-            os_file_write_u16(&bbx_file, (u16)vid.h);
-            os_file_write_f32(&bbx_file, (f32)vid.fps);
-            os_file_write_u32(&bbx_file, 0x00000000); // stub for frame count
+            os_file_write_str(bbx_file, S("BBX"));
+            os_file_write_u8(bbx_file,  BBX_VERSION);
+            os_file_write_u16(bbx_file, (u16)vid.w);
+            os_file_write_u16(bbx_file, (u16)vid.h);
+            os_file_write_f32(bbx_file, (f32)vid.fps);
+            os_file_write_u32(bbx_file, 0x00000000); // stub for frame count
         }
     }
 
@@ -727,8 +729,8 @@ s32 handle_video()
 
             if(bbx_file.is_valid)
             {
-                os_file_write_u32(&bbx_file, total_frames_processed+i); // frame index
-                os_file_write_u16(&bbx_file, num_boxes);
+                os_file_write_u32(bbx_file, total_frames_processed+i); // frame index
+                os_file_write_u16(bbx_file, num_boxes);
             }
 
             // add padding if needed
@@ -757,7 +759,7 @@ s32 handle_video()
 
                 if(bbx_file.is_valid)
                 {
-                    util_write_bbx_to_file(&bbx_file, &boxes[j]);
+                    util_write_bbx_to_file(bbx_file, &boxes[j]);
                 }
 
                 logv("[Frame %d][Box %d] %u %u %u %u (%u%)", i, j, boxes[j].x, boxes[j].y, boxes[j].w, boxes[j].h, boxes[j].confidence);
@@ -822,8 +824,8 @@ s32 handle_video()
     if(bbx_file.is_valid)
     {
         // Write the total frame count in the header after done
-        os_file_write_u32_at_index(&bbx_file, total_frames_processed, BBX_FRAME_COUNT_OFFSET);
-        os_file_close(&bbx_file);
+        os_file_write_u32_at_index(bbx_file, total_frames_processed, BBX_FRAME_COUNT_OFFSET);
+        os_file_close(bbx_file);
     }
 
     f64 total_processing_time = total_time_decoding + total_time_detecting + total_time_transforming + total_time_encoding;
@@ -945,41 +947,62 @@ b32 init(s32 argc, char **args)
     // check input
     Temp scratch = scratch_begin();
 
-    String ext = os_path_get_extension(scratch.arena, settings.input_file_text);
+    String ext = os_path_get_extension(settings.input_file_text);
 
     if(ext.len == 0)
     {
-        logv("Loading image from folder " STR_FMT, STR_ARG(settings.input_file_text));
+        // likely dealing with an input folder
+        logv("Loading images from folder " STR_FMT, STR_ARG(settings.input_file_text));
 
         settings.input_directory = settings.input_file_text;
 
-        String* files = NULL;
-        String exts[] = {S(".png"), S(".jpg"), S(".jpeg"), S(".bmp")};
-        s32 count = platform_get_files_in_folder(scratch.arena, settings.input_directory, exts, 3, &files);
+        StringArray valid_exts = string_array_create(scratch.arena, 4, S("png"), S("jpg"), S("jpeg"), S("bmp"));
+        StringArray file_array = os_get_files_by_extensions(perm_arena, settings.input_directory, valid_exts);
 
-        for (s32 i = 0; i < count; ++i)
+        for(u32 i = 0; i < file_array.count; ++i)
         {
-            logv("File %d: " STR_FMT, i + 1, STR_ARG(files[i]));
-            settings.input_files[i].filename = files[i];
+            logv("File %d: " STR_FMT, i+1, STR_ARG(file_array.items[i]));
+            settings.input_files[i].filename = file_array.items[i];
         }
 
-        settings.input_file_count = count;
+        settings.input_file_count = file_array.count;
     }
     else
     {
         // single input file, not a folder
-        string_to_lower(&ext);
-        logv("File extension: " STR_FMT, STR_ARG(ext));
+        String ext_lowered = string_to_lower(scratch.arena, ext);
+        logv("File extension: " STR_FMT, STR_ARG(ext_lowered));
 
         StringArray ext_arr = string_array_create(scratch.arena, 2, S("mp4"), S("mov"));
-        b32 is_video = string_in_array(ext, ext_arr);
+        b32 is_video = string_in_array(ext_lowered, ext_arr);
         if(is_video) settings.asset_type = TYPE_VIDEO;
         settings.input_file_count = 1;
 
-        s64 slash_index = string_get_first_index(settings.input_file_text, "/", true);
-        settings.input_files[0].filename = string_substring(settings.input_file_text, slash_index + 1, settings.input_file_text.len - slash_index+1);
-        settings.input_directory = string_substring(settings.input_file_text, 0, slash_index);
+        settings.input_directory = os_path_get_directory(settings.input_file_text);
+        settings.input_files[0].filename = os_path_get_file(settings.input_file_text);
         settings.input_file_count = 1;
+    }
+    
+    // set up output folder if needed
+    if(!settings.no_encoding)
+    {
+        if(settings.output_file_path.len == 0)
+        {
+            // no outfile specified, use default
+            settings.output_directory = S("output");
+        }
+        else
+        {
+            // outfile specified
+            b32 multiple_files = (settings.input_file_count > 1);
+            settings.output_directory = multiple_files ? settings.output_file_path : os_path_get_directory(settings.output_file_path);
+        }
+
+        if(!os_path_is_directory(settings.output_directory))
+        {
+            logv("Creating directory: " STR_FMT, STR_ARG(settings.output_directory));
+            os_file_create_directory(settings.output_directory);
+        }
     }
 
     scratch_end(scratch);
@@ -1016,6 +1039,7 @@ b32 init(s32 argc, char **args)
     logi("  Verbose:                %s", settings.verbose ? "ON" : "OFF");
     logi("========================================");
     logi("");
+
 
 
     return true;

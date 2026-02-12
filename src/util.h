@@ -12,7 +12,7 @@ b32 util_load_image(char* input_file, Image* image)
 
     if(!data)
     {
-        loge("Failed to load image");
+        loge("Failed to load image: %s", input_file);
         return false;
     }
 
@@ -106,7 +106,7 @@ void util_read_and_print_bbx_file(const char* filepath)
     fclose(file);
 }
 
-void util_write_bbx_to_file(OS_File *file, Box* r)
+void util_write_bbx_to_file(OS_File file, Box* r)
 {
     os_file_write_u16(file, r->x);
     os_file_write_u16(file, r->y);
