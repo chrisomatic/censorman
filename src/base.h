@@ -1670,11 +1670,19 @@ typedef struct
 
 } ProgramSettings;
 
-typedef struct
+typedef enum
 {
-    b32 success;
-    s32 err_code;
-} FunctionResult;
+    CM_SUCCESS              = 0,
+    CM_FAILED_PARSE_ARGS    = 1,
+    CM_FAILED_ARENA_CREATE  = 2,
+    CM_FAILED_THREAD_ALLOC  = 3,
+    CM_FAILED_THREAD_CREATE = 4,
+    CM_FAILED_OPEN_FILE     = 5,
+    CM_FAILED_BBX_OPEN      = 6,
+    CM_FAILED_WRITE_OUTPUT  = 7,
+    CM_FAILED_VIDEO_DECODE  = 8,
+    CM_FAILED_VIDEO_ENCODE  = 9,
+} CM_RetCode;
 
 #define MAX_ARENAS 64
 

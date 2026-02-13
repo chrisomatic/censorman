@@ -11,10 +11,9 @@
 #define CENSORMAN_VERSION 2
 
 // TODO
-// [ ] Optimize memory usage for --no_encoding
-// [ ] Add Return Code Enum for any errors and success
-// [ ] Add padding to sub-images
 // [ ] Thread the transformations
+// [ ] Optimize memory usage for --no_encoding
+// [ ] Add padding to sub-images
 // [ ] Add lots of test images and --tester mode
 // [ ] Implement thread pool (mutex vs spin-lock)
 // [ ] Add audio stream encoding (1:1)
@@ -25,6 +24,7 @@
 // [ ] Add plugin
 
 // DONE
+// [x] Add Return Code Enum for any errors and success
 // [x] Implement --out_file settings
 // [x] Added crude first pass to address video discontinuities
 // [x] Fix builds for MacOS
@@ -59,33 +59,38 @@ ProgramSettings settings = {};
 Image texture_image = {};
 f64 begin_time = 0.0;
 
-b32 init(s32 argc, char **args);
+CM_RetCode init(s32 argc, char **args);
+CM_RetCode handle_image();
+CM_RetCode handle_video();
+
 b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[]);
-s32 handle_image();
-s32 handle_video();
 void draw_debugging_info(Image* image, Box* boxes, s32 num_boxes);
 
-s32 main(s32 argc, char** args)
+int main(s32 argc, char** args)
 {
-    b32 initialized = init(argc, args);
-    if(!initialized)
-        return 1;
+    CM_RetCode ret;
+
+    ret = init(argc, args);
+    if(ret != CM_SUCCESS)
+        return ret;
 
     if(settings.asset_type == TYPE_IMAGE)
     {
-        handle_image();
+        ret = handle_image();
     }
     else if(settings.asset_type == TYPE_VIDEO)
     {
-        handle_video();
+        ret = handle_video();
     }
 
-    return 0;
+    return ret;
 }
 
-s32 handle_image()
+CM_RetCode handle_image()
 {
     Image image = {};
+
+    CM_RetCode ret = CM_SUCCESS;
 
     Temp scratch = scratch_begin();
 
@@ -99,7 +104,12 @@ s32 handle_image()
         char *cstr = string_to_cstr(scratch.arena, infile);
 
         b32 loaded = util_load_image(cstr, &image);
-        if(!loaded) return 1;
+        if(!loaded)
+        {
+            loge("Failed to open image file: %s", cstr);
+            ret = CM_FAILED_OPEN_FILE;   
+            continue;
+        }
 
         OS_File bbx_file = {};
 
@@ -112,6 +122,7 @@ s32 handle_image()
             if(!bbx_file.is_valid)
             {
                 logw("Failed to open Bounding Boxes file for writing " STR_FMT, STR_ARG(settings.bbx_output));
+                ret = CM_FAILED_BBX_OPEN;
             }
             else
             {
@@ -221,7 +232,12 @@ s32 handle_image()
             }
             
             logi("outfile %d: " STR_FMT, i, STR_ARG(outfile));
-            util_write_output(&image, outfile);
+            b32 write_success = util_write_output(&image, outfile);
+            if(!write_success)
+            {
+                loge("Failed to write output file");
+                ret = CM_FAILED_WRITE_OUTPUT;
+            }
         }
 
         if(bbx_file.is_valid)
@@ -232,12 +248,13 @@ s32 handle_image()
 
     scratch_end(scratch);
 
-    return 0;
+    return ret;
 }
 
-s32 handle_video()
+CM_RetCode handle_video()
 {
     Arena *arena_results = arena_create(MB(16));
+    if(!arena_results) return CM_FAILED_ARENA_CREATE;
 
     logi("Opening video file '" STR_FMT "'...", STR_ARG(settings.input_file_text));
     
@@ -251,8 +268,10 @@ s32 handle_video()
     if(!opened)
     {
         loge("Failed to open stream for video " STR_FMT, STR_ARG(settings.input_file_text));
-        return 1;
+        return CM_FAILED_OPEN_FILE;
     }
+
+    CM_RetCode ret = CM_SUCCESS;
 
     logi("Opened. [%6.3f s]", stopwatch_time());
 
@@ -265,6 +284,7 @@ s32 handle_video()
         if(!bbx_file.is_valid)
         {
             logw("Failed to open Bounding Boxes file for writing " STR_FMT, STR_ARG(settings.bbx_output));
+            ret = CM_FAILED_BBX_OPEN;
         }
         else
         {
@@ -299,6 +319,7 @@ s32 handle_video()
         if(!decoded)
         {
             loge("Failed to decode video " STR_FMT, STR_ARG(settings.input_file_text));
+            ret = CM_FAILED_VIDEO_DECODE;
             break;
         }
 
@@ -369,8 +390,8 @@ s32 handle_video()
                 if(i > 0)
                 {
                     // copy curr histogram to prev
-                    memcpy(prev_histogram, curr_histogram, sizeof(u32)*4096);
-                    memset(curr_histogram, 0, sizeof(u32)*4096);
+                    MemoryCopy(prev_histogram, curr_histogram, sizeof(u32)*4096);
+                    MemoryZero(curr_histogram, sizeof(u32)*4096);
                 }
 
                 // go through each pixel and compute a difference image
@@ -483,6 +504,7 @@ s32 handle_video()
                 else
                 {
                     logw("Failed to start thread");
+                    ret = CM_FAILED_THREAD_CREATE;
                 }
 
                 // always want to evaluate final frame
@@ -803,7 +825,8 @@ s32 handle_video()
             if(!encoded)
             {
                 loge("Failed to write output file");
-                return 1;
+                ret = CM_FAILED_VIDEO_ENCODE;
+                break;
             }
 
             f64 encode_time = stopwatch_time();
@@ -841,7 +864,7 @@ s32 handle_video()
 
     // ffmpeg_close(&vid_ctx);
 
-    return 0;
+    return ret;
 }
 
 void draw_debugging_info(Image* image, Box* boxes, s32 num_boxes)
@@ -872,7 +895,7 @@ void draw_debugging_info(Image* image, Box* boxes, s32 num_boxes)
     }
 }
 
-b32 init(s32 argc, char **args)
+CM_RetCode init(s32 argc, char **args)
 {
     // init
     timer_init();
@@ -886,17 +909,17 @@ b32 init(s32 argc, char **args)
     // print title
     if(!is_quiet)
     {
-        logi("[CENSORMAN V%d]", CENSORMAN_VERSION);
-        logi("    _O_");
-        logi("  /|-X-|\\");
-        logi(" /  \\_/  \\");
-        logi("    / \\");
-        logi("  _/   \\_");
+        printf("[CENSORMAN V%d]\n", CENSORMAN_VERSION);
+        printf("    _O_\n");
+        printf("  /|-X-|\\\n");
+        printf(" /  \\_/  \\\n");
+        printf("    / \\\n");
+        printf("  _/   \\_\n");
     }
 
     // set default settings
     settings.input_file_text = string_nil();
-    settings.bbx_output = string_nil();
+    settings.bbx_output      = string_nil();
 
     settings.thread_count           = MAX(1, util_get_core_count()*2); // default to num_cores
     settings.asset_type             = TYPE_IMAGE;
@@ -922,7 +945,7 @@ b32 init(s32 argc, char **args)
     settings.scaled_size_video      = 320;
 
     b32 parse = parse_args(&settings, argc, args);
-    if(!parse) return false;
+    if(!parse) return CM_FAILED_PARSE_ARGS;
 
     if(settings.verbose)
     {
@@ -933,16 +956,28 @@ b32 init(s32 argc, char **args)
     for(s32 i = 0; i < settings.thread_count; ++i)
     {
         thread_arenas[i] = arena_create(MB(16));
+
+        if(!thread_arenas[i])
+        {
+            return CM_FAILED_ARENA_CREATE;
+        }
     }
 
     perm_arena = arena_create(MB(16)); // permanent
+    if(!perm_arena) return CM_FAILED_ARENA_CREATE;
+
     frame_arena = arena_create(MB(16)); // for videos
+    if(!frame_arena) return CM_FAILED_ARENA_CREATE;
 
     // initialize model data
     detect_init();
     
     // initialize threads
-    thread_init(settings.thread_count);
+    b32 threads_ret = thread_init(settings.thread_count);
+    if(!threads_ret)
+    {
+        return CM_FAILED_THREAD_ALLOC;
+    }
 
     // check input
     Temp scratch = scratch_begin();
@@ -1040,9 +1075,7 @@ b32 init(s32 argc, char **args)
     logi("========================================");
     logi("");
 
-
-
-    return true;
+    return CM_SUCCESS;
 }
 
 void print_help()
