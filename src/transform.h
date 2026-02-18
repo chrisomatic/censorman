@@ -2,6 +2,13 @@
 
 #include "base.h"
 
+typedef struct
+{
+    Image *image;
+    u32 num_boxes;
+    Box *boxes;
+} TransformThreadData;
+
 static const u8 font8x16[95][16] =
 {
    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, //0x20, ' '
@@ -199,6 +206,7 @@ void transform_scramble(Image* image, Box r, u32 seed)
         // remove both indices from unprocessed
         memcpy(&unprocessed[idx1],&unprocessed[unprocessed_count-1], sizeof(s32));
         unprocessed_count--;
+
         memcpy(&unprocessed[idx2],&unprocessed[unprocessed_count-1], sizeof(s32));
         unprocessed_count--;
     }
@@ -1103,10 +1111,24 @@ void transform_box_blur(Image *image, Box *r, u8 *buffer)
 void transform_apply(Image* image, s32 num_boxes, Box* boxes, TransformType transform)
 {
     u8 *buffer = NULL;
+
+    ArenaTemp temp = {0};
+
+    if(image->arena)
+    {
+        temp = arena_temp_begin((Arena*)image->arena);
+    }
     
     if(transform == TRANSFORM_TYPE_BLUR)
     {
-        buffer = (u8 *)malloc(image->step * image->h);  
+        if(temp.arena)
+        {
+            buffer = (u8 *)PUSH_ARRAY((Arena *)temp.arena, u8, image->step * image->h);
+        }
+        else
+        {
+            buffer = (u8 *)malloc(image->step * image->h);
+        }
     }
 
     for(s32 i = 0; i < num_boxes; ++i)
@@ -1115,7 +1137,7 @@ void transform_apply(Image* image, s32 num_boxes, Box* boxes, TransformType tran
 
         switch(transform)
         {
-            case TRANSFORM_TYPE_BLACKOUT:       transform_draw_box(image, r,(Color){0,0,0,255}, true, 1.0); break;
+            case TRANSFORM_TYPE_BLACKOUT:       transform_draw_box(image, r, (Color){0,0,0,255}, true, 1.0); break;
             case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, settings.block_scale); break;
             case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
             case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO: seed
@@ -1124,13 +1146,67 @@ void transform_apply(Image* image, s32 num_boxes, Box* boxes, TransformType tran
                if(settings.has_texture) {
                    transform_stretch_image(image, &texture_image, r);
                }
-            }break;
+            } break;
             default: break;
         }
     }
 
-    if(buffer)
+    if(buffer && !image->arena)
     {
         free(buffer);
     }
+    else
+    {
+        arena_temp_end(temp);
+    }
+}
+
+void draw_debugging_info(Image* image, Box* boxes, s32 num_boxes)
+{
+    Color color_list[] = {
+        {255,0,0,255},
+        {0,255,0,255},
+        {0,0,255,255},
+        {255,255,0,255},
+        {255,0,255,255}
+    };
+
+    Color color_bad  = {255,0,0,255};
+    Color color_good = {0,255,0,255};
+
+    for(s32 j = num_boxes - 1; j >= 0; --j)
+    {
+        Color color = transform_blend_color(color_bad, color_good, (boxes[j].confidence / 100.0f));
+
+        transform_draw_box(image, boxes[j],color, false, 1.0);
+        transform_draw_string(image, boxes[j].x+1, boxes[j].y+1, color,"%u", boxes[j].confidence);
+
+        for(s32 l = 0; l < 5; ++l)
+        {
+            Point *lm = &boxes[j].landmarks[l];
+            transform_draw_circle(image, lm->x, lm->y, 2, color_list[l], true, 1.0);
+        }
+    }
+}
+
+void *transform_apply_threaded(void *arg)
+{
+    TransformThreadData *data = (TransformThreadData *)arg;
+
+    logv("Running transformations...");
+    for(s32 j = 0; j < settings.transform_count; ++j)
+    {
+        Transform* t = &settings.transforms[j];
+        logv("Running transform %d, num_boxes: %d", j, data->num_boxes);
+        transform_apply(data->image, data->num_boxes, data->boxes,t->type);
+    }
+
+    logv("Drawing debug boxes");
+    if(settings.debug)
+    {
+        draw_debugging_info(data->image, data->boxes, data->num_boxes);
+    }
+    logv("Done");
+
+    return NULL;
 }
