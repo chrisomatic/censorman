@@ -1193,20 +1193,16 @@ void *transform_apply_threaded(void *arg)
 {
     TransformThreadData *data = (TransformThreadData *)arg;
 
-    logv("Running transformations...");
     for(s32 j = 0; j < settings.transform_count; ++j)
     {
         Transform* t = &settings.transforms[j];
-        logv("Running transform %d, num_boxes: %d", j, data->num_boxes);
         transform_apply(data->image, data->num_boxes, data->boxes,t->type);
     }
 
-    logv("Drawing debug boxes");
     if(settings.debug)
     {
         draw_debugging_info(data->image, data->boxes, data->num_boxes);
     }
-    logv("Done");
 
     return NULL;
 }

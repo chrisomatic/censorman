@@ -319,10 +319,11 @@ CM_RetCode handle_video()
     Image* images        = (Image*)calloc(settings.thread_count, sizeof(Image));
     Image* images_scaled = (Image*)calloc(settings.thread_count, sizeof(Image));
 
-    f64 total_time_decoding = 0.0;
-    f64 total_time_detecting = 0.0;
+    f64 total_time_decoding     = 0.0;
+    f64 total_time_first_pass   = 0.0;
+    f64 total_time_detecting    = 0.0;
     f64 total_time_transforming = 0.0;
-    f64 total_time_encoding = 0.0;
+    f64 total_time_encoding     = 0.0;
 
     u32 total_frames_processed = 0;
 
@@ -352,8 +353,7 @@ CM_RetCode handle_video()
         }
 
         // run detections
-
-        logi("Detecting faces...");
+        logv("Running First Pass to mark decode frames...");
         stopwatch_start();
 
         memset(images, 0, settings.thread_count*sizeof(Image));
@@ -391,7 +391,7 @@ CM_RetCode handle_video()
         {
             // determine any video discontinuities
             // ref: https://www-nlpir.nist.gov/projects/tvpubs/tvpapers03/ramonlull.paper.pdf
-            logi("Determining video discontinuities...");
+            logv("Determining video discontinuities...");
 
             u32 prev_histogram[4096] = {0};
             u32 curr_histogram[4096] = {0};
@@ -439,26 +439,38 @@ CM_RetCode handle_video()
 
             // 4096 buckets that sum up to vid.w * vid.h
             // A maximum difference between frames is vid.w * vid.h
-            // perhaps a reasonable change from frame to frame would be 20% changed
+            // perhaps a reasonable change from frame to frame would be 10% changed
             // to consider it a frame that should be scheduled for detection
 
-            u64 threshold = (u64)((vid.w * vid.h) * 0.2f);
+            u64 threshold = (u64)((vid.w * vid.h) * 0.10f);
 
             for(s32 i = 1; i < vid.frame_count; ++i) // don't consider first frame
             {
                 if(diff_histogram[i] >= threshold)
                 {
-                    b32 in_array = false;
+                    // found a frame with substantial pixel color difference from previous frame
+                    b32 frame_1_in_array = false;
+                    b32 frame_2_in_array = false;
+
                     for(s32 j = 0; j < detect_frames_count; ++j)
                     {
+                        if(detect_frames[j] == i-1)
+                            frame_1_in_array = true;
+
                         if(detect_frames[j] == i)
-                        {
-                            in_array = true;
-                            break;
-                        }
+                            frame_2_in_array = true;
                     }
-                    if(!in_array)
+
+                    // make sure both the frame with the discontinuity and prior frame are marked
+                    // to avoid lerping across discontinuity
+                    if(!frame_1_in_array)
                     {
+                        logv("Adding discontinuity frame at %d", i-1);
+                        detect_frames[detect_frames_count++] = i-1;   
+                    }
+                    if(!frame_2_in_array)
+                    {
+                        logv("Adding discontinuity frame at %d", i);
                         detect_frames[detect_frames_count++] = i;
                     }
                 }
@@ -468,6 +480,13 @@ CM_RetCode handle_video()
         scratch_end(scratch);
 
         ARRAY_SORT(detect_frames, u32, detect_frames_count, false);
+
+        f64 first_pass_time = stopwatch_time();
+        total_time_first_pass += first_pass_time;
+        stopwatch_time();
+
+        logi("Detecting faces... Detect Frame Count: %u", detect_frames_count);
+        stopwatch_start();
 
         u32 detect_frames_index = 0;
         frame_counter = detect_frames[detect_frames_count++];
@@ -528,16 +547,11 @@ CM_RetCode handle_video()
                 frame_counter = detect_frames[detect_frames_index++];
             }
 
-            logv("Joining Threads.");
-            
             // join all threads back
             for(s32 i = 0; i < actual_thread_count; ++i)
             {
-                logv("Joining Thread %d...", i);
                 thread_join(threads[i]);
             }
-
-            logv("Threads joined!");
             
             // Gather results
 
@@ -559,7 +573,6 @@ CM_RetCode handle_video()
                     s32 _faces_found = *((s32*)(ret_boxes));
                     offset += sizeof(s32);
 
-                    logv("frame number: %d, faces_found: %d", image->frame_number, _faces_found);
                     output_ptrs[image->frame_number] = (u8 *)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(_faces_found*sizeof(Box)));
 
                     for(s32 j = 0; j < _faces_found; ++j)
@@ -733,7 +746,6 @@ CM_RetCode handle_video()
         stopwatch_start();
 
         logv("Iterating through video frames (Total: %d)", vid.frame_count);
-
         {
             TransformThreadData *thread_datas = (TransformThreadData *)malloc(settings.thread_count * sizeof(TransformThreadData));
 
@@ -813,7 +825,7 @@ CM_RetCode handle_video()
                             util_write_bbx_to_file(bbx_file, &boxes[j]);
                         }
 
-                        logv("[Frame %d][Box %d] %u %u %u %u (%u%)", frame_counter, j, boxes[j].x, boxes[j].y, boxes[j].w, boxes[j].h, boxes[j].confidence);
+                        // logv("[Frame %d][Box %d] %u %u %u %u (%u%)", frame_counter, j, boxes[j].x, boxes[j].y, boxes[j].w, boxes[j].h, boxes[j].confidence);
                     }
 
                     if(num_boxes == 0)
@@ -827,7 +839,6 @@ CM_RetCode handle_video()
                     thread_data->num_boxes = num_boxes;
                     thread_data->boxes = boxes;
 
-                    logv("Creating Thread %d", actual_thread_count);
                     if(thread_create(&threads[actual_thread_count], transform_apply_threaded, (void*)thread_data) == 0)
                     {
                         actual_thread_count++;
@@ -848,7 +859,6 @@ CM_RetCode handle_video()
                 }
             }
         }
-#endif
 
         logv("Number of zero box frames: %d", zero_boxes_frames);
 
@@ -896,12 +906,13 @@ CM_RetCode handle_video()
         os_file_close(bbx_file);
     }
 
-    f64 total_processing_time = total_time_decoding + total_time_detecting + total_time_transforming + total_time_encoding;
+    f64 total_processing_time = total_time_decoding + total_time_first_pass + total_time_detecting + total_time_transforming + total_time_encoding;
     f64 total_elapsed_time = timer_get_time() - begin_time;
 
     logi("Complete!");
 
     logi("Total Time Decoding:     %6.3f s [%02d%]", total_time_decoding, (s32)(100.0f*total_time_decoding / total_processing_time));
+    logi("Total Time First Pass:   %6.3f s [%02d%]", total_time_first_pass, (s32)(100.0f*total_time_first_pass / total_processing_time));
     logi("Total Time Detecting:    %6.3f s [%02d%]", total_time_detecting, (s32)(100.0f*total_time_detecting / total_processing_time));
     logi("Total Time Transforming: %6.3f s [%02d%]", total_time_transforming, (s32)(100.0f*total_time_transforming / total_processing_time));
     logi("Total Time Encoding:     %6.3f s [%02d%]", total_time_encoding, (s32)(100.0f*total_time_encoding / total_processing_time));
@@ -950,7 +961,7 @@ CM_RetCode init(s32 argc, char **args)
     settings.no_rotate              = false;
     settings.no_scale               = false;
     settings.block_scale            = 0.16;
-    settings.frame_smoothing_window = 0.150;
+    settings.frame_smoothing_window = 0.250;
     settings.input_file_count       = 0;
     settings.max_buffer_size        = MB(512);
     settings.box_padding_pct        = 0.15;
