@@ -4,7 +4,7 @@
 #include "transform.h"
 #include "facedetectcnn.h"
 
-#define ENABLE_NCNN 0
+#define ENABLE_NCNN 1
 
 #if ENABLE_NCNN
 #include "ncnn/net.h"
@@ -16,6 +16,9 @@ typedef struct
 } Model;
 
 Model yunet = {};
+
+static const int strides[] = {8, 16, 32};
+static const int anchorCounts[] = {6400, 1600, 400}; // per stride
 
 void detect_init2()
 {
@@ -31,35 +34,153 @@ void detect_init2()
         return;
     }
 
+    yunet.net.opt.num_threads = 4;
     yunet.initialized = true;
 }
 
 void *detect_faces2(void *arg)
 {
     Image *image = (Image *)arg;
+    Arena *arena = (Arena *)image->arena;
 
-    ncnn::Mat in = ncnn::Mat::from_pixels_resize(image->data, ncnn::Mat::PIXEL_BGR2RGB, image->w, image->h, 320, 320);
+    const u32 net_w = 640;
+    const u32 net_h = 640;
 
-    // const f32 mean_vals[3] = { 103.94f, 116.78f, 123.68f };
-    // const f32 norm_vals[3] = { 0.017f, 0.017f, 0.017f };
-    const f32 mean_vals[3] = {0.f, 0.f, 0.f};
-    const f32 norm_vals[3] = {1.f, 1.f, 1.f};
-    in.substract_mean_normalize(mean_vals, norm_vals);
+    const f32 score_threshold = settings.confidence_threshold / 100.0;
 
+    ncnn::Mat input = ncnn::Mat::from_pixels_resize(image->data, ncnn::Mat::PIXEL_BGR,
+        image->w, image->h, net_w, net_h);
+
+    const f32 norm[3] = {1/255.f, 1/255.f, 1/255.f};
+    input.substract_mean_normalize(nullptr, norm);
+
+    // --- Inference ---
     ncnn::Extractor ex = yunet.net.create_extractor();
-    ex.input("in0", in); // 'input' is the input node name in param file
+    ex.set_light_mode(true);
 
-    ncnn::Mat score_map;
-    ncnn::Mat location_map;
-    ncnn::Mat landmarks_map;
+    ex.input("in0", input);
 
-    // Extract outputs (names depend on your param file)
-    ex.extract("out0", score_map);
-    ex.extract("out1", location_map);
-    ex.extract("out2", landmarks_map);
+    ncnn::Mat out0, out1, out2;   // cls
+    ncnn::Mat out3, out4, out5;   // obj
+    ncnn::Mat out6, out7, out8;   // bbox
+    ncnn::Mat out9, out10, out11; // landmarks
+
+    ex.extract("out0", out0);
+    ex.extract("out1", out1);
+    ex.extract("out2", out2);
+    ex.extract("out3", out3);
+    ex.extract("out4", out4);
+    ex.extract("out5", out5);
+    ex.extract("out6", out6);
+    ex.extract("out7", out7);
+    ex.extract("out8", out8);
+    ex.extract("out9", out9);
+    ex.extract("out10", out10);
+    ex.extract("out11", out11);
+
+    const ncnn::Mat clsMats[]  = {out0, out1, out2};
+    const ncnn::Mat objMats[]  = {out3, out4, out5};
+    const ncnn::Mat bboxMats[] = {out6, out7, out8};
+    const ncnn::Mat lmkMats[]  = {out9, out10, out11};
+
+    // --- Decode ---
+    // YuNet uses SimOTA-style decoding: face_score = cls * obj (both already sigmoid'd)
+    // bbox is in the "distance-to-boundary" (ltrb) format scaled by stride
+    std::vector<Box> candidates;
+
+    for (int s = 0; s < 3; s++)
+    {
+        s32 stride = strides[s];
+        s32 count = anchorCounts[s];
+
+        // Grid dimensions at this stride
+        s32 cols = net_w / stride;
+        s32 rows = net_h / stride;
+
+        const f32* cls  = clsMats[s];
+        const f32* obj  = objMats[s];
+        const f32* bbox = bboxMats[s]; // shape: [4, count] flattened row-major
+        const f32* lmk  = lmkMats[s]; // shape: [10, count]
+
+        for (s32 i = 0; i < count; ++i)
+        {
+            f32 score = cls[i] * obj[i];
+            if (score < score_threshold) continue;
+
+            // Anchor center
+            s32 row = i / cols;
+            s32 col = i % cols;
+            f32 cx = (col + 0.5f) * stride;
+            f32 cy = (row + 0.5f) * stride;
+
+            // ltrb distances, scaled by stride
+            f32 l = bbox[0 * count + i] * stride;
+            f32 t = bbox[1 * count + i] * stride;
+            f32 r = bbox[2 * count + i] * stride;
+            f32 b = bbox[3 * count + i] * stride;
+
+            Box box;
+            box.x = cx - l;
+            box.y = cy - t;
+            box.w = (cx + r) - box.x;
+            box.h = (cy + b) - box.y;
+            box.confidence = score;
+
+            // Landmarks: 5 keypoints, each (dx, dy) relative to anchor, scaled by stride
+            for (s32 k = 0; k < 5; ++k)
+            {
+                box.landmarks[k].x = cx + lmk[(k*2 + 0) * count + i] * stride;
+                box.landmarks[k].y = cy + lmk[(k*2 + 1) * count + i] * stride;
+            }
+
+            candidates.push_back(box);
+        }
+    }
+
+    // --- NMS ---
+    // Sort by score descending
+    std::sort(candidates.begin(), candidates.end(),
+        [](const Box& a, const Box& b){ return a.confidence > b.confidence; });
+
+    std::vector<Box> results;
+    std::vector<bool> suppressed(candidates.size(), false);
+
+    for (size_t i = 0; i < candidates.size(); i++)
+    {
+        if (suppressed[i]) continue;
+        results.push_back(candidates[i]);
+
+        f32 ax1 = candidates[i].x;
+        f32 ay1 = candidates[i].y;
+        f32 ax2 = candidates[i].x + candidates[i].w;
+        f32 ay2 = candidates[i].y + candidates[i].h;
+
+        f32 aArea = (ax2 - ax1) * (ay2 - ay1);
+
+        for (size_t j = i + 1; j < candidates.size(); j++)
+        {
+            if (suppressed[j]) continue;
+
+            f32 bx1 = candidates[j].x;
+            f32 by1 = candidates[j].y;
+            f32 bx2 = candidates[j].x + candidates[j].w;
+            f32 by2 = candidates[j].y + candidates[j].h;
+
+            f32 bArea = (bx2 - bx1) * (by2 - by1);
+
+            f32 ix1 = std::max(ax1, bx1), iy1 = std::max(ay1, by1);
+            f32 ix2 = std::min(ax2, bx2), iy2 = std::min(ay2, by2);
+            f32 inter = std::max(0.f, ix2-ix1) * std::max(0.f, iy2-iy1);
+            f32 iou = inter / (aArea + bArea - inter);
+
+            if (iou > settings.nms_iou_threshold)
+                suppressed[j] = true;
+        }
+    }
 
     return NULL;
 }
+
 #endif
 
 void detect_init()
@@ -123,7 +244,10 @@ s32 process_image(Image* image,Box* ret_boxes)
     s32 rows = 0;
     s32 cols = 0;
 
-    switch(settings.thread_count)
+    // u32 thread_count = settings.thread_count;
+    u32 thread_count = 1;
+
+    switch(thread_count)
     {
         case 1:  rows = 1; cols = 1;  break;
         case 2:  rows = 1; cols = 2;  break;
@@ -141,7 +265,7 @@ s32 process_image(Image* image,Box* ret_boxes)
         case 14: rows = 2; cols = 7;  break;
         case 15: rows = 3; cols = 5;  break;
         case 16: rows = 4; cols = 4;  break;
-        default: rows = 1; cols = settings.thread_count;
+        default: rows = 1; cols = thread_count;
             break;
     }
 
@@ -162,10 +286,10 @@ s32 process_image(Image* image,Box* ret_boxes)
 
     Temp scratch = scratch_begin();
 
-    Image** sub_images = (Image**)calloc(settings.thread_count, sizeof(Image*));
-    u8 *detect_buffers = (u8 *)PUSH_ARRAY(scratch.arena, u8, 0x9000 * settings.thread_count);
+    Image** sub_images = (Image**)calloc(thread_count, sizeof(Image*));
+    u8 *detect_buffers = (u8 *)PUSH_ARRAY(scratch.arena, u8, 0x9000 * thread_count);
 
-    for(s32 i = 0; i < settings.thread_count; ++i)
+    for(s32 i = 0; i < thread_count; ++i)
     {
         arena_reset(thread_arenas[i]);
         sub_images[i] = (Image*)PUSH_ONE(thread_arenas[i], Image);
@@ -175,14 +299,14 @@ s32 process_image(Image* image,Box* ret_boxes)
     s32 x = 0;
     s32 y = 0;
 
-    logi("Detecting faces... (threads: %d)", settings.thread_count);
+    logi("Detecting faces... (threads: %d)", thread_count);
 
     const f32 padding_factor = 0.1;
     s32 padding = MAX(sub_width, sub_height)*padding_factor;
 
     timer_begin(&timer);
 
-    for(s32 i = 0; i < settings.thread_count; ++i)
+    for(s32 i = 0; i < thread_count; ++i)
     {
         Arena* arena = thread_arenas[actual_thread_count];
         Image* sub_image = sub_images[actual_thread_count];
@@ -202,7 +326,6 @@ s32 process_image(Image* image,Box* ret_boxes)
 
         if(thread_create(&threads[actual_thread_count], detect_faces, (void*)sub_image) == 0)
         {
-            //logi("Thread %d started (%d, %d)", i, x, y);
             actual_thread_count++;
         }
         else
@@ -218,7 +341,7 @@ s32 process_image(Image* image,Box* ret_boxes)
         }
     }
 
-    for(s32 i = 0; i < settings.thread_count; ++i)
+    for(s32 i = 0; i < thread_count; ++i)
     {
         //logi("Thread %d joined", i);
         thread_join(threads[i]);

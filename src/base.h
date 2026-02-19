@@ -106,6 +106,12 @@ f32 lerp(f32 a, f32 b, f32 t)
     return r;
 }
 
+f32 exp_smooth(f32 start, f32 end, f32 alpha)
+{
+    alpha = CLAMP(alpha, 0.0f, 1.0f);
+    return alpha*end + (1.0-alpha)*start;
+}
+
 f32 exponential_smooth(f32 start, f32 end, f32 alpha, s32 frame)
 {
     alpha = CLAMP(alpha, 0.0f, 1.0f);

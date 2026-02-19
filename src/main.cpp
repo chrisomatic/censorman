@@ -11,6 +11,8 @@
 #define CENSORMAN_VERSION 2
 
 // TODO
+// [ ] Smooth between a weighted center (anchor point) of facial features instead of box positions
+// [ ] Add asymmetric padding to bounding boxes (20% top, 10% left/right/bottom)
 // [ ] Add padding to sub-images
 // [ ] Add lots of test images and --tester mode
 // [ ] Implement thread pool (mutex vs spin-lock)
@@ -710,7 +712,8 @@ CM_RetCode handle_video()
                             Box *ra = &a->boxes[k];
                             Box *rb = &b->boxes[min_index];
 
-                            const f32 alpha = 0.2f; // smoothing
+                            const f32 alpha = 0.3f; // smoothing
+
                             rg->x = (s32)exponential_smooth((f32)ra->x, (f32)rb->x, alpha, f);
                             rg->y = (s32)exponential_smooth((f32)ra->y, (f32)rb->y, alpha, f);
                             rg->w = (s32)exponential_smooth((f32)ra->w, (f32)rb->w, alpha, f);
@@ -956,6 +959,7 @@ CM_RetCode init(s32 argc, char **args)
     settings.transform_count        = 0;
     settings.debug                  = false;
     settings.confidence_threshold   = 20;
+    settings.nms_iou_threshold      = 0.45;
     settings.blur_strength          = 0.50;
     settings.has_texture            = false;
     settings.no_rotate              = false;
@@ -998,6 +1002,7 @@ CM_RetCode init(s32 argc, char **args)
 
     // initialize model data
     detect_init();
+    detect_init2();
     
     // initialize threads
     b32 threads_ret = thread_init(settings.thread_count);
