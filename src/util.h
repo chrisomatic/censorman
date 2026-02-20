@@ -16,8 +16,6 @@ b32 util_load_image(char* input_file, Image* image)
         return false;
     }
 
-    logv("Loaded image %s [w: %d h: %d n: %d]", input_file, image->w,image->h,image->n);
-
     if(n < 3)
     {
         loge("Not enough channels on image");
@@ -27,6 +25,7 @@ b32 util_load_image(char* input_file, Image* image)
     // pack RGB (remove alpha channel if needed)
     image->data = (u8*)malloc(w*h*3*sizeof(u8));
 
+    // copy data over
     for(s32 i = 0; i < w*h; ++i)
     {
         image->data[i*3+0] = data[i*n+0];
@@ -41,6 +40,9 @@ b32 util_load_image(char* input_file, Image* image)
     image->scale_x = 1.0;
     image->scale_y = 1.0;
 
+    logv("Loaded image %s [w: %d h: %d n: %d]", input_file, image->w,image->h,image->n);
+
+    // free buffer
     stbi_image_free(data);
 
     return true;

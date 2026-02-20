@@ -20,39 +20,53 @@ Model yunet = {};
 static const int strides[] = {8, 16, 32};
 static const int anchorCounts[] = {6400, 1600, 400}; // per stride
 
-void detect_init2()
+void detect_yunet_init()
 {
     if(yunet.net.load_param("models/yunet.param") != 0)
     {
-        loge("Failed to load YuNET param file.");
+        loge("Failed to load YuNet param file.");
         return;
     }
 
     if(yunet.net.load_model("models/yunet.bin") != 0)
     {
-        loge("Failed to load YuNET bin file.");
+        loge("Failed to load YuNet bin file.");
         return;
     }
 
-    yunet.net.opt.num_threads = 4;
+    yunet.net.opt.num_threads = MIN(4, settings.thread_count);
     yunet.initialized = true;
 }
 
-void *detect_faces2(void *arg)
+void *detect_yunet_faces(void *arg)
 {
+    if(!yunet.initialized)
+    {
+        logw("YuNet model not initialized");
+        return NULL;
+    }
+
     Image *image = (Image *)arg;
     Arena *arena = (Arena *)image->arena;
+
+    logv("first pixel: %u %u %u", image->data[0], image->data[2], image->data[3]);
+    u32 end = image->w * image->h * image->n;
+    logv("last  pixel (@%u): %u %u %u", end, image->data[end-3], image->data[end-2], image->data[end-1]);
 
     const u32 net_w = 640;
     const u32 net_h = 640;
 
-    const f32 score_threshold = settings.confidence_threshold / 100.0;
+    logv("image w, h: %d, %d", image->w, image->h);
 
-    ncnn::Mat input = ncnn::Mat::from_pixels_resize(image->data, ncnn::Mat::PIXEL_BGR,
-        image->w, image->h, net_w, net_h);
+    const f32 score_threshold = 0.2; // settings.confidence_threshold / 100.0;
 
-    const f32 norm[3] = {1/255.f, 1/255.f, 1/255.f};
+    ncnn::Mat input = ncnn::Mat::from_pixels_resize(image->data, ncnn::Mat::PIXEL_BGR, image->w, image->h, net_w, net_h);
+
+    const f32 norm[3] = {1.0/255.0, 1.0/255.0, 1.0/255.0};
     input.substract_mean_normalize(nullptr, norm);
+
+    const float *ptr = input.channel(0);
+    printf("input[0,0] = %f %f %f\n", ptr[0], input.channel(1)[0], input.channel(2)[0]);
 
     // --- Inference ---
     ncnn::Extractor ex = yunet.net.create_extractor();
@@ -102,10 +116,15 @@ void *detect_faces2(void *arg)
         const f32* bbox = bboxMats[s]; // shape: [4, count] flattened row-major
         const f32* lmk  = lmkMats[s]; // shape: [10, count]
 
+        logv("count: %d", count);
+
         for (s32 i = 0; i < count; ++i)
         {
             f32 score = cls[i] * obj[i];
             if (score < score_threshold) continue;
+
+            // @NOTE: This isn't printing!
+            logv("score: %f", score);
 
             // Anchor center
             s32 row = i / cols;
@@ -136,6 +155,8 @@ void *detect_faces2(void *arg)
             candidates.push_back(box);
         }
     }
+
+    logv("Candidates size: %d", candidates.size());
 
     // --- NMS ---
     // Sort by score descending
@@ -176,6 +197,12 @@ void *detect_faces2(void *arg)
             if (iou > settings.nms_iou_threshold)
                 suppressed[j] = true;
         }
+    }
+
+    for(size_t i = 0; i < results.size(); ++i)
+    {
+        Box b = results.at(i);
+        logv("%d: [%d %d %d %d, confidence: %d]", i, b.x, b.y, b.w, b.h, b.confidence);
     }
 
     return NULL;
@@ -237,6 +264,7 @@ s32 process_image(Image* image,Box* ret_boxes)
 {
     if(!threads) return 0;
 
+    // reverse to BGR
     reverse_rgb_order(image);
 
     // Determine image subdivision
@@ -324,7 +352,7 @@ s32 process_image(Image* image,Box* ret_boxes)
         sub_image->subx = x;
         sub_image->suby = y;
 
-        if(thread_create(&threads[actual_thread_count], detect_faces, (void*)sub_image) == 0)
+        if(thread_create(&threads[actual_thread_count], detect_yunet_faces, (void*)sub_image) == 0)
         {
             actual_thread_count++;
         }

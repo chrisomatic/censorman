@@ -1002,7 +1002,7 @@ CM_RetCode init(s32 argc, char **args)
 
     // initialize model data
     detect_init();
-    detect_init2();
+    detect_yunet_init();
     
     // initialize threads
     b32 threads_ret = thread_init(settings.thread_count);
