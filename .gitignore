@@ -1,6 +1,8 @@
 bin/*
 output/*
 assets/*
+third_party/ncnn
+third_party/ncnn/*
 third_party/ffmpeg
 third_party/ffmpeg/*
 *.bbx
