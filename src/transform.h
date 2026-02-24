@@ -1110,27 +1110,6 @@ void transform_box_blur(Image *image, Box *r, u8 *buffer)
 
 void transform_apply(Image* image, s32 num_boxes, Box* boxes, TransformType transform)
 {
-    u8 *buffer = NULL;
-
-    ArenaTemp temp = {0};
-
-    if(image->arena)
-    {
-        temp = arena_temp_begin((Arena*)image->arena);
-    }
-    
-    if(transform == TRANSFORM_TYPE_BLUR)
-    {
-        if(temp.arena)
-        {
-            buffer = (u8 *)PUSH_ARRAY((Arena *)temp.arena, u8, image->step * image->h);
-        }
-        else
-        {
-            buffer = (u8 *)malloc(image->step * image->h);
-        }
-    }
-
     for(s32 i = 0; i < num_boxes; ++i)
     {
         Box r = boxes[i];
@@ -1141,7 +1120,13 @@ void transform_apply(Image* image, s32 num_boxes, Box* boxes, TransformType tran
             case TRANSFORM_TYPE_PIXELATE:       transform_pixelate(image, r, settings.block_scale); break;
             case TRANSFORM_TYPE_SCRAMBLE:       transform_scramble(image, r, 0);    break;
             case TRANSFORM_TYPE_SCRAMBLE_FIXED: transform_scramble(image, r, 409);  break; // @TODO: seed
-            case TRANSFORM_TYPE_BLUR:           transform_box_blur(image, &r, buffer); break;
+            case TRANSFORM_TYPE_BLUR:          
+            {
+                Temp temp = arena_temp_begin((Arena*)image->arena);
+                u8 *buffer = (u8 *)PUSH_ARRAY(temp.arena, u8, image->step * image->h);
+                transform_box_blur(image, &r, buffer);
+                arena_temp_end(temp);
+            } break;
             case TRANSFORM_TYPE_TEXTURE: {
                if(settings.has_texture) {
                    transform_stretch_image(image, &texture_image, r);
@@ -1149,15 +1134,6 @@ void transform_apply(Image* image, s32 num_boxes, Box* boxes, TransformType tran
             } break;
             default: break;
         }
-    }
-
-    if(buffer && !image->arena)
-    {
-        free(buffer);
-    }
-    else
-    {
-        arena_temp_end(temp);
     }
 }
 

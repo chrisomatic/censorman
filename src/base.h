@@ -255,12 +255,15 @@ void* arena_push(Arena *arena, u64 size, b32 non_zero)
 
 u64 arena_pos(Arena *arena)
 {
+    if(!arena) return 0;
     return arena->base_pos + arena->offset;
 }
 
 
 void arena_pop_to(Arena *arena, u64 pos)
 {
+    if(!arena) return;
+
     for(;;)
     {
         if(BETWEEN(pos, arena->base_pos, arena_pos(arena)))

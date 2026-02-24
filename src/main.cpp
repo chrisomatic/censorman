@@ -18,13 +18,13 @@
 // [ ] Implement thread pool (mutex vs spin-lock)
 // [ ] Add audio stream encoding (1:1)
 // [ ] Add a output_size CLI parameter
-// [ ] Statically compile ncnn (Tencent) inference engine
 // [ ] Optimize memory usage for --no_encoding
 // [ ] Add YuNet model (.bin and .param) to compare accuracy
 // [ ] Add --model_dir parameter for plugin system
 // [ ] Add plugin
 
 // DONE
+// [x] Statically compile and integrate NCNN inference engine
 // [x] Thread the transformations
 // [x] Add Return Code Enum for any errors and success
 // [x] Implement --out_file settings
@@ -207,6 +207,7 @@ CM_RetCode handle_image()
         for(s32 i = 0; i < settings.transform_count; ++i)
         {
             Transform* t = &settings.transforms[i];
+            image.arena = perm_arena;
             logv("Applying %s transform...", transform_type_to_str(t->type));
             transform_apply(&image, num_boxes, boxes,t->type);
         }
@@ -533,7 +534,9 @@ CM_RetCode handle_video()
                     use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
                 }
 
+#if !ENABLE_NCNN
                 reverse_rgb_order(use_scaled[i] ? image_scaled : image);
+#endif
 
                 // start detection thread
                 if(thread_create(&threads[actual_thread_count], detect_faces, (void*)(use_scaled[i] ? image_scaled : image)) == 0)
@@ -594,7 +597,9 @@ CM_RetCode handle_video()
                     memcpy(output_ptrs[image->frame_number], &num_faces, sizeof(u32));
                     output_count += num_faces;
 
+#if !ENABLE_NCNN
                     reverse_rgb_order(image);
+#endif
                 }
             }
 
@@ -958,7 +963,11 @@ CM_RetCode init(s32 argc, char **args)
     settings.output_file_path       = string_nil();
     settings.transform_count        = 0;
     settings.debug                  = false;
+#if ENABLE_NCCN
+    settings.confidence_threshold   = 35;
+#else
     settings.confidence_threshold   = 20;
+#endif
     settings.nms_iou_threshold      = 0.45;
     settings.blur_strength          = 0.50;
     settings.has_texture            = false;
@@ -1002,7 +1011,6 @@ CM_RetCode init(s32 argc, char **args)
 
     // initialize model data
     detect_init();
-    detect_yunet_init();
     
     // initialize threads
     b32 threads_ret = thread_init(settings.thread_count);

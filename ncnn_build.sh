@@ -21,7 +21,9 @@ cd ncnn_source
 git clone --depth=1 https://github.com/Tencent/ncnn.git ncnn
 cd ncnn
 
-cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX="$PREFIX" .
+cmake -D CMAKE_BUILD_TYPE=Release \
+      -D CMAKE_INSTALL_PREFIX="$PREFIX" \
+      .
 cmake --build . --config Release
 cmake --build . --config Release --target install
 
@@ -31,5 +33,4 @@ popd
 mv $BUILD_DIR/ncnn_build third_party/ncnn
 
 # Cleanup
-rm -rf $BUILD_DIR/ncnn_source
 rm -rf $BUILD_DIR

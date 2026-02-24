@@ -15,151 +15,183 @@ typedef struct
     b32 initialized;
 } Model;
 
-Model yunet = {};
+Model scrfd = {};
 
-static const int strides[] = {8, 16, 32};
-static const int anchorCounts[] = {6400, 1600, 400}; // per stride
-
-void detect_yunet_init()
+void detect_init()
 {
-    if(yunet.net.load_param("models/yunet.param") != 0)
+    scrfd.net.opt.num_threads = MIN(4, settings.thread_count);
+
+    if(scrfd.net.load_param("models/scrfd_500m.ncnn.param") != 0)
     {
-        loge("Failed to load YuNet param file.");
+        loge("Failed to load SCRFD param file.");
         return;
     }
 
-    if(yunet.net.load_model("models/yunet.bin") != 0)
+    if(scrfd.net.load_model("models/scrfd_500m.ncnn.bin") != 0)
     {
-        loge("Failed to load YuNet bin file.");
+        loge("Failed to load SCRFD bin file.");
         return;
     }
 
-    yunet.net.opt.num_threads = MIN(4, settings.thread_count);
-    yunet.initialized = true;
+    scrfd.initialized = true;
 }
 
-void *detect_yunet_faces(void *arg)
+void* detect_faces(void* arg)
 {
-    if(!yunet.initialized)
+    if (!scrfd.initialized)
     {
-        logw("YuNet model not initialized");
+        logw("SCRFD model not initialized");
         return NULL;
     }
 
-    Image *image = (Image *)arg;
-    Arena *arena = (Arena *)image->arena;
+    Image* image = (Image *)arg;
+    Arena* arena = (Arena *)image->arena;
 
-    logv("first pixel: %u %u %u", image->data[0], image->data[2], image->data[3]);
-    u32 end = image->w * image->h * image->n;
-    logv("last  pixel (@%u): %u %u %u", end, image->data[end-3], image->data[end-2], image->data[end-1]);
+    const int net_w = 640;
+    const int net_h = 640;
 
-    const u32 net_w = 640;
-    const u32 net_h = 640;
+    // Anchor counts: 2 anchors per location, strides 8/16/32
+    // at 640x640: 80x80x2=12800, 40x40x2=3200, 20x20x2=800
+    static const int strides[] = {8, 16, 32};
+    static const int anchorCounts[] = {12800, 3200, 800};
 
-    logv("image w, h: %d, %d", image->w, image->h);
+    // --- Letterbox (aspect-ratio preserving scale + pad) ---
+    float scale = MIN((f32)net_w / image->w, (f32)net_h / image->h);
+    int scaled_w = (int)(image->w * scale);
+    int scaled_h = (int)(image->h * scale);
 
-    const f32 score_threshold = 0.2; // settings.confidence_threshold / 100.0;
+    int pad_w = net_w - scaled_w;
+    int pad_h = net_h - scaled_h;
+    int padX = pad_w / 2;
+    int padY = pad_h / 2;
 
-    ncnn::Mat input = ncnn::Mat::from_pixels_resize(image->data, ncnn::Mat::PIXEL_BGR, image->w, image->h, net_w, net_h);
+    // --- Preprocess ---
+    // image->data is RGB packed
+    ncnn::Mat in_resized = ncnn::Mat::from_pixels_resize(
+        image->data, ncnn::Mat::PIXEL_RGB,
+        image->w, image->h, scaled_w, scaled_h);
 
-    const f32 norm[3] = {1.0/255.0, 1.0/255.0, 1.0/255.0};
-    input.substract_mean_normalize(nullptr, norm);
+    ncnn::Mat input;
+    ncnn::copy_make_border(in_resized, input,
+        padY, pad_h - padY,
+        padX, pad_w - padX,
+        ncnn::BORDER_CONSTANT, 0.f);
 
-    const float *ptr = input.channel(0);
-    printf("input[0,0] = %f %f %f\n", ptr[0], input.channel(1)[0], input.channel(2)[0]);
+    // SCRFD normalization: maps [0,255] to [-1,1]
+    const f32 mean[3] = {127.5f, 127.5f, 127.5f};
+    const f32 norm[3] = {1/128.f, 1/128.f, 1/128.f};
+    input.substract_mean_normalize(mean, norm);
 
     // --- Inference ---
-    ncnn::Extractor ex = yunet.net.create_extractor();
+    ncnn::Extractor ex = scrfd.net.create_extractor();
     ex.set_light_mode(true);
 
     ex.input("in0", input);
 
-    ncnn::Mat out0, out1, out2;   // cls
-    ncnn::Mat out3, out4, out5;   // obj
-    ncnn::Mat out6, out7, out8;   // bbox
-    ncnn::Mat out9, out10, out11; // landmarks
+    ncnn::Mat score_8, score_16, score_32;
+    ncnn::Mat bbox_8, bbox_16, bbox_32;
+    ncnn::Mat kps_8, kps_16, kps_32;
 
-    ex.extract("out0", out0);
-    ex.extract("out1", out1);
-    ex.extract("out2", out2);
-    ex.extract("out3", out3);
-    ex.extract("out4", out4);
-    ex.extract("out5", out5);
-    ex.extract("out6", out6);
-    ex.extract("out7", out7);
-    ex.extract("out8", out8);
-    ex.extract("out9", out9);
-    ex.extract("out10", out10);
-    ex.extract("out11", out11);
+    ex.extract("out0", score_8);
+    ex.extract("out1", score_16);
+    ex.extract("out2", score_32);
+    ex.extract("out3", bbox_8);
+    ex.extract("out4", bbox_16);
+    ex.extract("out5", bbox_32);
+    ex.extract("out6", kps_8);
+    ex.extract("out7", kps_16);
+    ex.extract("out8", kps_32);
 
-    const ncnn::Mat clsMats[]  = {out0, out1, out2};
-    const ncnn::Mat objMats[]  = {out3, out4, out5};
-    const ncnn::Mat bboxMats[] = {out6, out7, out8};
-    const ncnn::Mat lmkMats[]  = {out9, out10, out11};
+    const ncnn::Mat scoreMats[] = {score_8, score_16, score_32};
+    const ncnn::Mat bboxMats[]  = {bbox_8, bbox_16, bbox_32};
+    const ncnn::Mat kpsMats[]   = {kps_8, kps_16, kps_32};
+
+    f32 score_threshold = settings.confidence_threshold / 100.0f;
 
     // --- Decode ---
-    // YuNet uses SimOTA-style decoding: face_score = cls * obj (both already sigmoid'd)
-    // bbox is in the "distance-to-boundary" (ltrb) format scaled by stride
     std::vector<Box> candidates;
 
     for (int s = 0; s < 3; s++)
     {
-        s32 stride = strides[s];
-        s32 count = anchorCounts[s];
+        int stride = strides[s];
+        int count = anchorCounts[s];
+        int cols = net_w / stride; // feature map width
+        int rows = net_h / stride; // feature map height
 
-        // Grid dimensions at this stride
-        s32 cols = net_w / stride;
-        s32 rows = net_h / stride;
+        // anchor base size matches stride
+        float anchor_half = stride * 0.5f;
 
-        const f32* cls  = clsMats[s];
-        const f32* obj  = objMats[s];
-        const f32* bbox = bboxMats[s]; // shape: [4, count] flattened row-major
-        const f32* lmk  = lmkMats[s]; // shape: [10, count]
+        // flat pointers — layout is anchor-major [count x channels]
+        // for dims=2: w=channels, h=count, data is row-major
+        const f32* score = (const f32*)scoreMats[s]; // [count x 1]
+        const f32* bbox = (const f32*)bboxMats[s]; // [count x 4]
+        const f32* kps = (const f32*)kpsMats[s]; // [count x 10]
 
-        logv("count: %d", count);
+        // 2 anchors per location, scales [1, 2]
+        float anchor_scales[2] = {1.0f, 2.0f};
 
-        for (s32 i = 0; i < count; ++i)
+        for (int a = 0; a < 2; a++)
         {
-            f32 score = cls[i] * obj[i];
-            if (score < score_threshold) continue;
+            float half = anchor_half * anchor_scales[a];
 
-            // @NOTE: This isn't printing!
-            logv("score: %f", score);
-
-            // Anchor center
-            s32 row = i / cols;
-            s32 col = i % cols;
-            f32 cx = (col + 0.5f) * stride;
-            f32 cy = (row + 0.5f) * stride;
-
-            // ltrb distances, scaled by stride
-            f32 l = bbox[0 * count + i] * stride;
-            f32 t = bbox[1 * count + i] * stride;
-            f32 r = bbox[2 * count + i] * stride;
-            f32 b = bbox[3 * count + i] * stride;
-
-            Box box;
-            box.x = cx - l;
-            box.y = cy - t;
-            box.w = (cx + r) - box.x;
-            box.h = (cy + b) - box.y;
-            box.confidence = score;
-
-            // Landmarks: 5 keypoints, each (dx, dy) relative to anchor, scaled by stride
-            for (s32 k = 0; k < 5; ++k)
+            for (int i = 0; i < rows; i++)
             {
-                box.landmarks[k].x = cx + lmk[(k*2 + 0) * count + i] * stride;
-                box.landmarks[k].y = cy + lmk[(k*2 + 1) * count + i] * stride;
-            }
+                for (int j = 0; j < cols; j++)
+                {
+                    // interleaved anchor index:
+                    // anchor 0 for all locations, then anchor 1
+                    //int idx = a * rows * cols + i * cols + j;
+                    int idx = (i*cols+j)*2+a;
 
-            candidates.push_back(box);
+                    float prob = score[idx];
+                    if (prob < score_threshold) continue;
+
+                    // anchor center
+                    float cx = j * stride;
+                    float cy = i * stride;
+
+                    // bbox decode: ltrb distances scaled by stride
+                    float l = bbox[idx * 4 + 0] * stride;
+                    float t = bbox[idx * 4 + 1] * stride;
+                    float r = bbox[idx * 4 + 2] * stride;
+                    float b = bbox[idx * 4 + 3] * stride;
+
+                    // map back to original image space
+                    float x1 = cx - l;
+                    float y1 = cy - t;
+                    float x2 = cx + r;
+                    float y2 = cy + b;
+
+                    Box box;
+                    box.x = (s32)(((x1) - padX) / scale);
+                    box.y = (s32)(((y1) - padY) / scale);
+                    box.w = (s32)((x2 - x1) / scale);
+                    box.h = (s32)((y2 - y1) / scale);
+                    box.x = MAX(0, MIN(box.x, image->w - 1));
+                    box.y = MAX(0, MIN(box.y, image->h - 1));
+                    box.w = MAX(1, MIN(box.w, image->w - box.x));
+                    box.h = MAX(1, MIN(box.h, image->h - box.y));
+                    box.confidence = (s32)(prob * 100.f);
+                    box.interpolated = 0;
+
+                    // landmarks: 5 keypoints, (dx,dy) relative to anchor center
+                    for (int k = 0; k < 5; k++)
+                    {
+                        float lx = cx + kps[idx * 10 + k * 2 + 0] * stride;
+                        float ly = cy + kps[idx * 10 + k * 2 + 1] * stride;
+                        box.landmarks[k].x = (s32)((lx - padX) / scale);
+                        box.landmarks[k].y = (s32)((ly - padY) / scale);
+                    }
+
+                    candidates.push_back(box);
+                }
+            }
         }
     }
 
-    logv("Candidates size: %d", candidates.size());
+    logv("SCRFD candidates: %d", (int)candidates.size());
 
     // --- NMS ---
-    // Sort by score descending
     std::sort(candidates.begin(), candidates.end(),
         [](const Box& a, const Box& b){ return a.confidence > b.confidence; });
 
@@ -171,27 +203,25 @@ void *detect_yunet_faces(void *arg)
         if (suppressed[i]) continue;
         results.push_back(candidates[i]);
 
-        f32 ax1 = candidates[i].x;
-        f32 ay1 = candidates[i].y;
-        f32 ax2 = candidates[i].x + candidates[i].w;
-        f32 ay2 = candidates[i].y + candidates[i].h;
-
+        f32 ax1 = (f32)candidates[i].x;
+        f32 ay1 = (f32)candidates[i].y;
+        f32 ax2 = (f32)(candidates[i].x + candidates[i].w);
+        f32 ay2 = (f32)(candidates[i].y + candidates[i].h);
         f32 aArea = (ax2 - ax1) * (ay2 - ay1);
 
         for (size_t j = i + 1; j < candidates.size(); j++)
         {
             if (suppressed[j]) continue;
 
-            f32 bx1 = candidates[j].x;
-            f32 by1 = candidates[j].y;
-            f32 bx2 = candidates[j].x + candidates[j].w;
-            f32 by2 = candidates[j].y + candidates[j].h;
-
+            f32 bx1 = (f32)candidates[j].x;
+            f32 by1 = (f32)candidates[j].y;
+            f32 bx2 = (f32)(candidates[j].x + candidates[j].w);
+            f32 by2 = (f32)(candidates[j].y + candidates[j].h);
             f32 bArea = (bx2 - bx1) * (by2 - by1);
 
-            f32 ix1 = std::max(ax1, bx1), iy1 = std::max(ay1, by1);
-            f32 ix2 = std::min(ax2, bx2), iy2 = std::min(ay2, by2);
-            f32 inter = std::max(0.f, ix2-ix1) * std::max(0.f, iy2-iy1);
+            f32 ix1 = MAX(ax1, bx1), iy1 = MAX(ay1, by1);
+            f32 ix2 = MIN(ax2, bx2), iy2 = MIN(ay2, by2);
+            f32 inter = MAX(0.f, ix2 - ix1) * MAX(0.f, iy2 - iy1);
             f32 iou = inter / (aArea + bArea - inter);
 
             if (iou > settings.nms_iou_threshold)
@@ -199,16 +229,29 @@ void *detect_yunet_faces(void *arg)
         }
     }
 
-    for(size_t i = 0; i < results.size(); ++i)
+    s32 offset = 0;
+    s32 num_faces = results.size();
+    image->result = (u8*)PUSH_ARRAY(arena, u8, sizeof(s32) + num_faces+sizeof(Box));
+
+    MemoryCopy(image->result, &num_faces, sizeof(s32));
+    offset += sizeof(s32);
+
+    for (size_t i = 0; i < results.size(); i++)
     {
-        Box b = results.at(i);
-        logv("%d: [%d %d %d %d, confidence: %d]", i, b.x, b.y, b.w, b.h, b.confidence);
+        Box b = results[i];
+        logv("scrfd %zu: [%d %d %d %d conf:%d]", i, b.x, b.y, b.w, b.h, b.confidence);
+
+        Box *r = (Box*)(image->result+offset);
+        MemoryCopy(image->result+offset, &results[i], sizeof(Box));
+        offset += sizeof(Box);
     }
+
 
     return NULL;
 }
 
-#endif
+#else
+
 
 void detect_init()
 {
@@ -259,53 +302,25 @@ void *detect_faces(void* arg)
     return NULL;
 }
 
+#endif
+
 // Returns number of boxes
 s32 process_image(Image* image,Box* ret_boxes)
 {
     if(!threads) return 0;
 
+#if !ENABLE_NCNN
     // reverse to BGR
     reverse_rgb_order(image);
+#endif
 
     // Determine image subdivision
 
-    s32 rows = 0;
-    s32 cols = 0;
+    s32 rows = 1;
+    s32 cols = 1;
 
-    // u32 thread_count = settings.thread_count;
+    //settings.thread_count = 1;
     u32 thread_count = 1;
-
-    switch(thread_count)
-    {
-        case 1:  rows = 1; cols = 1;  break;
-        case 2:  rows = 1; cols = 2;  break;
-        case 3:  rows = 1; cols = 3;  break;
-        case 4:  rows = 2; cols = 2;  break;
-        case 5:  rows = 1; cols = 5;  break;
-        case 6:  rows = 2; cols = 3;  break;
-        case 7:  rows = 1; cols = 7;  break;
-        case 8:  rows = 2; cols = 4;  break;
-        case 9:  rows = 3; cols = 3;  break;
-        case 10: rows = 2; cols = 5;  break;
-        case 11: rows = 1; cols = 11; break;
-        case 12: rows = 3; cols = 4;  break;
-        case 13: rows = 1; cols = 13; break;
-        case 14: rows = 2; cols = 7;  break;
-        case 15: rows = 3; cols = 5;  break;
-        case 16: rows = 4; cols = 4;  break;
-        default: rows = 1; cols = thread_count;
-            break;
-    }
-
-    b32 is_vert = (image->h >= image->w);
-
-    if(is_vert)
-    {
-        // swap rows/cols
-        s32 tmp = rows;
-        rows = cols;
-        cols = tmp;
-    }
 
     s32 sub_width  = ceil(image->w / cols);
     s32 sub_height = ceil(image->h / rows);
@@ -352,7 +367,7 @@ s32 process_image(Image* image,Box* ret_boxes)
         sub_image->subx = x;
         sub_image->suby = y;
 
-        if(thread_create(&threads[actual_thread_count], detect_yunet_faces, (void*)sub_image) == 0)
+        if(thread_create(&threads[actual_thread_count], detect_faces, (void*)sub_image) == 0)
         {
             actual_thread_count++;
         }
@@ -408,7 +423,9 @@ s32 process_image(Image* image,Box* ret_boxes)
         }
     }
 
+#if !ENABLE_NCNN
     reverse_rgb_order(image);
+#endif
 
     s32 ret_boxes_count = 0;
     for(s32 i = 0; i < num_faces; ++i)
