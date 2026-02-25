@@ -37,8 +37,6 @@ b32 util_load_image(char* input_file, Image* image)
     image->h = h;
     image->n = 3;
     image->step = image->w*image->n;
-    image->scale_x = 1.0;
-    image->scale_y = 1.0;
 
     logv("Loaded image %s [w: %d h: %d n: %d]", input_file, image->w,image->h,image->n);
 

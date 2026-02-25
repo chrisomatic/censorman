@@ -136,24 +136,22 @@ CM_RetCode handle_image()
                 os_file_write_u32(bbx_file, 1); // only one frame for an image
             }
         }
-
+        
         Image image_scaled = {};
-        s32 scaled_size = settings.scaled_size_image;
-        b32 use_scaled_image = false;
+        s32 scaled_size = settings.no_scale ? MAX(image.w, image.h) : settings.scaled_size_image;
 
-        if(!settings.no_scale)
-        {
-            stopwatch_start();
-            use_scaled_image = transform_downscale(NULL, &image,&image_scaled,scaled_size,0); // @TODO: rotation
-            logv("Downscale took %.3f ms", stopwatch_time()*1000.0);
-            //util_write_output(&image_scaled, S("output/out_scaled.png"));
-        }
+        stopwatch_start();
+        image_scaled = transform_downscale_and_rotate(perm_arena, &image, scaled_size, 0); // @TODO: rotation
+        logv("Downscale took %.3f ms", stopwatch_time()*1000.0);
+        //util_write_output(&image_scaled, S("output/out_scaled.png"));
 
         Box boxes[256] = {};
-        s32 num_boxes = use_scaled_image ? process_image(&image_scaled, boxes) : process_image(&image, boxes);
+        s32 num_boxes = process_image(&image_scaled, boxes);
         logv("Found %d boxes", num_boxes);
 
-        if(use_scaled_image)
+        b32 scaled = (image.w != image_scaled.w) || (image.h != image_scaled.h);
+
+        if(scaled)
         {
             // correct boxes positions / sizes
             const f64 scale = image.w > image.h ? image.w / (f64)image_scaled.w : image.h / (f64)image_scaled.h;
@@ -255,9 +253,6 @@ CM_RetCode handle_image()
 
 CM_RetCode handle_video()
 {
-    Arena *arena_results = arena_create(MB(16));
-    if(!arena_results) return CM_FAILED_ARENA_CREATE;
-
     logi("Opening video file '" STR_FMT "'...", STR_ARG(settings.input_file_text));
     
     Video vid = {};
@@ -362,7 +357,6 @@ CM_RetCode handle_video()
         memset(images, 0, settings.thread_count*sizeof(Image));
         memset(images_scaled, 0, settings.thread_count*sizeof(Image));
 
-        b32 *use_scaled = (b32 *)PUSH_ARRAY(frame_arena, b32, settings.thread_count);
         u8 *detect_buffers = (u8 *)PUSH_ARRAY(frame_arena, u8, 0x9000 * settings.thread_count);
 
         u32 output_count = 0;
@@ -442,10 +436,10 @@ CM_RetCode handle_video()
 
             // 4096 buckets that sum up to vid.w * vid.h
             // A maximum difference between frames is vid.w * vid.h
-            // perhaps a reasonable change from frame to frame would be 10% changed
+            // perhaps a reasonable change from frame to frame would be 15% changed
             // to consider it a frame that should be scheduled for detection
 
-            u64 threshold = (u64)((vid.w * vid.h) * 0.10f);
+            u64 threshold = (u64)((vid.w * vid.h) * 0.15f);
 
             for(s32 i = 1; i < vid.frame_count; ++i) // don't consider first frame
             {
@@ -500,7 +494,6 @@ CM_RetCode handle_video()
             {
                 memset(&images_scaled[i], 0, sizeof(Image));
                 memset(detect_buffers+(0x9000*i), 0, 0x9000);
-                use_scaled[i] = false;
             }
 
             if(detect_frames_index >= detect_frames_count)
@@ -526,20 +519,18 @@ CM_RetCode handle_video()
                 image->n = 3;
                 image->step = 3*image->w;
                 image->arena = arena;
+                image->rotation = vid.rotation;
 
-                if(!settings.no_scale)
-                {
-                     // Scale down image
-                    s32 scaled_size = settings.scaled_size_video;
-                    use_scaled[actual_thread_count] = transform_downscale(arena, image,image_scaled,scaled_size, vid.rotation);
-                }
+                 // Scale down image
+                s32 scaled_size = settings.no_scale ? MAX(image->w, image->h) : settings.scaled_size_video;
+                *image_scaled = transform_downscale_and_rotate(arena, image, scaled_size, vid.rotation);
 
 #if !ENABLE_NCNN
-                reverse_rgb_order(use_scaled[i] ? image_scaled : image);
+                reverse_rgb_order(image_scaled);
 #endif
 
                 // start detection thread
-                if(thread_create(&threads[actual_thread_count], detect_faces, (void*)(use_scaled[i] ? image_scaled : image)) == 0)
+                if(thread_create(&threads[actual_thread_count], detect_faces, (void*)image_scaled) == 0)
                 {
                     actual_thread_count++;
                 }
@@ -562,11 +553,9 @@ CM_RetCode handle_video()
 
             s32 num_faces = 0;
 
-            //arena_reset(arena_results);
-
             for(s32 i = 0; i < actual_thread_count; ++i)
             {
-                Image* image = use_scaled[i] ? &images_scaled[i] : &images[i];
+                Image* image = &images_scaled[i];
 
                 num_faces = 0;
 
@@ -578,17 +567,13 @@ CM_RetCode handle_video()
                     s32 _faces_found = *((s32*)(ret_boxes));
                     offset += sizeof(s32);
 
-                    output_ptrs[image->frame_number] = (u8 *)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(_faces_found*sizeof(Box)));
+                    output_ptrs[image->frame_number] = (u8 *)PUSH_ARRAY(frame_arena, u8, sizeof(u32)+(_faces_found*sizeof(Box)));
 
                     for(s32 j = 0; j < _faces_found; ++j)
                     {
                         Box* r = (Box*)(ret_boxes+offset);
 
-                        if(use_scaled[i])
-                        {
-                            const f32 scale = vid.w > vid.h ? vid.w / (f32)image->w : vid.h / (f32)image->h;
-                            transform_box_upscale_rotate_inverse(r, image->w, image->h, vid.w, vid.h, image->rotation);
-                        }
+                        transform_box_upscale_rotate_inverse(r, image->w, image->h, vid.w, vid.h, image->rotation);
 
                         memcpy(output_ptrs[image->frame_number]+offset, r, sizeof(Box)); offset += sizeof(Box);
                         num_faces++;
@@ -650,7 +635,7 @@ CM_RetCode handle_video()
                     {
                         // allocate space for output_ptrs
                         s32 rc = rl0.box_count;
-                        output_ptrs[i+f] = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Box)));
+                        output_ptrs[i+f] = (u8*)PUSH_ARRAY(frame_arena, u8, sizeof(u32)+(rc*sizeof(Box)));
                         memcpy(output_ptrs[i+f], &rc, sizeof(u32));
                         memcpy(output_ptrs[i+f] + sizeof(u32), rl0.boxes, rc*sizeof(Box));
                     }
@@ -669,7 +654,7 @@ CM_RetCode handle_video()
                     BoxList *b = (rl0.box_count >= rl1.box_count) ? &rl1 : &rl0;
 
                     s32 rc = a->box_count;
-                    u8 *out = (u8*)PUSH_ARRAY(arena_results, u8, sizeof(u32)+(rc*sizeof(Box)));
+                    u8 *out = (u8*)PUSH_ARRAY(frame_arena, u8, sizeof(u32)+(rc*sizeof(Box)));
                     memcpy(out, &rc, sizeof(u32));
 
                     s32 offset = sizeof(u32);
@@ -693,12 +678,22 @@ CM_RetCode handle_video()
                             Box *ra = &a->boxes[k];
                             Box *rb = &b->boxes[l];
 
+#if 1
+                            f32 acx = ra->x + ra->w * 0.5f;
+                            f32 acy = ra->y + ra->h * 0.5f;
+                            f32 bcx = rb->x + rb->w * 0.5f;
+                            f32 bcy = rb->y + rb->h * 0.5f;
+
+                            f32 mv = ABS(acx - bcx) + ABS(acy - bcy);
+#else
                             f32 dx = ABS(ra->x - rb->x);
                             f32 dy = ABS(ra->y - rb->y);
                             f32 dw = ABS(ra->w - rb->w);
                             f32 dh = ABS(ra->h - rb->h);
 
                             f32 mv = dx + dy + dw + dh;
+#endif
+
                             if (mv < min_mv)
                             {
                                 min_mv = mv;
@@ -717,7 +712,7 @@ CM_RetCode handle_video()
                             Box *ra = &a->boxes[k];
                             Box *rb = &b->boxes[min_index];
 
-                            const f32 alpha = 0.3f; // smoothing
+                            const f32 alpha = 0.4; // smoothing
 
                             rg->x = (s32)exponential_smooth((f32)ra->x, (f32)rb->x, alpha, f);
                             rg->y = (s32)exponential_smooth((f32)ra->y, (f32)rb->y, alpha, f);
@@ -963,10 +958,10 @@ CM_RetCode init(s32 argc, char **args)
     settings.output_file_path       = string_nil();
     settings.transform_count        = 0;
     settings.debug                  = false;
-#if ENABLE_NCCN
-    settings.confidence_threshold   = 35;
+#if ENABLE_NCNN
+    settings.confidence_threshold   = 0.35;
 #else
-    settings.confidence_threshold   = 20;
+    settings.confidence_threshold   = 0.20;
 #endif
     settings.nms_iou_threshold      = 0.45;
     settings.blur_strength          = 0.50;
@@ -974,7 +969,7 @@ CM_RetCode init(s32 argc, char **args)
     settings.no_rotate              = false;
     settings.no_scale               = false;
     settings.block_scale            = 0.16;
-    settings.frame_smoothing_window = 0.250;
+    settings.frame_smoothing_window = 0.240;
     settings.input_file_count       = 0;
     settings.max_buffer_size        = MB(512);
     settings.box_padding_pct        = 0.15;
@@ -1098,7 +1093,7 @@ CM_RetCode init(s32 argc, char **args)
     logi("  File Count:             %d", settings.input_file_count);
     logi("  Asset Type:             %s", settings.asset_type == TYPE_IMAGE ? "Image" : "Video");
     logi("  Thread Count:           %d", settings.thread_count);
-    logi("  Confidence Threshold:   %d", settings.confidence_threshold);
+    logi("  Confidence Threshold:   %f", settings.confidence_threshold);
     logi("  Blur Strength:          %f", settings.blur_strength);
     logi("  Block Scale:            %f", settings.block_scale);
     logi("  Texture:                %s", settings.has_texture ? settings.texture_image_path : "(None)");
@@ -1127,7 +1122,7 @@ void print_help()
     printf("  out_file:               Path to output image (or video) file (.jpg, .png, .bmp, .mp4)\n");
     printf("  class_list:             {face}\n");
     printf("  transform_list:         {pixelate, blur, blackout, scramble, texture}\n");
-    printf("  confidence_threshold:   Discard any boxes lower than this (0 - 100)\n");
+    printf("  confidence_threshold:   Discard any boxes lower than this (0.0 - 1.0)\n");
     printf("  thread_count:           How many threads to use to detect (default to number of cores * 2)\n");
     printf("  debug:                  Draw boxes and confidence labels on output image/video\n");
     printf("  texture_image_path:     Used with 'texture' transform\n");
@@ -1283,8 +1278,8 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                     break;
                 case 'c':
                 {
-                    s32 n = atoi(argv[i+1]);
-                    settings->confidence_threshold = n == 0 ? settings->confidence_threshold : n;
+                    f32 f = atof(argv[i+1]);
+                    settings->confidence_threshold = f == 0.0 ? settings->confidence_threshold : f;
                 }   break;
                 case 't':
                 {

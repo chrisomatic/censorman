@@ -2,6 +2,20 @@
 
 #include "base.h"
 
+typedef enum
+{
+    ROTATE_0,
+    ROTATE_90,
+    ROTATE_180,
+    ROTATE_270,
+} Rotation;
+
+typedef enum
+{
+    CW  = 0,
+    CCW = 1,
+} ClockDir;
+
 typedef struct
 {
     Image *image;
@@ -753,8 +767,97 @@ void lanczos_downscale(Image *in, Image *out, s32 a)
     }
 }
 
-b32 transform_downscale(Arena* arena, Image* source, Image* result, s32 scaled_size, s32 rotation)
+
+void image_print(Image *img)
 {
+    logi("Image %p {", img);
+    logi("    data:         %p", img->data);
+    logi("    w:            %d", img->w);
+    logi("    h:            %d", img->h);
+    logi("    n:            %d", img->n);
+    logi("    step:         %d", img->step);
+    logi("    rotation:     %d", img->rotation);
+    logi("    detect_buf:   %p", img->detect_buffer);
+    logi("    arena:        %p", img->arena);
+    logi("    frame_number: %u", img->frame_number);
+    logi("    result:       %p", img->result);
+}
+
+Image transform_rotate(Arena *arena, Image source, Rotation r, ClockDir d)
+{
+    //   0: (x,y) -> ( x, y)
+    //  90: (x,y) -> ( y,-x)
+    // 180: (x,y) -> (-x,-y)
+    // 270: (x,y) -> (-y, x)
+
+    if(r == ROTATE_0)
+    {
+        // no rotation, just return the source (no copy)
+        return source;
+    }
+
+    Image output = {0};
+    
+    b32 dim_flipped = (r == ROTATE_90 || r == ROTATE_270);
+
+    output.data          = (u8 *)PUSH_ARRAY(arena, u8, source.w * source.h * source.n);
+    output.w             = dim_flipped ? source.h : source.w;
+    output.h             = dim_flipped ? source.w : source.h;
+    output.n             = source.n;
+    output.step          = output.w*output.n;
+    output.rotation      = source.rotation;
+    output.arena         = source.arena;
+    output.frame_number  = source.frame_number;
+    output.detect_buffer = source.detect_buffer;
+
+    s32 out_x = 0;
+    s32 out_y = 0;
+
+    if(d == CCW)
+    {
+        if(r == ROTATE_90)  r = ROTATE_270;
+        if(r == ROTATE_270) r = ROTATE_90;
+    }
+
+    for(int y = 0; y < source.h; ++y)
+    {
+        for(int x = 0; x < source.w; ++x)
+        {
+            switch(r)
+            {
+                case ROTATE_90:
+                    out_x = source.h - y - 1;
+                    out_y = x;
+                    break;
+                case ROTATE_180:
+                    out_x = source.w - x - 1;
+                    out_y = source.h - y - 1;
+                    break;
+                case ROTATE_270:
+                    out_x = y;
+                    out_y = source.w - x - 1;
+                    break;
+                case ROTATE_0:
+                default:
+                    out_x = x;
+                    out_y = y;
+                    break;
+            }
+
+            u8 *s_pixel = &source.data[(y*source.w + x) * source.n];
+            u8 *d_pixel = &output.data[(out_y*output.w + out_x) * output.n];
+
+            MemoryCopy(d_pixel, s_pixel, source.n);
+        }
+    }
+
+    return output;
+}
+
+Image transform_downscale_and_rotate(Arena *arena, Image *source, s32 scaled_size, s32 rotation)
+{
+    Image result = {0};
+
     b32 use_scaled_image = source->w > scaled_size || source->h > scaled_size;
 
     if(use_scaled_image)
@@ -788,37 +891,42 @@ b32 transform_downscale(Arena* arena, Image* source, Image* result, s32 scaled_s
             height_scaled = tmp;
         }
 
-        result->w = width_scaled;
-        result->h = height_scaled;
-        result->n = source->n;
-        result->step = width_scaled*result->n;
-        result->rotation = rotation;
-        result->scale_x = width_scaled / source->w;
-        result->scale_y = height_scaled / source->h;
-        result->arena = source->arena;
-        result->frame_number = source->frame_number;
-        result->detect_buffer = source->detect_buffer;
+        result.w             = width_scaled;
+        result.h             = height_scaled;
+        result.n             = source->n;
+        result.rotation      = rotation;
+        result.arena         = source->arena;
+        result.frame_number  = source->frame_number;
+        result.detect_buffer = source->detect_buffer;
+        result.step          = width_scaled*result.n;
 
-        s32 buffer_size = width_scaled*height_scaled*result->n;
+        s32 buffer_size = width_scaled*height_scaled*result.n;
 
-        if(arena == NULL)
-        {
-            result->data = (u8*)malloc(buffer_size);
-        }
-        else
-        {
-            result->data = (u8*)PUSH_ARRAY(arena, u8, buffer_size);
-        }
+        result.data = (u8*)PUSH_ARRAY(arena, u8, buffer_size);
 
-        lanczos_downscale_rotate(source, result, a);
+        lanczos_downscale_rotate(source, &result, a);
+    }
+    else
+    {
+        // just rotate if needed
+
+        Rotation r = ROTATE_0;
+        if(rotation == 90)       r = ROTATE_90;
+        else if(rotation == 180) r = ROTATE_180;
+        else if(rotation == 270) r = ROTATE_270;
+
+        result = transform_rotate(arena, *source, r, CCW);
     }
 
-    return use_scaled_image;
+    return result;
 }
 
 
 void transform_box_upscale_rotate_inverse(Box* r,u16 det_w, u16 det_h, u16 orig_w, u16 orig_h, s32 rotation)
 {
+    if(det_w == orig_w && det_h == orig_h)
+        return;
+
     f32 scale_x, scale_y;
 
     // These are the true dimensions of the image that was rotated

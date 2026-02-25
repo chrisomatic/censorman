@@ -47,23 +47,23 @@ void* detect_faces(void* arg)
     Image* image = (Image *)arg;
     Arena* arena = (Arena *)image->arena;
 
-    const int net_w = 640;
-    const int net_h = 640;
+    const s32 net_w = 640;
+    const s32 net_h = 640;
 
     // Anchor counts: 2 anchors per location, strides 8/16/32
     // at 640x640: 80x80x2=12800, 40x40x2=3200, 20x20x2=800
-    static const int strides[] = {8, 16, 32};
-    static const int anchorCounts[] = {12800, 3200, 800};
+    static const s32 strides[] = {8, 16, 32};
+    static const s32 anchorCounts[] = {12800, 3200, 800};
 
     // --- Letterbox (aspect-ratio preserving scale + pad) ---
-    float scale = MIN((f32)net_w / image->w, (f32)net_h / image->h);
-    int scaled_w = (int)(image->w * scale);
-    int scaled_h = (int)(image->h * scale);
+    f32 scale = MIN((f32)net_w / image->w, (f32)net_h / image->h);
+    s32 scaled_w = (s32)(image->w * scale);
+    s32 scaled_h = (s32)(image->h * scale);
 
-    int pad_w = net_w - scaled_w;
-    int pad_h = net_h - scaled_h;
-    int padX = pad_w / 2;
-    int padY = pad_h / 2;
+    s32 pad_w = net_w - scaled_w;
+    s32 pad_h = net_h - scaled_h;
+    s32 padX = pad_w / 2;
+    s32 padY = pad_h / 2;
 
     // --- Preprocess ---
     // image->data is RGB packed
@@ -106,20 +106,20 @@ void* detect_faces(void* arg)
     const ncnn::Mat bboxMats[]  = {bbox_8, bbox_16, bbox_32};
     const ncnn::Mat kpsMats[]   = {kps_8, kps_16, kps_32};
 
-    f32 score_threshold = settings.confidence_threshold / 100.0f;
+    f32 score_threshold = settings.confidence_threshold;
 
     // --- Decode ---
     std::vector<Box> candidates;
 
-    for (int s = 0; s < 3; s++)
+    for (s32 s = 0; s < 3; s++)
     {
-        int stride = strides[s];
-        int count = anchorCounts[s];
-        int cols = net_w / stride; // feature map width
-        int rows = net_h / stride; // feature map height
+        s32 stride = strides[s];
+        s32 count = anchorCounts[s];
+        s32 cols = net_w / stride; // feature map width
+        s32 rows = net_h / stride; // feature map height
 
         // anchor base size matches stride
-        float anchor_half = stride * 0.5f;
+        f32 anchor_half = stride * 0.5f;
 
         // flat pointers — layout is anchor-major [count x channels]
         // for dims=2: w=channels, h=count, data is row-major
@@ -128,39 +128,38 @@ void* detect_faces(void* arg)
         const f32* kps = (const f32*)kpsMats[s]; // [count x 10]
 
         // 2 anchors per location, scales [1, 2]
-        float anchor_scales[2] = {1.0f, 2.0f};
+        f32 anchor_scales[2] = {1.0f, 2.0f};
 
-        for (int a = 0; a < 2; a++)
+        for (s32 a = 0; a < 2; a++)
         {
-            float half = anchor_half * anchor_scales[a];
+            f32 half = anchor_half * anchor_scales[a];
 
-            for (int i = 0; i < rows; i++)
+            for (s32 i = 0; i < rows; i++)
             {
-                for (int j = 0; j < cols; j++)
+                for (s32 j = 0; j < cols; j++)
                 {
                     // interleaved anchor index:
                     // anchor 0 for all locations, then anchor 1
-                    //int idx = a * rows * cols + i * cols + j;
-                    int idx = (i*cols+j)*2+a;
+                    s32 idx = (i*cols+j)*2+a;
 
-                    float prob = score[idx];
+                    f32 prob = score[idx];
                     if (prob < score_threshold) continue;
 
                     // anchor center
-                    float cx = j * stride;
-                    float cy = i * stride;
+                    f32 cx = j * stride;
+                    f32 cy = i * stride;
 
                     // bbox decode: ltrb distances scaled by stride
-                    float l = bbox[idx * 4 + 0] * stride;
-                    float t = bbox[idx * 4 + 1] * stride;
-                    float r = bbox[idx * 4 + 2] * stride;
-                    float b = bbox[idx * 4 + 3] * stride;
+                    f32 l = bbox[idx * 4 + 0] * stride;
+                    f32 t = bbox[idx * 4 + 1] * stride;
+                    f32 r = bbox[idx * 4 + 2] * stride;
+                    f32 b = bbox[idx * 4 + 3] * stride;
 
                     // map back to original image space
-                    float x1 = cx - l;
-                    float y1 = cy - t;
-                    float x2 = cx + r;
-                    float y2 = cy + b;
+                    f32 x1 = cx - l;
+                    f32 y1 = cy - t;
+                    f32 x2 = cx + r;
+                    f32 y2 = cy + b;
 
                     Box box;
                     box.x = (s32)(((x1) - padX) / scale);
@@ -171,14 +170,14 @@ void* detect_faces(void* arg)
                     box.y = MAX(0, MIN(box.y, image->h - 1));
                     box.w = MAX(1, MIN(box.w, image->w - box.x));
                     box.h = MAX(1, MIN(box.h, image->h - box.y));
-                    box.confidence = (s32)(prob * 100.f);
+                    box.confidence = (s32)(prob * 100);
                     box.interpolated = 0;
 
                     // landmarks: 5 keypoints, (dx,dy) relative to anchor center
-                    for (int k = 0; k < 5; k++)
+                    for (s32 k = 0; k < 5; k++)
                     {
-                        float lx = cx + kps[idx * 10 + k * 2 + 0] * stride;
-                        float ly = cy + kps[idx * 10 + k * 2 + 1] * stride;
+                        f32 lx = cx + kps[idx * 10 + k * 2 + 0] * stride;
+                        f32 ly = cy + kps[idx * 10 + k * 2 + 1] * stride;
                         box.landmarks[k].x = (s32)((lx - padX) / scale);
                         box.landmarks[k].y = (s32)((ly - padY) / scale);
                     }
@@ -189,7 +188,7 @@ void* detect_faces(void* arg)
         }
     }
 
-    logv("SCRFD candidates: %d", (int)candidates.size());
+    logv("SCRFD candidates: %d", (s32)candidates.size());
 
     // --- NMS ---
     std::sort(candidates.begin(), candidates.end(),

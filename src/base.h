@@ -1587,15 +1587,11 @@ typedef struct
     s32 step; // number of bytes to advance to next row
     s32 rotation; // 0, 90, 180, 270
 
-    f32 scale_x;
-    f32 scale_y;
-
     // used for sub-image thread processing
     u8 *detect_buffer;
     u8 subx; // position in larger image
     u8 suby; // position in larger image
     void* arena;
-    b32 scaled; // determine if image was scaled
     u32 frame_number; // used for video reconstruction
     u8* result;
 } Image;
@@ -1652,7 +1648,7 @@ typedef struct
     s32 input_file_count;
     s32 thread_count;
 
-    u16 confidence_threshold;
+    f32 confidence_threshold;
     f32 nms_iou_threshold;
 
     b32 has_texture;
