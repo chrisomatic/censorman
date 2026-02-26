@@ -181,14 +181,20 @@ CM_RetCode handle_image()
                 r->y -= (s32)(sw/2.0);
                 r->w += sw;
                 r->h += sh;
-
-                if(r->x < 0)             r->x = 0;
-                if(r->x >= image.w)      r->x = image.w-1;
-                if(r->y < 0)             r->y = 0;
-                if(r->y >= image.h)      r->y = image.h-1;
-                if(r->x+r->w >= image.w) r->w = (image.w-r->x-1);
-                if(r->y+r->h >= image.h) r->h = (image.h-r->y-1);
             }
+        }
+
+        // make sure boxes are in bounds of image
+        for(s32 i = 0; i < num_boxes; ++i)
+        {
+            Box* r = &boxes[i];
+
+            if(r->x < 0)             r->x = 0;
+            if(r->x >= image.w)      r->x = image.w-1;
+            if(r->y < 0)             r->y = 0;
+            if(r->y >= image.h)      r->y = image.h-1;
+            if(r->x+r->w >= image.w) r->w = (image.w-r->x-1);
+            if(r->y+r->h >= image.h) r->h = (image.h-r->y-1);
         }
 
         if(bbx_file.is_valid)
@@ -959,7 +965,7 @@ CM_RetCode init(s32 argc, char **args)
     settings.transform_count        = 0;
     settings.debug                  = false;
 #if ENABLE_NCNN
-    settings.confidence_threshold   = 0.35;
+    settings.confidence_threshold   = 0.25;
 #else
     settings.confidence_threshold   = 0.20;
 #endif

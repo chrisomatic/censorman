@@ -50,7 +50,7 @@ b32 util_write_output(Image* image, String output_file)
 {
     ArenaTemp scratch = scratch_begin();
 
-    char * output_file_cstr = string_to_cstr(scratch.arena, output_file);
+    char *output_file_cstr = string_to_cstr(scratch.arena, output_file);
 
     s32 step = image->w*image->n;
     s32 res = stbi_write_png(output_file_cstr, image->w, image->h, image->n, image->data, step);

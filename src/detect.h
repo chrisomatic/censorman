@@ -9,38 +9,56 @@
 #if ENABLE_NCNN
 #include "ncnn/net.h"
 
+
 typedef struct
 {
     ncnn::Net net;
     b32 initialized;
 } Model;
 
-Model scrfd = {};
+Model model_face   = {};
+Model model_person = {};
 
 void detect_init()
 {
-    scrfd.net.opt.num_threads = MIN(4, settings.thread_count);
+    model_face.net.opt.num_threads = MIN(4, settings.thread_count);
 
-    if(scrfd.net.load_param("models/scrfd_500m.ncnn.param") != 0)
+    if(model_face.net.load_param("models/scrfd_500m_gnkps.ncnn.param") != 0)
     {
-        loge("Failed to load SCRFD param file.");
+        loge("Failed to load face param file.");
         return;
     }
 
-    if(scrfd.net.load_model("models/scrfd_500m.ncnn.bin") != 0)
+    if(model_face.net.load_model("models/scrfd_500m_gnkps.ncnn.bin") != 0)
     {
-        loge("Failed to load SCRFD bin file.");
+        loge("Failed to load face bin file.");
         return;
     }
 
-    scrfd.initialized = true;
+    model_face.initialized = true;
+
+    model_person.net.opt.num_threads = MIN(4, settings.thread_count);
+
+    if(model_person.net.load_param("models/scrfd_person_2.5g.ncnn.param") != 0)
+    {
+        loge("Failed to load person param file.");
+        return;
+    }
+
+    if(model_person.net.load_model("models/scrfd_person_2.5g.ncnn.bin") != 0)
+    {
+        loge("Failed to load person bin file.");
+        return;
+    }
+
+    model_person.initialized = true;
 }
 
 void* detect_faces(void* arg)
 {
-    if (!scrfd.initialized)
+    if (!model_face.initialized)
     {
-        logw("SCRFD model not initialized");
+        logw("Face Model model not initialized");
         return NULL;
     }
 
@@ -77,13 +95,13 @@ void* detect_faces(void* arg)
         padX, pad_w - padX,
         ncnn::BORDER_CONSTANT, 0.f);
 
-    // SCRFD normalization: maps [0,255] to [-1,1]
+    // Face Model normalization: maps [0,255] to [-1,1]
     const f32 mean[3] = {127.5f, 127.5f, 127.5f};
     const f32 norm[3] = {1/128.f, 1/128.f, 1/128.f};
     input.substract_mean_normalize(mean, norm);
 
     // --- Inference ---
-    ncnn::Extractor ex = scrfd.net.create_extractor();
+    ncnn::Extractor ex = model_face.net.create_extractor();
     ex.set_light_mode(true);
 
     ex.input("in0", input);
@@ -188,7 +206,7 @@ void* detect_faces(void* arg)
         }
     }
 
-    logv("SCRFD candidates: %d", (s32)candidates.size());
+    logv("Face Model candidates: %d", (s32)candidates.size());
 
     // --- NMS ---
     std::sort(candidates.begin(), candidates.end(),
@@ -238,7 +256,195 @@ void* detect_faces(void* arg)
     for (size_t i = 0; i < results.size(); i++)
     {
         Box b = results[i];
-        logv("scrfd %zu: [%d %d %d %d conf:%d]", i, b.x, b.y, b.w, b.h, b.confidence);
+        logv("Face Model %zu: [%d %d %d %d conf:%d]", i, b.x, b.y, b.w, b.h, b.confidence);
+
+        Box *r = (Box*)(image->result+offset);
+        MemoryCopy(image->result+offset, &results[i], sizeof(Box));
+        offset += sizeof(Box);
+    }
+
+
+    return NULL;
+}
+
+void* detect_persons(void* arg)
+{
+    if (!model_person.initialized)
+    {
+        logw("Person model not initialized");
+        return NULL;
+    }
+
+    Image* image = (Image *)arg;
+    Arena* arena = (Arena *)image->arena;
+
+    const int net_w = 640;
+    const int net_h = 640;
+
+    static const int strides[]      = {8,    16,   32,  64,  128};
+    static const int anchorCounts[] = {6400, 1600, 400, 100, 25};
+
+    // --- Letterbox ---
+    float scale  = MIN((f32)net_w / image->w, (f32)net_h / image->h);
+    int scaled_w = (int)(image->w * scale);
+    int scaled_h = (int)(image->h * scale);
+    int pad_w    = net_w - scaled_w;
+    int pad_h    = net_h - scaled_h;
+    int padX     = pad_w / 2;
+    int padY     = pad_h / 2;
+
+    // --- Preprocess ---
+    ncnn::Mat in_resized = ncnn::Mat::from_pixels_resize(
+        image->data, ncnn::Mat::PIXEL_RGB,
+        image->w, image->h, scaled_w, scaled_h);
+
+    ncnn::Mat input;
+    ncnn::copy_make_border(in_resized, input,
+        padY, pad_h - padY,
+        padX, pad_w - padX,
+        ncnn::BORDER_CONSTANT, 0.f);
+
+    const f32 mean[3] = {127.5f, 127.5f, 127.5f};
+    const f32 norm[3] = {1/128.f, 1/128.f, 1/128.f};
+    input.substract_mean_normalize(mean, norm);
+
+    // --- Inference ---
+    ncnn::Extractor ex = model_person.net.create_extractor();
+    ex.set_light_mode(true);
+
+    ex.input("in0", input);
+
+    ncnn::Mat score_8,   score_16,  score_32,  score_64,  score_128;
+    ncnn::Mat bbox_8,    bbox_16,   bbox_32,   bbox_64,   bbox_128;
+    ncnn::Mat kps_8,     kps_16,    kps_32,    kps_64,    kps_128;
+
+    ex.extract("out0",  score_8);
+    ex.extract("out1",  score_16);
+    ex.extract("out2",  score_32);
+    ex.extract("out3",  score_64);
+    ex.extract("out4",  score_128);
+    ex.extract("out5",  bbox_8);
+    ex.extract("out6",  bbox_16);
+    ex.extract("out7",  bbox_32);
+    ex.extract("out8",  bbox_64);
+    ex.extract("out9",  bbox_128);
+    ex.extract("out10", kps_8);
+    ex.extract("out11", kps_16);
+    ex.extract("out12", kps_32);
+    ex.extract("out13", kps_64);
+    ex.extract("out14", kps_128);
+
+    const ncnn::Mat scoreMats[] = {score_8,  score_16,  score_32,  score_64,  score_128};
+    const ncnn::Mat bboxMats[]  = {bbox_8,   bbox_16,   bbox_32,   bbox_64,   bbox_128};
+    const ncnn::Mat kpsMats[]   = {kps_8,    kps_16,    kps_32,    kps_64,    kps_128};
+
+    f32 score_threshold = 0.45; //settings.confidence_threshold;
+
+    // --- Decode ---
+    std::vector<Box> candidates;
+
+    for (int s = 0; s < 5; s++)
+    {
+        int stride = strides[s];
+        int count  = anchorCounts[s];
+        int cols   = net_w / stride;
+        int rows   = net_h / stride;
+
+        const f32* score = (const f32*)scoreMats[s];
+        const f32* bbox  = (const f32*)bboxMats[s];
+        const f32* kps   = (const f32*)kpsMats[s];
+
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                int idx = i * cols + j;
+
+                float prob = score[idx];
+                if (prob < score_threshold) continue;
+
+                float cx = j * stride;
+                float cy = i * stride;
+
+                float l = bbox[idx * 4 + 0] * stride;
+                float t = bbox[idx * 4 + 1] * stride;
+                float r = bbox[idx * 4 + 2] * stride;
+                float b = bbox[idx * 4 + 3] * stride;
+
+                Box box;
+                box.x = (s32)(((cx - l) - padX) / scale);
+                box.y = (s32)(((cy - t) - padY) / scale);
+                box.w = (s32)((l + r) / scale);
+                box.h = (s32)((t + b) / scale);
+                box.x = MAX(0, MIN(box.x, image->w - 1));
+                box.y = MAX(0, MIN(box.y, image->h - 1));
+                box.w = MAX(1, MIN(box.w, image->w - box.x));
+                box.h = MAX(1, MIN(box.h, image->h - box.y));
+                box.confidence  = (s32)(prob * 100.f);
+                box.interpolated = 0;
+
+                for (int k = 0; k < 5; k++)
+                {
+                    box.landmarks[k].x = (s32)((cx + kps[idx * 10 + k*2+0] * stride - padX) / scale);
+                    box.landmarks[k].y = (s32)((cy + kps[idx * 10 + k*2+1] * stride - padY) / scale);
+                }
+
+                candidates.push_back(box);
+            }
+        }
+    }
+
+    logv("Person model candidates: %d", (int)candidates.size());
+
+    // --- NMS ---
+    std::sort(candidates.begin(), candidates.end(),
+        [](const Box& a, const Box& b){ return a.confidence > b.confidence; });
+
+    std::vector<Box> results;
+    std::vector<bool> suppressed(candidates.size(), false);
+
+    for (size_t i = 0; i < candidates.size(); i++)
+    {
+        if (suppressed[i]) continue;
+        results.push_back(candidates[i]);
+
+        f32 ax1 = (f32)candidates[i].x;
+        f32 ay1 = (f32)candidates[i].y;
+        f32 ax2 = (f32)(candidates[i].x + candidates[i].w);
+        f32 ay2 = (f32)(candidates[i].y + candidates[i].h);
+        f32 aArea = (ax2 - ax1) * (ay2 - ay1);
+
+        for (size_t j = i + 1; j < candidates.size(); j++)
+        {
+            if (suppressed[j]) continue;
+
+            f32 bx1 = (f32)candidates[j].x;
+            f32 by1 = (f32)candidates[j].y;
+            f32 bx2 = (f32)(candidates[j].x + candidates[j].w);
+            f32 by2 = (f32)(candidates[j].y + candidates[j].h);
+            f32 bArea = (bx2 - bx1) * (by2 - by1);
+
+            f32 ix1 = MAX(ax1, bx1), iy1 = MAX(ay1, by1);
+            f32 ix2 = MIN(ax2, bx2), iy2 = MIN(ay2, by2);
+            f32 inter = MAX(0.f, ix2 - ix1) * MAX(0.f, iy2 - iy1);
+            f32 iou   = inter / (aArea + bArea - inter);
+
+            if (iou > settings.nms_iou_threshold)
+                suppressed[j] = true;
+        }
+    }
+
+    s32 offset = 0;
+    s32 num_persons = results.size();
+    image->result = (u8*)PUSH_ARRAY(arena, u8, sizeof(s32) + num_persons+sizeof(Box));
+
+    MemoryCopy(image->result, &num_persons, sizeof(s32));
+    offset += sizeof(s32);
+
+    for (size_t i = 0; i < results.size(); i++)
+    {
+        Box b = results[i];
+        logv("person %zu: [%d %d %d %d conf:%d]", i, b.x, b.y, b.w, b.h, b.confidence);
 
         Box *r = (Box*)(image->result+offset);
         MemoryCopy(image->result+offset, &results[i], sizeof(Box));

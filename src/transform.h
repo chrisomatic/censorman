@@ -230,6 +230,8 @@ void transform_scramble(Image* image, Box r, u32 seed)
 
 void transform_draw_box(Image* image, Box r, Color c, b32 filled, f32 opacity)
 {
+    if(r.x < 0)  r.x = 0;
+
     u8* start = &image->data[r.y*image->w*image->n + r.x*image->n];
     u8* curr = start;
 
