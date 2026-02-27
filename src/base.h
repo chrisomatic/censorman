@@ -1521,7 +1521,13 @@ typedef enum
 typedef enum
 {
     CLASS_FACE = 0,
+    CLASS_PERSON,
 } DetectClass;
+
+String class_strings[] = {
+    S("face"),
+    S("person")
+};
 
 typedef enum
 {
@@ -1591,7 +1597,7 @@ typedef struct
     u8 *detect_buffer;
     u8 subx; // position in larger image
     u8 suby; // position in larger image
-    void* arena;
+    Arena* arena;
     u32 frame_number; // used for video reconstruction
     u8* result;
 } Image;
@@ -1633,7 +1639,9 @@ typedef struct
 typedef struct
 {
     AssetType asset_type;
-    DetectClass classification;
+
+    DetectClass classes[10];
+    s32 class_count;
 
     Transform transforms[10];
     s32 transform_count;
@@ -1648,19 +1656,16 @@ typedef struct
     s32 input_file_count;
     s32 thread_count;
 
-    f32 confidence_threshold;
     f32 nms_iou_threshold;
 
     b32 has_texture;
     char texture_image_path[256];
 
-    f32 block_scale; // 0.0 - 1.0
-    f32 blur_strength; // 0.0 - 1.0
-    f32 box_padding_pct; // 0.0 - 1.0
+    f32 confidence_threshold;   // 0.0 - 1.0
+    f32 block_scale;            // 0.0 - 1.0
+    f32 blur_strength;          // 0.0 - 1.0
+    f32 box_padding_pct;        // 0.0 - 1.0
     f32 frame_smoothing_window; // 0.0 - 1.0
-
-    u32 scaled_size_image;
-    u32 scaled_size_video;
 
     u64 max_buffer_size;
 
@@ -1668,7 +1673,6 @@ typedef struct
     b32 has_bbx_output;
 
     b32 no_encoding;
-    b32 no_scale;
     b32 no_rotate;
     b32 debug;
     b32 verbose;

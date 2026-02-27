@@ -97,6 +97,8 @@ CM_RetCode handle_image()
 
     for(s32 i = 0; i < settings.input_file_count; ++i)
     {
+        arena_reset(frame_arena);
+
         String infile;
         infile = string_concat(scratch.arena, 3, settings.input_directory, S("/"), settings.input_files[i].filename);
 
@@ -111,6 +113,8 @@ CM_RetCode handle_image()
             ret = CM_FAILED_OPEN_FILE;   
             continue;
         }
+
+        image.arena = frame_arena;
 
         OS_File bbx_file = {};
 
@@ -138,7 +142,7 @@ CM_RetCode handle_image()
         }
         
         Image image_scaled = {};
-        s32 scaled_size = settings.no_scale ? MAX(image.w, image.h) : settings.scaled_size_image;
+        s32 scaled_size = MAX(image.w, image.h);
 
         stopwatch_start();
         image_scaled = transform_downscale_and_rotate(perm_arena, &image, scaled_size, 0); // @TODO: rotation
@@ -528,15 +532,11 @@ CM_RetCode handle_video()
                 image->rotation = vid.rotation;
 
                  // Scale down image
-                s32 scaled_size = settings.no_scale ? MAX(image->w, image->h) : settings.scaled_size_video;
+                s32 scaled_size = MAX(image->w, image->h);
                 *image_scaled = transform_downscale_and_rotate(arena, image, scaled_size, vid.rotation);
 
-#if !ENABLE_NCNN
-                reverse_rgb_order(image_scaled);
-#endif
-
                 // start detection thread
-                if(thread_create(&threads[actual_thread_count], detect_faces, (void*)image_scaled) == 0)
+                if(thread_create(&threads[actual_thread_count], detect_run, (void*)image_scaled) == 0)
                 {
                     actual_thread_count++;
                 }
@@ -587,10 +587,6 @@ CM_RetCode handle_video()
 
                     memcpy(output_ptrs[image->frame_number], &num_faces, sizeof(u32));
                     output_count += num_faces;
-
-#if !ENABLE_NCNN
-                    reverse_rgb_order(image);
-#endif
                 }
             }
 
@@ -960,20 +956,16 @@ CM_RetCode init(s32 argc, char **args)
 
     settings.thread_count           = MAX(1, util_get_core_count()*2); // default to num_cores
     settings.asset_type             = TYPE_IMAGE;
-    settings.classification         = CLASS_FACE;
+    settings.classes[0]             = CLASS_FACE;
+    settings.class_count            = 1;
     settings.output_file_path       = string_nil();
     settings.transform_count        = 0;
     settings.debug                  = false;
-#if ENABLE_NCNN
     settings.confidence_threshold   = 0.25;
-#else
-    settings.confidence_threshold   = 0.20;
-#endif
     settings.nms_iou_threshold      = 0.45;
     settings.blur_strength          = 0.50;
     settings.has_texture            = false;
     settings.no_rotate              = false;
-    settings.no_scale               = false;
     settings.block_scale            = 0.16;
     settings.frame_smoothing_window = 0.240;
     settings.input_file_count       = 0;
@@ -982,8 +974,6 @@ CM_RetCode init(s32 argc, char **args)
     settings.no_encoding            = false;
     settings.verbose                = false;
     settings.has_bbx_output         = false;
-    settings.scaled_size_image      = 640;
-    settings.scaled_size_video      = 320;
 
     b32 parse = parse_args(&settings, argc, args);
     if(!parse) return CM_FAILED_PARSE_ARGS;
@@ -1092,11 +1082,16 @@ CM_RetCode init(s32 argc, char **args)
             settings.has_texture = false;
         }
     }
+
     
     // print settings
     logi("");
     logi("=============== Settings ===============");
     logi("  File Count:             %d", settings.input_file_count);
+    for(int i = 0 ; i < settings.class_count; ++i)
+    {
+        logi("  Detect Class [%d]:       " STR_FMT, i, STR_ARG(class_strings[settings.classes[i]]));
+    }
     logi("  Asset Type:             %s", settings.asset_type == TYPE_IMAGE ? "Image" : "Video");
     logi("  Thread Count:           %d", settings.thread_count);
     logi("  Confidence Threshold:   %f", settings.confidence_threshold);
@@ -1107,7 +1102,6 @@ CM_RetCode init(s32 argc, char **args)
     logi("  Box Padding Percent:    %f", settings.box_padding_pct);
     logi("  Frame Smoothing Window: %f", settings.frame_smoothing_window);
     logi("  No Encoding:            %s", STR_BOOL(settings.no_encoding));
-    logi("  Downscaling:            %s (%d px)", settings.no_scale ? "No" : "Yes", settings.asset_type == TYPE_IMAGE ? settings.scaled_size_image : settings.scaled_size_video);
     logi("  No Rotate:              %s", STR_BOOL(settings.no_rotate));
     logi("  Bounding Box Output:    " STR_FMT, STR_ARG(settings.bbx_output));
     logi("  Debug:                  %s", settings.debug ? "ON" : "OFF");
@@ -1121,7 +1115,7 @@ CM_RetCode init(s32 argc, char **args)
 void print_help()
 {
     printf("\n[USAGE]\n");
-    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strength <blur_strength>] [--max_buffer_size <buffer_size>] [--scaled_size <scaled_size>] [--box_padding_pct <padding_pct>] [--no_scale] [--no_encoding] [--quiet] [--verbose]\n");
+    printf("  censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strength <blur_strength>] [--max_buffer_size <buffer_size>] [--box_padding_pct <padding_pct>] [--no_encoding] [--quiet] [--verbose]\n");
     printf("\n[DESCRIPTION]\n  Takes an image or video file, detects regions of human faces (for now), applies transformations on those regions and writes back an output image file\n");
     printf("\n[ARGUMENTS]\n");
     printf("  in_file:                Path to input image (or video) file (or folder) (.jpg, .png, .bmp, .mp4, .mov)\n");
@@ -1136,11 +1130,9 @@ void print_help()
     printf("  blur_strength:          Value between 0.0 and 1.0. Blur is a box blur. (Default: 0.50)\n");
     printf("  frame_smoothing_window: Smoothing window for lerping between frames of video (Default: 0.150 or 150ms)\n");
     printf("  buffer_size:            Number of bytes for video frames during conversion (Default: 1 GB)\n");
-    printf("  scaled_size:            The longest dimension in pixels to scale down to (Default: 640 for images, 320 for videos)\n");
     printf("  padding_pct:            Added percentage of padding to detected boxes (Default: 0.15)\n");
     printf("  no_encoding:            Prevents writing output image or video file\n");
     printf("  bbx_output_filepath:    Bounding boxes output file. Specify if you want this file output.\n");
-    printf("  no_scale:               Disables downscaling of images and videos before detections\n");
     printf("  no_rotate:              Prevents rotation happening for input frames from video, and on bounding boxes\n");
     printf("  quiet:                  Suppress standard log output\n");
     printf("  verbose:                Enable verbose log output\n");
@@ -1178,8 +1170,6 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                         settings->verbose = true;
                     else if(STR_EQUAL(&argv[i][2],"no_encoding"))
                         settings->no_encoding = true;
-                    else if(STR_EQUAL(&argv[i][2],"no_scale"))
-                        settings->no_scale = true;
                     else if(STR_EQUAL(&argv[i][2],"no_rotate"))
                         settings->no_rotate = true;
                     else if(STR_EQUAL(&argv[i][2],"out_file"))
@@ -1247,21 +1237,6 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                             if(n > 0) settings->max_buffer_size = n;
                         }
                     }
-                    else if(STR_EQUAL(&argv[i][2],"scaled_size"))
-                    {
-                        if(i < argc-1)
-                        {
-                            i++;
-                            u32 n = atoi(argv[i]);
-
-                            if(n > 0)
-                            {
-                                printf("n: %d\n", n);
-                                settings->scaled_size_image = n;   
-                                settings->scaled_size_video = n;
-                            }
-                        }
-                    }
                     else if(STR_EQUAL(&argv[i][2],"box_padding_pct"))
                     {
                         if(i < argc-1)
@@ -1277,15 +1252,49 @@ b32 parse_args(ProgramSettings* settings, s32 argc, char* argv[])
                         logw("Unrecognized flag: %s", &argv[i][2]);
                     }
                 }   break;
-                case 'o':
-
-                    break;
                 case 'd':
-                    break;
+                {
+                    if(i < argc-1)
+                    {
+                        // detection classes
+                        Temp scratch = scratch_begin();
+
+                        String classes_str = STR(argv[i+1]);
+                        StringArray class_array = string_split(scratch.arena, classes_str, S(","));
+
+                        settings->class_count = 0;
+
+                        for(u32 i = 0; i < class_array.count; ++i)
+                        {
+                            String c = class_array.items[i];
+
+                            c = string_trim(c);
+                            c = string_to_lower(scratch.arena, c);
+
+                            if(string_equal(c, S("face")))
+                            {
+                                settings->classes[settings->class_count++] = CLASS_FACE;
+                            }
+                            else if(string_equal(c, S("person")))
+                            {
+                                settings->classes[settings->class_count++] = CLASS_PERSON;
+                            }
+                            else
+                            {
+                                logw("Unsupported class: " STR_FMT, STR_ARG(c));
+                            }
+                        }
+
+                        scratch_end(scratch);
+                    }
+                }   break;
                 case 'c':
                 {
-                    f32 f = atof(argv[i+1]);
-                    settings->confidence_threshold = f == 0.0 ? settings->confidence_threshold : f;
+                    if(i < argc-1)
+                    {
+                        f32 f = atof(argv[i+1]);
+                        settings->confidence_threshold = f == 0.0 ? settings->confidence_threshold : f;
+                    }
                 }   break;
                 case 't':
                 {

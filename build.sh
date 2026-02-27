@@ -10,7 +10,7 @@ mkdir bin
 
 if [ "$1" = "win32" ]; then
 
-srcs="src/main.cpp third_party/facedetectcnn-data.cpp third_party/facedetectcnn-model.cpp third_party/facedetectcnn.cpp"
+srcs="src/main.cpp"
 opts="-static -static-libgcc -static-libstdc++ -march=x86-64 -Ofast"
 includes="-Isrc -Ithird_party -Ithird_party/ffmpeg/include"
 #libs="-lgomp -Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lz -lx264 -liconv -lbcrypt"
@@ -25,7 +25,7 @@ exec $cmd
 
 else
 
-srcs="src/main.cpp third_party/facedetectcnn-data.cpp third_party/facedetectcnn-model.cpp third_party/facedetectcnn.cpp"
+srcs="src/main.cpp"
 opts="-march=x86-64 -Ofast"
 #-fsanitize=address -fno-omit-frame-pointer"
 #-mavx2
