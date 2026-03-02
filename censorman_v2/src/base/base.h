@@ -1,0 +1,8 @@
+#include "base_core.h"
+#include "base_arena.h"
+#include "base_math.h"
+#include "base_string.h"
+#include "base_list.h"
+#include "base_hash.h"
+#include "base_cmdline.h"
+#include "base_tests.h"

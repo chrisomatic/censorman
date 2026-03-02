@@ -1,0 +1,7 @@
+#include "base_arena.c"
+#include "base_math.c"
+#include "base_string.c"
+#include "base_list.c"
+#include "base_hash.c"
+#include "base_cmdline.c"
+#include "base_tests.c"
