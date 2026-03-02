@@ -14,7 +14,7 @@ typedef struct
     List   args;
 } CmdLine;
 
-CmdLine cmdline_parse(Arena *arena, char *args[], int argc);
+CmdLine cmdline_parse(Arena *arena, int argc, char *args[]);
 void    cmdline_print(CmdLine *cmdline);
 
 // flagged arguments (-) or (--)

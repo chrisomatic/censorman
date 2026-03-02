@@ -1,5 +1,5 @@
 
-CmdLine cmdline_parse(Arena *arena, char *args[], int argc)
+CmdLine cmdline_parse(Arena *arena, int argc, char *args[])
 {
     CmdLine cmdline = {0};
     cmdline.arena = arena;

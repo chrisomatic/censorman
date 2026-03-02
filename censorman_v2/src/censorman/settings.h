@@ -19,5 +19,6 @@ typedef struct
 } Settings;
 
 Settings settings_default();
-void settings_parse_cmd_line(Settings *settings, CmdLine cmd_line);
-void settings_print(Settings *);
+
+void settings_parse_cmd_line(Settings *settings, int argc, char *args);
+void settings_print(Settings *settings);

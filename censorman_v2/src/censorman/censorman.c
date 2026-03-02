@@ -20,7 +20,7 @@
 #include "censorman/detect.c"
 #include "censorman/filter.c"
 
-Settings settings = settings_default();
+Settings settings = {0};
 
 enum CM_ReturnCode
 {
@@ -30,16 +30,14 @@ enum CM_ReturnCode
 
 int main(int argc, char *args[])
 {
-    // [input]
+    // parse command line
+    settings = settings_parse_cmd_line(&settings, args);
 
-    settings_parse_cmd_line(&settings, args);
-
+    // initialization
     timer_init();
     arena_init();
     thread_init();
     settings_print();
-
-    // [detect objects]
 
     for(u32 i = 0; i < settings.asset_count; ++i)
     {
