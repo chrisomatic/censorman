@@ -2,6 +2,8 @@
 // The following functions are OS-agnostic,
 // derived from the core OS functions
 
+LogLevel _system_log_level = LOG_LEVEL_DEBUG;
+
 ///////////////////////////////////////
 // File Helpers
 ///////////////////////////////////////
@@ -10,6 +12,16 @@ OS_File os_file_nil()
 {
     OS_File file = {0};
     return file;
+}
+
+inline LogLevel os_get_log_level(void)
+{
+    return _system_log_level;
+}
+
+void os_set_log_level(LogLevel level)
+{
+    _system_log_level = level;
 }
 
 OS_File os_file_open_readonly(char *file_path)

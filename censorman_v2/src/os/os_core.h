@@ -44,6 +44,7 @@
 #pragma comment( lib, "wsock32.lib" )
 #else
 #include <unistd.h> // for usleep
+#include <fcntl.h>
 #include <time.h>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -194,10 +195,11 @@ String os_path_get_file(String path);
 // Logs
 ///////////////////////////////////////
 
-#define logi(...) os_log(LOG_LEVEL_INFO,  __FILE__, __LINE__, __VA_ARGS__);
-#define logw(...) os_log(LOG_LEVEL_WARN,  __FILE__, __LINE__, __VA_ARGS__);
-#define loge(...) os_log(LOG_LEVEL_ERROR, __FILE__, __LINE__, __VA_ARGS__);
-#define logd(...) os_log(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__);
+#define logi(...) os_log(LOG_LEVEL_INFO,    __FILE__, __LINE__, __VA_ARGS__);
+#define logw(...) os_log(LOG_LEVEL_WARN,    __FILE__, __LINE__, __VA_ARGS__);
+#define loge(...) os_log(LOG_LEVEL_ERROR,   __FILE__, __LINE__, __VA_ARGS__);
+#define logd(...) os_log(LOG_LEVEL_DEBUG,   __FILE__, __LINE__, __VA_ARGS__);
+#define logv(...) os_log(LOG_LEVEL_VERBOSE, __FILE__, __LINE__, __VA_ARGS__);
 
 typedef enum
 {
@@ -205,9 +207,14 @@ typedef enum
     LOG_LEVEL_WARN,
     LOG_LEVEL_ERROR,
     LOG_LEVEL_DEBUG,
+    LOG_LEVEL_VERBOSE,
 } LogLevel;
 
 void os_log(LogLevel level, const char* file, s32 line, const char* fmt, ...);
+
+LogLevel os_get_log_level(void);
+void os_set_log_level(LogLevel level);
+
 void os_printf(const char* fmt, ...);
 void os_vprintf(const char* fmt, va_list args);
 s32  os_print_raw(const char* msg, s32 msg_len);

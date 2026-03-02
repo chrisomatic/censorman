@@ -205,7 +205,7 @@ b32 base_tests_run()
         char *args[] = {"towers","something.txt","-s","assets/custom.settings","--debug","--mode","release","-f","bloom,grayscale"};
         int argc = ARRAY_COUNT(args);
 
-        CmdLine cmdline = cmdline_parse(scratch.arena, args, argc);
+        CmdLine cmdline = cmdline_parse(scratch.arena, argc, args);
         cmdline_print(&cmdline);
 
         b32    debug        = cmdline_has_flag(&cmdline, S("debug"));

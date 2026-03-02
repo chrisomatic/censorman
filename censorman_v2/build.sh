@@ -18,11 +18,11 @@ OPTS_DEBUG="-march=x86-64 -Ofast"
 OPTS=$OPTS_DEBUG
 
 SRCS="censorman/censorman.c"
-INCLUDES="-I. -Ithird_party -Ithird_party/ffmpeg/include -Ithird_party/ncnn/include"
+INCLUDES="-I. -Ithird_party -Ithird_party/stb -Ithird_party/ffmpeg/include -Ithird_party/ncnn/include"
 LIBS="-Lthird_party/ncnn/lib -lncnn -lgomp -Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11 -lx264 -lpthread"
 
-CMD="g++ $OPTS $SRCS $INCLUDES $LIBS -o ../$BUILD_DIR/$APP_NAME"
+CMD="gcc $OPTS $SRCS $INCLUDES $LIBS -o ../$BUILD_DIR/$APP_NAME"
 echo "${CMD}"
-exec $cmd
+exec $CMD
 
 popd

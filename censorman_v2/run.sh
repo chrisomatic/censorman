@@ -1,2 +1,2 @@
 #!/bin/sh
-./build.sh && ./out/towers
+./build.sh && ./out/censorman

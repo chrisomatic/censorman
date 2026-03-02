@@ -7,14 +7,18 @@ typedef enum
     FILTER_TYPE_BLUR_GAUSSIAN,
     FILTER_TYPE_PIXELATE,
     FILTER_TYPE_TEXTURE,
+    FILTER_TYPE_MAX,
 } FilterType;
 
 typedef struct
 {
     FilterType type;
 
+    f32 block_scale;   // (Pixelate) [0.0 - 1.0]
+    f32 blur_strength; // (Blur) [0.0 - 1.0]
+
+    String texture_path;
+
 } Filter;
 
-void filter_apply(Filter filter, Image *image, Box box);
-
-
+void filter_apply(Filter filter, Image *image, Box *box);

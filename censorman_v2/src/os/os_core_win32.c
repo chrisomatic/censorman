@@ -418,15 +418,18 @@ b32 os_path_is_directory(String path)
 ///////////////////////////////////////
 
 const char* log_level_strings[] = {
-  "INFO", "WARN", "ERROR", "DEBUG"
+  "INFO", "WARN", "ERROR", "DEBUG", "VERB"
 };
 
 const char* log_level_colors[] = {
-  "\x1b[94m", "\x1b[33m", "\x1b[31m", "\x1b[35m"
+  "\x1b[94m", "\x1b[33m", "\x1b[31m", "\x1b[35m", "\x1b[36m"
 };
 
 void os_log(LogLevel level, const char* file, int line, const char* fmt, ...)
 {
+    if(level > os_get_log_level())
+        return;
+
     va_list args;
     va_start(args, fmt);
 

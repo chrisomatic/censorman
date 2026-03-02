@@ -1,0 +1,166 @@
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+Image image_nil()
+{
+    Image image = {0};
+    return image;
+}
+
+Image image_load(Arena *arena, String path)
+{
+    Image image = {0};
+    image.arena = arena;
+
+    ArenaTemp scratch = scratch_begin();
+    char *path_cstr = string_to_cstr(scratch.arena, path);
+
+    s32 w,h,n;
+    u8* data = stbi_load(path_cstr, &w, &h, &n, 0);
+
+    scratch_end(scratch);
+
+    if(!data)
+    {
+        loge("Failed to load image: " STR_FMT, STR_ARG(path));
+        return image;
+    }
+
+    if(n < 3)
+    {
+        loge("Not enough channels on image (n = %d)", n);
+        return image;
+    }
+
+    image.w = w;
+    image.h = h;
+    image.n = 3;
+    image.data = PUSH_ARRAY(image.arena, RGBPixel, w*h);
+
+    // pack RGB (remove alpha channel if needed)
+    for(s32 i = 0; i < w*h; ++i)
+    {
+        RGBPixel *pixel = &image.data[i];
+
+        pixel->r = data[i*n+0];
+        pixel->g = data[i*n+1];
+        pixel->b = data[i*n+2];
+    }
+
+    logv("Loaded image " STR_FMT " [w: %u h: %u n: %u]", STR_ARG(path), image.w,image.h,image.n);
+
+    // free buffer
+    stbi_image_free(data);
+
+    return image;
+}
+
+b32 image_save(Image *image, String path)
+{
+    ArenaTemp scratch = scratch_begin();
+
+    char *output_file_cstr = string_to_cstr(scratch.arena, path);
+
+    s32 res = stbi_write_png(output_file_cstr, image->w, image->h, image->n, image->data, image_step(image));
+
+    scratch_end(scratch);
+
+    if(res == 0)
+    {
+        loge("Failed to write output");
+        return false;
+    }
+    return true;
+}
+
+inline u32 image_step(Image *image)
+{
+    return image->w * image->n;
+}
+
+Image image_rotate(Image source, u32 degrees, ClockDir direction)
+{
+    //   0: (x,y) -> ( x, y)
+    //  90: (x,y) -> ( y,-x)
+    // 180: (x,y) -> (-x,-y)
+    // 270: (x,y) -> (-y, x)
+
+    if(degrees == ROTATE_0)
+    {
+        // no rotation, just return the source (no copy)
+        return source;
+    }
+
+    Image output = {0};
+    
+    b32 dim_flipped = (degrees == ROTATE_90 || degrees == ROTATE_270);
+
+    output.data          = PUSH_ARRAY(source.arena, RGBPixel, source.w * source.h);
+    output.w             = dim_flipped ? source.h : source.w;
+    output.h             = dim_flipped ? source.w : source.h;
+    output.n             = source.n;
+    output.rotation      = source.rotation;
+    output.arena         = source.arena;
+
+    s32 out_x = 0;
+    s32 out_y = 0;
+
+    if(direction == CCW)
+    {
+        if(degrees == ROTATE_90)       degrees = ROTATE_270;
+        else if(degrees == ROTATE_270) degrees = ROTATE_90;
+    }
+
+    for(int y = 0; y < source.h; ++y)
+    {
+        for(int x = 0; x < source.w; ++x)
+        {
+            switch(degrees)
+            {
+                case ROTATE_90:
+                    out_x = source.h - y - 1;
+                    out_y = x;
+                    break;
+                case ROTATE_180:
+                    out_x = source.w - x - 1;
+                    out_y = source.h - y - 1;
+                    break;
+                case ROTATE_270:
+                    out_x = y;
+                    out_y = source.w - x - 1;
+                    break;
+                case ROTATE_0:
+                default:
+                    out_x = x;
+                    out_y = y;
+                    break;
+            }
+
+            RGBPixel *s_pixel = &source.data[(y*source.w + x)];
+            RGBPixel *d_pixel = &output.data[(out_y*output.w + out_x)];
+
+            MemoryCopy(d_pixel, s_pixel, sizeof(RGBPixel));
+        }
+    }
+
+    return output;
+}
+
+// preserves aspect ratio
+// bilinear scaling for now
+
+Image image_scale(Image source, u32 target_width, u32 target_height)
+{
+    Image image_scaled = {0};
+
+    f32 aspect_ratio = (f32)source.w / source.h;
+
+    image_scaled.data = PUSH_ARRAY(source.arena, RGBPixel, target_width * target_height);
+
+    return image_scaled;
+    
+}
