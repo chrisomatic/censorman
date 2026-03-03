@@ -157,9 +157,63 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
 {
     Image image_scaled = {0};
 
-    f32 aspect_ratio = (f32)source.w / source.h;
+    if(source.w >= source.h)
+    {
+        image_scaled.w = target_width;
+        image_scaled.h = source.h * (target_width / source.w);
+    }
+    else
+    {
+        image_scaled.h = target_height;
+        iamge_scaled.w = source.w * (target_height / source.h);
+    }
 
-    image_scaled.data = PUSH_ARRAY(source.arena, RGBPixel, target_width * target_height);
+    image_scaled.data = PUSH_ARRAY(source.arena, RGBPixel, image_scaled.w * image_scaled.h);
+
+    ratio_x = (f32)(source.w - 1) / (image_scaled.w - 1);
+    ratio_y = (f32)(source.h - 1) / (image_scaled.h - 1);
+
+    for(int j = 0; j < image_scaled.h; ++j)
+    {
+        for(int i = 0; i < image_scaled.w; ++i)
+        {
+            f32 src_x = i * ratio_x;
+            f32 src_y = j * ratio_y;
+
+            u32 x_l = floor(src_x);
+            u32 y_l = floor(src_y);
+            u32 x_h = ceil(src_x);
+            u32 y_h = ceil(src_y);
+
+            RGBPixel p11 = image.data[(image.w)*y_l + x_l];
+            RGBPixel p12 = image.data[(image.w)*y_h + x_l];
+            RGBPixel p21 = image.data[(image.w)*y_l + x_h];
+            RGBPixel p22 = image.data[(image.w)*y_h + x_h];
+
+            f32 weight_x = src_x - x_l;
+            f32 weight_y = src_y - y_l;
+
+            RGBPixel r1 = {
+                (p21.r * weight_x) + (p11.r * (1.0 - weight_x)),
+                (p21.g * weight_x) + (p11.g * (1.0 - weight_x)),
+                (p21.b * weight_x) + (p11.b * (1.0 - weight_x))
+            };
+
+            RGBPixel r2 = {
+                (p22.r * weight_x) + (p12.r * (1.0 - weight_x)),
+                (p22.g * weight_x) + (p12.g * (1.0 - weight_x)),
+                (p22.b * weight_x) + (p12.b * (1.0 - weight_x))
+            };
+
+            RGBPixel p = {
+                (r2.r * weight_y) + (r1.r * (1.0 - weight_y)),
+                (r2.g * weight_y) + (r1.g * (1.0 - weight_y)),
+                (r2.b * weight_y) + (r1.b * (1.0 - weight_y))
+            };
+
+            MemoryCopy(&image_scaled.data[j*image_scaled.w + i], &p, sizeof(RGBPixel));
+        }
+    }
 
     return image_scaled;
     
