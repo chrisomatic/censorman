@@ -187,6 +187,7 @@ StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArr
 ///////////////////////////////////////
 
 b32    os_path_is_directory(String path);
+String os_path_concat(String root, String leaf);
 String os_path_get_extension(String path);
 String os_path_get_directory(String path);
 String os_path_get_file(String path);

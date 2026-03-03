@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ncnn/c_api.h"
+
 typedef enum
 {
     DETECT_TYPE_NONE = 0,
@@ -14,8 +16,16 @@ typedef struct
 {
     u16 x;
     u16 y;
+} Point;
+
+typedef struct
+{
+    u16 x;
+    u16 y;
     u16 w;
     u16 h;
+    u16 confidence;
+    Point landmarks[5];
 } Box;
 
 typedef struct
@@ -25,4 +35,16 @@ typedef struct
     List *boxes;
 } DetectArgs;
 
-void *detect(void *args);
+typedef struct
+{
+    ncnn_net_t net;
+    b32 initialized;
+    u16 net_w;
+    u16 net_h;
+} Model;
+
+List detect_faces(Arena *arena, Image *image);
+List detect_persons(Arena *arena, Image *image);
+
+b32 detect_init(void);
+void *detect(void *args); // thread compatible

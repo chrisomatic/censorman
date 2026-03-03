@@ -19,17 +19,22 @@ typedef struct
     u8 r;
     u8 g;
     u8 b;
-} RGBPixel;
+} RGBColor;
 
 typedef struct
 {
-    RGBPixel *data;
+    RGBColor *data;
 
     u32 w; // width
     u32 h; // height
     u32 n; // channels
 
     Rotation rotation;
+
+    // scaled properties
+    f32 scale;
+    u32 pad_x;
+    u32 pad_y;
 
     Arena *arena;
 } Image;
@@ -42,3 +47,5 @@ b32 image_save(Image *image, String path);
 
 Image image_rotate(Image source, u32 degrees, ClockDir direction);
 Image image_scale(Image source, u32 target_w, u32 target_h);
+
+void image_print(Image *image);

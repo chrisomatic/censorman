@@ -270,7 +270,7 @@ b32 os_file_create(char *file_path)
 
 b32 os_file_create_directory(char *dir_path)
 {
-    s32 err = mkdir(dir_path, 0644);
+    s32 err = mkdir(dir_path, 0755);
     return (err == 0);
 }
 
@@ -288,8 +288,10 @@ b32 os_file_delete_directory(char *dir_path)
 
 b32 os_file_exists(char *file_path)
 {
-     if(access(file_path, F_OK)) return true;
-     else return false;
+     if(access(file_path, F_OK) == 0)
+         return true;
+
+     return false;
 }
 
 void os_file_close(OS_File file)

@@ -49,5 +49,5 @@ typedef struct
 
 Settings settings_default();
 
-Settings settings_parse_cmd_line(int argc, char **args);
+Settings settings_parse(Arena *arena, int argc, char **args);
 void settings_print(Settings *settings);

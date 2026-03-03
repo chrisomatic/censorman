@@ -39,12 +39,13 @@ Image image_load(Arena *arena, String path)
     image.w = w;
     image.h = h;
     image.n = 3;
-    image.data = PUSH_ARRAY(image.arena, RGBPixel, w*h);
+    image.data = PUSH_ARRAY(image.arena, RGBColor, w*h);
+    image.scale = 1.0;
 
     // pack RGB (remove alpha channel if needed)
     for(s32 i = 0; i < w*h; ++i)
     {
-        RGBPixel *pixel = &image.data[i];
+        RGBColor *pixel = &image.data[i];
 
         pixel->r = data[i*n+0];
         pixel->g = data[i*n+1];
@@ -99,7 +100,7 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
     
     b32 dim_flipped = (degrees == ROTATE_90 || degrees == ROTATE_270);
 
-    output.data          = PUSH_ARRAY(source.arena, RGBPixel, source.w * source.h);
+    output.data          = PUSH_ARRAY(source.arena, RGBColor, source.w * source.h);
     output.w             = dim_flipped ? source.h : source.w;
     output.h             = dim_flipped ? source.w : source.h;
     output.n             = source.n;
@@ -140,10 +141,10 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
                     break;
             }
 
-            RGBPixel *s_pixel = &source.data[(y*source.w + x)];
-            RGBPixel *d_pixel = &output.data[(out_y*output.w + out_x)];
+            RGBColor *s_pixel = &source.data[(y*source.w + x)];
+            RGBColor *d_pixel = &output.data[(out_y*output.w + out_x)];
 
-            MemoryCopy(d_pixel, s_pixel, sizeof(RGBPixel));
+            MemoryCopy(d_pixel, s_pixel, sizeof(RGBColor));
         }
     }
 
@@ -157,25 +158,37 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
 {
     Image image_scaled = {0};
 
-    if(source.w >= source.h)
+    image_scaled.n = source.n;
+    image_scaled.arena = source.arena;
+    image_scaled.rotation = source.rotation;
+
+    b32 landscape = (source.w >= source.h);
+
+    if(landscape)
     {
+        image_scaled.scale = (f32)target_width / source.w;
         image_scaled.w = target_width;
-        image_scaled.h = source.h * (target_width / source.w);
+        image_scaled.h = source.h * image_scaled.scale;
+        image_scaled.pad_y = ABS(target_height - image_scaled.h) / 2;
     }
     else
     {
+        image_scaled.scale = (f32)target_height / source.h;
         image_scaled.h = target_height;
-        iamge_scaled.w = source.w * (target_height / source.h);
+        image_scaled.w = source.w * image_scaled.scale;
+        image_scaled.pad_x = ABS(target_width - image_scaled.w) / 2;
     }
 
-    image_scaled.data = PUSH_ARRAY(source.arena, RGBPixel, image_scaled.w * image_scaled.h);
+    image_scaled.data = PUSH_ARRAY(source.arena, RGBColor, target_width * target_height);
 
-    ratio_x = (f32)(source.w - 1) / (image_scaled.w - 1);
-    ratio_y = (f32)(source.h - 1) / (image_scaled.h - 1);
+    // resize
 
-    for(int j = 0; j < image_scaled.h; ++j)
+    f32 ratio_x = (f32)(source.w - 1) / (image_scaled.w - 1);
+    f32 ratio_y = (f32)(source.h - 1) / (image_scaled.h - 1);
+
+    for(u32 j = 0; j < image_scaled.h; ++j)
     {
-        for(int i = 0; i < image_scaled.w; ++i)
+        for(u32 i = 0; i < image_scaled.w; ++i)
         {
             f32 src_x = i * ratio_x;
             f32 src_y = j * ratio_y;
@@ -185,36 +198,53 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
             u32 x_h = ceil(src_x);
             u32 y_h = ceil(src_y);
 
-            RGBPixel p11 = image.data[(image.w)*y_l + x_l];
-            RGBPixel p12 = image.data[(image.w)*y_h + x_l];
-            RGBPixel p21 = image.data[(image.w)*y_l + x_h];
-            RGBPixel p22 = image.data[(image.w)*y_h + x_h];
+            RGBColor p11 = source.data[(source.w)*y_l + x_l];
+            RGBColor p12 = source.data[(source.w)*y_h + x_l];
+            RGBColor p21 = source.data[(source.w)*y_l + x_h];
+            RGBColor p22 = source.data[(source.w)*y_h + x_h];
 
             f32 weight_x = src_x - x_l;
             f32 weight_y = src_y - y_l;
 
-            RGBPixel r1 = {
+            RGBColor r1 = {
                 (p21.r * weight_x) + (p11.r * (1.0 - weight_x)),
                 (p21.g * weight_x) + (p11.g * (1.0 - weight_x)),
                 (p21.b * weight_x) + (p11.b * (1.0 - weight_x))
             };
 
-            RGBPixel r2 = {
+            RGBColor r2 = {
                 (p22.r * weight_x) + (p12.r * (1.0 - weight_x)),
                 (p22.g * weight_x) + (p12.g * (1.0 - weight_x)),
                 (p22.b * weight_x) + (p12.b * (1.0 - weight_x))
             };
 
-            RGBPixel p = {
+            RGBColor p = {
                 (r2.r * weight_y) + (r1.r * (1.0 - weight_y)),
                 (r2.g * weight_y) + (r1.g * (1.0 - weight_y)),
                 (r2.b * weight_y) + (r1.b * (1.0 - weight_y))
             };
 
-            MemoryCopy(&image_scaled.data[j*image_scaled.w + i], &p, sizeof(RGBPixel));
+            u32 dst_i = i + image_scaled.pad_x;
+            u32 dst_j = j + image_scaled.pad_y;
+            MemoryCopy(&image_scaled.data[dst_j*image_scaled.w + dst_i], &p, sizeof(RGBColor));
         }
     }
 
+    image_scaled.w = landscape ? image_scaled.w : target_width;
+    image_scaled.h = landscape ? target_height  : image_scaled.h;
+
     return image_scaled;
     
+}
+
+void image_print(Image *image)
+{
+    logi("===================");
+    logi("Image %p:", image);
+    logi("    w: %u", image->w);
+    logi("    h: %u", image->h);
+    logi("    n: %u", image->n);
+    logi("  rot: %u", image->rotation);
+    logi("arena: %p", image->arena);
+    logi("===================");
 }

@@ -60,6 +60,14 @@ void list_add(List *list, void *item)
     list->count++;
 }
 
+void list_add_list(List *list, List *add)
+{
+    for(u64 i = 0; i < add->count; ++i)
+    {
+        list_add(list, list_get(add, i));
+    }
+}
+
 b32 list_remove(List *list, u64 index)
 {
     ListNode *ln = list->head;

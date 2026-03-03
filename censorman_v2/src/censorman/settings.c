@@ -6,7 +6,7 @@ Settings settings_default()
     settings.detect_types[0] = DETECT_TYPE_FACE;
     settings.detect_type_count = 1;
 
-    settings.filters[0].type = FILTER_TYPE_BLUR_GAUSSIAN;
+    settings.filters[0].type = FILTER_TYPE_BLACKOUT;
     settings.filters[0].blur_strength = 0.6;
     settings.filter_count = 1;
 
@@ -27,7 +27,7 @@ Settings settings_default()
     return settings;
 }
 
-Settings settings_parse_cmd_line(int argc, char **args)
+Settings settings_parse(Arena *arena, int argc, char **args)
 {
     Settings settings = settings_default();
 
@@ -50,7 +50,7 @@ Settings settings_parse_cmd_line(int argc, char **args)
     String str_blur_strength    = cmdline_get_value(&cmdline, S("blur_strength"));
     String str_bbx_output       = cmdline_get_value(&cmdline, S("bbx_output"));
 
-    StringArray strs_asset        = string_split(scratch.arena, str_assets, S(","));
+    StringArray strs_assets       = string_split(scratch.arena, str_assets, S(","));
     StringArray strs_detect_types = string_split(scratch.arena, str_detect_types, S(","));
     StringArray strs_filters      = string_split(scratch.arena, str_filters, S(","));
 
@@ -62,13 +62,79 @@ Settings settings_parse_cmd_line(int argc, char **args)
     if(str_thread_count.len > 0)     settings.thread_count         = string_to_s64(str_thread_count);
     if(str_buffer_size.len > 0)      settings.buffer_size          = string_to_s64(str_buffer_size);
 
-    b32 f_no_encode = cmdline_has_flag(&cmdline,  S("no_encode"));
-    b32 f_debug     = cmdline_has_flag(&cmdline,  S("debug"));
-    b32 f_verbose   = cmdline_has_flag(&cmdline,  S("verbose"));
+    b32 f_no_encode = cmdline_has_flag(&cmdline, S("no_encode"));
+    b32 f_debug     = cmdline_has_flag(&cmdline, S("debug"));
+    b32 f_verbose   = cmdline_has_flag(&cmdline, S("verbose"));
+    b32 f_help      = cmdline_has_flag(&cmdline, S("h"));
+        f_help     |= cmdline_has_flag(&cmdline, S("help"));
 
     if(f_no_encode) settings.no_encode = true;
-    if(f_debug)     settings.debug = true;
-    if(f_verbose)   settings.verbose = true;
+    if(f_debug)     settings.debug     = true;
+    if(f_verbose)   settings.verbose   = true;
+    
+    // create output directory if needed
+    char *output_folder_cstr = string_to_cstr(scratch.arena, settings.output_folder);
+    b32 output_folder_exists = os_file_exists(output_folder_cstr);
+
+    if(!output_folder_exists)
+    {
+        os_file_create_directory(output_folder_cstr);
+    }
+
+    // handle input assets
+    
+    StringList exts_image = string_list_create(scratch.arena);
+    string_list_add(&exts_image, S("png"));
+    string_list_add(&exts_image, S("jpg"));
+    string_list_add(&exts_image, S("jpeg"));
+
+    StringList exts_video = string_list_create(scratch.arena);
+    string_list_add(&exts_video, S("mp4"));
+    string_list_add(&exts_video, S("mov"));
+    
+    for(int i = 0; i < strs_assets.count; ++i)
+    {
+        Asset *asset = &settings.assets[settings.asset_count++];
+
+        String str_asset = strs_assets.items[i];
+
+        b32 is_directory = os_path_is_directory(str_asset);
+
+        if(is_directory)
+        {
+            logd("TODO");
+        }
+        else
+        {
+            // file
+            String ext = os_path_get_extension(str_asset);
+            ext = string_to_lower(scratch.arena, ext);
+
+            if(string_in_list(ext, exts_image))
+            {
+                asset->type = TYPE_IMAGE;
+                asset->path = string_copy(arena, str_asset);
+                asset->output_path = string_concat(arena, 3, settings.output_folder, S("/"), os_path_get_file(str_asset));
+            }
+            else if(string_in_list(ext, exts_video))
+            {
+                asset->type = TYPE_VIDEO;
+                asset->path = string_copy(arena, str_asset);
+                asset->output_path = string_nil(); // TODO
+            }
+            else
+            {
+                asset->type = TYPE_UNSUPPORTED;
+                asset->path = string_nil();
+                asset->output_path = string_nil(); // TODO
+            }
+        }
+    }
+
+    if(settings.verbose)
+    {
+        os_set_log_level(LOG_LEVEL_VERBOSE);
+    }
 
     scratch_end(scratch);
 
@@ -83,7 +149,7 @@ void settings_print(Settings *settings)
     for(int i = 0 ; i < settings->asset_count; ++i)
     {
         Asset *asset = &settings->assets[i];
-        logi("   %d: [%d] " STR_FMT, i, asset->type, STR_ARG(asset->path));
+        logi("   %d: [%d] path: " STR_FMT ", output: " STR_FMT, i, asset->type, STR_ARG(asset->path), STR_ARG(asset->output_path));
     }
 
     logi("  Detect Types (%d):", settings->detect_type_count);

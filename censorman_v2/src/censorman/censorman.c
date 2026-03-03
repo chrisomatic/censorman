@@ -42,16 +42,16 @@ Arena *arena_perm;
 
 int main(int argc, char **args)
 {
+    // initialization
     censorman_version();
+    os_time_init();
+    //os_thread_init();
+    detect_init();
+    arena_perm = arena_create(MB(16));
 
     // parse command line
-    Settings settings = settings_parse_cmd_line(argc, args);
+    Settings settings = settings_parse(arena_perm, argc, args);
     settings_print(&settings);
-
-    // initialization
-    os_time_init();
-    //thread_init();
-    arena_perm = arena_create(MB(16));
 
     for(u32 i = 0; i < settings.asset_count; ++i)
     {
@@ -62,10 +62,11 @@ int main(int argc, char **args)
             Image img_src = image_load(arena_perm, asset->path);
 
             Image img = img_src;
+
             img = image_scale(img, 640, 640);
             img = image_rotate(img, 0, CW);
 
-            List box_list = {0};
+            List box_list = list_create(arena_perm, sizeof(Box));
 
             // [detections]
             for(u32 j = 0; j < settings.detect_type_count; ++j)
@@ -80,6 +81,8 @@ int main(int argc, char **args)
                 detect(&detect_args);
             }
 
+            logv("Box count: %u", box_list.count);
+
             // [apply filters]
             for(u32 j = 0; j < settings.filter_count; ++j)
             {
@@ -88,13 +91,13 @@ int main(int argc, char **args)
                 for(u64 k = 0; k < box_list.count; ++k)
                 {
                     Box *box = (Box *)list_get(&box_list, k);
+                    logv("Box %u: [ %u %u %u %u ]", k, box->x, box->y, box->w, box->h);
                     filter_apply(filter, &img_src, box);
                 }
             }
 
             // [output]
-            image_save(&img, asset->output_path);
-
+            image_save(&img_src, asset->output_path);
         }
         else if(asset->type == TYPE_VIDEO)
         {
@@ -104,4 +107,3 @@ int main(int argc, char **args)
 
     return CM_SUCCESS;
 }
-

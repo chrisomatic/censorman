@@ -21,4 +21,7 @@ typedef struct
 
 } Filter;
 
+void filter_outline(Image *image, Box *box);
+void filter_blackout(Image *image, Box *box);
+
 void filter_apply(Filter filter, Image *image, Box *box);

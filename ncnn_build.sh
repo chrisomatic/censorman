@@ -23,6 +23,7 @@ cd ncnn
 
 cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX="$PREFIX" \
+      -D NCNN_C_API=ON \
       .
 cmake --build . --config Release
 cmake --build . --config Release --target install
