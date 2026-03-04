@@ -60,28 +60,42 @@ void *detect(void *args)
             break;
     }
 
-    scratch_end(scratch);
-
     // add new boxes to total list
     list_add_list(total_boxes, &new_boxes);
+
+    scratch_end(scratch);
 
     return NULL;
 }
 
-List non_maximum_suppression(List *boxes, f32 iou_threshold)
+s32 box_compare(void *a, void *b)
+{
+    Box *box_a = (Box *)a;
+    Box *box_b = (Box *)b;
+
+    s32 result =   (box_a->confidence < box_b->confidence) 
+                 - (box_a->confidence > box_b->confidence);
+
+    return result;
+}
+
+List non_maximum_suppression(List boxes, f32 iou_threshold)
 {
     // sort boxes
 
+    ListArray boxes_arr = list_to_array(&boxes);
+    list_array_sort(&boxes_arr, box_compare);
+
     // suppress
 
-    List boxes_curated = list_create(boxes->arena, sizeof(Box));
-    b8 *suppressed = PUSH_ARRAY(boxes->arena, b8, boxes->count);
+    List boxes_curated = list_create(boxes.arena, sizeof(Box));
+    b8 *suppressed = PUSH_ARRAY(boxes.arena, b8, boxes_arr.count);
 
-    for(u64 i = 0; i < boxes->count; ++i)
+    for(u64 i = 0; i < boxes_arr.count; ++i)
     {
         if(suppressed[i]) continue;
 
-        Box *box_a = (Box *)list_get(boxes, i);
+        Box *box_a = (Box *)(boxes_arr.items + i*sizeof(Box));
         list_add(&boxes_curated, box_a);
 
         u32 ax1 = box_a->x;
@@ -91,11 +105,11 @@ List non_maximum_suppression(List *boxes, f32 iou_threshold)
 
         f64 a_area = box_a->w * box_a->h;
 
-        for(u64 j = i + 1; i < boxes->count; ++j)
+        for(u64 j = i + 1; i < boxes_arr.count; ++j)
         {
             if(suppressed[j]) continue;
 
-            Box *box_b = (Box *)list_get(boxes, j);
+            Box *box_b = (Box *)(boxes_arr.items + j*sizeof(Box));
 
             u32 bx1 = box_b->x;
             u32 by1 = box_b->y;
@@ -111,7 +125,8 @@ List non_maximum_suppression(List *boxes, f32 iou_threshold)
 
             u64 inter = MAX(0, ix2 - ix1) * MAX(0, iy2 - iy1);
 
-            f32 iou = inter / (a_area + b_area - inter);
+            f32 iou = (f32)inter / (a_area + b_area - inter);
+
             if (iou > iou_threshold)
                 suppressed[j] = true;
         }
@@ -243,7 +258,7 @@ List detect_faces(Arena *arena, Image *image)
         }
     }
 
-    non_maximum_suppression(&boxes, 0.45);
+    boxes = non_maximum_suppression(&boxes, 0.45);
 
     return boxes;
 }

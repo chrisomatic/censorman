@@ -35,6 +35,9 @@ void filter_outline(Image *image, Box *box)
 
 RGBColor blend_color(RGBColor *pixel, RGBColor color, f32 opacity)
 {
+    if(opacity == 1.0)
+        return color;
+
     RGBColor ret_color = {0};
 
     ret_color.r = opacity*color.r + (1.0 - opacity)*pixel->r;
@@ -52,8 +55,8 @@ static void _draw_box(Image* image, Box *box, RGBColor color, b32 filled, f32 op
     // draw first line
     for(s32 i = 0; i <= box->w; ++i)
     {
-        RGBColor r = opacity == 1.0 ? color : blend_color(curr+i, color, opacity);
-        MemoryCopy(curr+i, &r, sizeof(r));
+        RGBColor *r = &curr[i];
+        *r = blend_color(r, color, opacity);
     }
 
     curr += image->w;
@@ -64,8 +67,8 @@ static void _draw_box(Image* image, Box *box, RGBColor color, b32 filled, f32 op
         {
             for(s32 i = 0; i < box->w; ++i)
             {
-                RGBColor r = opacity == 1.0 ? color : blend_color(curr+i,color,opacity);
-                MemoryCopy(curr+i, &r, sizeof(r));
+                RGBColor *r = &curr[i];
+                *r = blend_color(r, color, opacity);
             }
             curr += image->w;
         }
@@ -74,11 +77,11 @@ static void _draw_box(Image* image, Box *box, RGBColor color, b32 filled, f32 op
     {
         for(s32 i = 0; i < box->h-1; ++i)
         {
-            RGBColor cl = opacity == 1.0 ? color : blend_color(curr,color,opacity);
-            RGBColor cr = opacity == 1.0 ? color : blend_color(curr+box->w,color,opacity);
+            RGBColor *cl = &curr[0];
+            RGBColor *cr = &curr[box->w];
 
-            MemoryCopy(curr, &cl, sizeof(cl));          // left pixel
-            MemoryCopy(curr + box->w, &cr, sizeof(cr)); // right pixel
+            *cl = blend_color(cl, color, opacity);
+            *cr = blend_color(cr, color, opacity);
 
             curr += image->w;
         }
@@ -86,7 +89,7 @@ static void _draw_box(Image* image, Box *box, RGBColor color, b32 filled, f32 op
 
     for(s32 i = 0; i <= box->w; ++i)
     {
-        RGBColor r = opacity == 1.0 ? color : blend_color(curr+i,color,opacity);
-        MemoryCopy(curr+i, &r, sizeof(r));
+        RGBColor *r = &curr[i];
+        *r = blend_color(r, color, opacity);
     }
 }
