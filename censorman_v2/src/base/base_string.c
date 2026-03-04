@@ -784,7 +784,7 @@ StringArray string_list_to_array(StringList sl)
 
 StringArray string_split(Arena *arena, String base, String split)
 {
-    u64 num_strings = 1;
+    u64 num_strings = base.len > 0 ? 1 : 0;
     s64 split_indices[2048] = {0}; // @HARDCODED @NOTE: Arbitrary limit
 
     for(u64 i = 0; i < base.len; ++i)

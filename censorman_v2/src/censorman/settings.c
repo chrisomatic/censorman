@@ -6,7 +6,7 @@ Settings settings_default()
     settings.detect_types[0] = DETECT_TYPE_FACE;
     settings.detect_type_count = 1;
 
-    settings.filters[0].type = FILTER_TYPE_BLACKOUT;
+    settings.filters[0].type = FILTER_TYPE_BLUR_GAUSSIAN;
     settings.filters[0].blur_strength = 0.6;
     settings.filter_count = 1;
 
@@ -17,7 +17,9 @@ Settings settings_default()
     settings.nms_threshold        = 0.45;
     settings.confidence_threshold = 0.25;
     settings.box_padding          = 0.15;
-    settings.smoothing_window     = 0.24; // 240ms
+    settings.blur_strength        = 0.60;
+    settings.block_scale          = 0.18;
+    settings.smoothing_window     = 0.240; // 240ms
 
     settings.no_encode = false;
     settings.no_rotate = false;
@@ -59,6 +61,8 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(str_nms_threshold.len > 0)    settings.nms_threshold        = string_to_f64(str_nms_threshold);
     if(str_box_padding.len > 0)      settings.box_padding          = string_to_f64(str_box_padding);
     if(str_smoothing_window.len > 0) settings.smoothing_window     = string_to_f64(str_smoothing_window);
+    if(str_block_scale.len > 0)      settings.block_scale          = string_to_f64(str_block_scale);
+    if(str_blur_strength.len > 0)    settings.blur_strength        = string_to_f64(str_blur_strength);
     if(str_thread_count.len > 0)     settings.thread_count         = string_to_s64(str_thread_count);
     if(str_buffer_size.len > 0)      settings.buffer_size          = string_to_s64(str_buffer_size);
 
@@ -94,32 +98,42 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     
     for(int i = 0; i < strs_assets.count; ++i)
     {
-        Asset *asset = &settings.assets[settings.asset_count++];
-
         String str_asset = strs_assets.items[i];
 
         b32 is_directory = os_path_is_directory(str_asset);
 
+        String input_folder = {0};
+        StringArray file_names_arr = {0};
+
         if(is_directory)
         {
-            logd("TODO");
+            input_folder = str_asset;
+            file_names_arr = os_get_files_in_directory(scratch.arena, str_asset);
         }
         else
         {
-            // file
-            String ext = os_path_get_extension(str_asset);
+            input_folder = os_path_get_directory(str_asset);
+            file_names_arr = string_array_create(scratch.arena, 1, os_path_get_file(str_asset));
+        }
+
+        for(int j = 0; j < file_names_arr.count; ++j)
+        {
+            String file_str = file_names_arr.items[j];
+
+            Asset *asset = &settings.assets[settings.asset_count++];
+            String ext = os_path_get_extension(file_str);
             ext = string_to_lower(scratch.arena, ext);
 
             if(string_in_list(ext, exts_image))
             {
                 asset->type = TYPE_IMAGE;
-                asset->path = string_copy(arena, str_asset);
-                asset->output_path = string_concat(arena, 3, settings.output_folder, S("/"), os_path_get_file(str_asset));
+                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, S("/"), file_str));
+                asset->output_path = string_concat(arena, 3, settings.output_folder, S("/"), file_str);
             }
             else if(string_in_list(ext, exts_video))
             {
                 asset->type = TYPE_VIDEO;
-                asset->path = string_copy(arena, str_asset);
+                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, S("/"), file_str));
                 asset->output_path = string_nil(); // TODO
             }
             else
@@ -128,6 +142,31 @@ Settings settings_parse(Arena *arena, int argc, char **args)
                 asset->path = string_nil();
                 asset->output_path = string_nil(); // TODO
             }
+        }
+    }
+
+    if(strs_filters.count > 0)
+    {
+        settings.filter_count = 0;
+        for(u32 i = 0; i < strs_filters.count; ++i)
+        {
+            String filter_str = string_trim(strs_filters.items[i]);
+            FilterType type = filter_from_string(filter_str);
+            if(type == FILTER_TYPE_NONE) continue;
+
+            Filter *filter = &settings.filters[settings.filter_count];
+            filter->type = type;
+
+            if(type == FILTER_TYPE_BLUR_BOX || type == FILTER_TYPE_BLUR_GAUSSIAN)
+            {
+                filter->blur_strength = settings.blur_strength;
+            }
+            else if(type == FILTER_TYPE_PIXELATE)
+            {
+                filter->block_scale = settings.block_scale;
+            }
+
+            settings.filter_count++;
         }
     }
 
@@ -145,37 +184,37 @@ void settings_print(Settings *settings)
 {
     logi("");
     logi("=============== Settings ===============");
-    logi("  Assets (%d):", settings->asset_count);
+    logi("Assets (%d):", settings->asset_count);
     for(int i = 0 ; i < settings->asset_count; ++i)
     {
         Asset *asset = &settings->assets[i];
         logi("   %d: [%d] path: " STR_FMT ", output: " STR_FMT, i, asset->type, STR_ARG(asset->path), STR_ARG(asset->output_path));
     }
 
-    logi("  Detect Types (%d):", settings->detect_type_count);
+    logi("Detect Types (%d):", settings->detect_type_count);
     for(int i = 0 ; i < settings->detect_type_count; ++i)
     {
         DetectType *detect_type = &settings->detect_types[i];
         logi("   %d: %d", i, *detect_type);
     }
 
-    logi("  Filters (%d):", settings->filter_count);
+    logi("Filters (%d):", settings->filter_count);
     for(int i = 0 ; i < settings->filter_count; ++i)
     {
         Filter *filter = &settings->filters[i];
-        logi("    %d: %d", i, filter->type);
+        logi("   %d: " STR_FMT, i, STR_ARG(filter_to_string(filter->type)));
 
         switch(filter->type)
         {
             case FILTER_TYPE_BLUR_BOX:
             case FILTER_TYPE_BLUR_GAUSSIAN:
-                logi("   Blur Strength: %f", filter->blur_strength);
+                logi("      (blur strength: %f)", filter->blur_strength);
                 break;
             case FILTER_TYPE_PIXELATE:
-                logi("   Block Scale: %f", filter->block_scale);
+                logi("      (block scale: %f)", filter->block_scale);
                 break;
             case FILTER_TYPE_TEXTURE:
-                logi("   Texture Path: " STR_FMT, STR_ARG(filter->texture_path));
+                logi("      (texture path: " STR_FMT ")", STR_ARG(filter->texture_path));
                 break;
             case FILTER_TYPE_BLACKOUT:
             case FILTER_TYPE_NONE:
@@ -184,15 +223,15 @@ void settings_print(Settings *settings)
         }
     }
 
-    logi("  Thread Count:           %u", settings->thread_count);
-    logi("  Confidence Threshold:   %f", settings->confidence_threshold);
-    logi("  Buffer Size:            %lu B", settings->buffer_size);
-    logi("  Box Padding:            %f", settings->box_padding);
-    logi("  Smoothing Window:       %f", settings->smoothing_window);
-    logi("  No Encoding:            %s", STR_BOOL(settings->no_encode));
-    logi("  No Rotate:              %s", STR_BOOL(settings->no_rotate));
-    logi("  Bounding Box Output:    " STR_FMT, STR_ARG(settings->bbx_output));
-    logi("  Debug:                  %s", settings->debug ? "ON" : "OFF");
-    logi("  Verbose:                %s", settings->verbose ? "ON" : "OFF");
+    logi("Thread Count:           %u", settings->thread_count);
+    logi("Confidence Threshold:   %f", settings->confidence_threshold);
+    logi("Buffer Size:            %lu B", settings->buffer_size);
+    logi("Box Padding:            %f", settings->box_padding);
+    logi("Smoothing Window:       %f", settings->smoothing_window);
+    logi("No Encoding:            %s", STR_BOOL(settings->no_encode));
+    logi("No Rotate:              %s", STR_BOOL(settings->no_rotate));
+    logi("Bounding Box Output:    " STR_FMT, STR_ARG(settings->bbx_output));
+    logi("Debug:                  %s", settings->debug ? "ON" : "OFF");
+    logi("Verbose:                %s", settings->verbose ? "ON" : "OFF");
     logi("========================================");
 }

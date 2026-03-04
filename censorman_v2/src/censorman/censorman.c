@@ -39,15 +39,18 @@ void censorman_version()
 }
 
 Arena *arena_perm;
+Arena *arena_frame;
 
 int main(int argc, char **args)
 {
     // initialization
     censorman_version();
+    arena_perm  = arena_create(MB(16));
+    arena_frame = arena_create(MB(16));
+
     os_time_init();
     //os_thread_init();
     detect_init();
-    arena_perm = arena_create(MB(16));
 
     // parse command line
     Settings settings = settings_parse(arena_perm, argc, args);
@@ -55,18 +58,19 @@ int main(int argc, char **args)
 
     for(u32 i = 0; i < settings.asset_count; ++i)
     {
+        arena_reset(arena_frame);
         Asset *asset = &settings.assets[i];
 
         if(asset->type == TYPE_IMAGE)
         {
-            Image img_src = image_load(arena_perm, asset->path);
+            Image img_src = image_load(arena_frame, asset->path);
 
             Image img = img_src;
 
             img = image_scale(img, 640, 640);
             img = image_rotate(img, 0, CW);
 
-            List box_list = list_create(arena_perm, sizeof(Box));
+            List box_list = list_create(arena_frame, sizeof(Box));
 
             // [detections]
             for(u32 j = 0; j < settings.detect_type_count; ++j)

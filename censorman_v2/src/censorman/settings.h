@@ -38,6 +38,8 @@ typedef struct
     f32 confidence_threshold;
     f32 box_padding;
     f32 smoothing_window; // [0.0 - 1.0]
+    f32 blur_strength;    // [0.0 - 1.0]
+    f32 block_scale;      // [0.0 - 1.0]
 
     // flags
     b8 no_encode;

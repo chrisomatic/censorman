@@ -1,6 +1,6 @@
 
 static Model model_face    = {0};
-static Model model_persons = {0};
+static Model model_person = {0};
 
 b32 detect_init(void)
 {
@@ -9,17 +9,29 @@ b32 detect_init(void)
         model_face.net = ncnn_net_create();
         model_face.net_w = 640;
         model_face.net_h = 640;
-        ncnn_net_load_param(model_face.net, "models/scrfd_500m_gnkps.ncnn.param");
-        ncnn_net_load_model(model_face.net, "models/scrfd_500m_gnkps.ncnn.bin");
+
+        int param_ret = ncnn_net_load_param(model_face.net, "models/scrfd_500m_gnkps.ncnn.param");
+        int model_ret = ncnn_net_load_model(model_face.net, "models/scrfd_500m_gnkps.ncnn.bin");
+
+        model_face.initialized = (param_ret == 0 && model_ret == 0);
+
     }
 
-    if(!model_persons.initialized)
+    if(!model_person.initialized)
     {
-        model_persons.net = ncnn_net_create();
-        model_persons.net_w = 640;
-        model_persons.net_h = 640;
-        ncnn_net_load_param(model_persons.net, "models/scrfd_person_2.5g.ncnn.param");
-        ncnn_net_load_model(model_persons.net, "models/scrfd_person_2.5g.ncnn.bin");
+        model_person.net = ncnn_net_create();
+        model_person.net_w = 640;
+        model_person.net_h = 640;
+
+        int param_ret = ncnn_net_load_param(model_person.net, "models/scrfd_person_2.5g.ncnn.param");
+        int model_ret = ncnn_net_load_model(model_person.net, "models/scrfd_person_2.5g.ncnn.bin");
+        model_person.initialized = (param_ret == 0 && model_ret == 0);
+    }
+
+    if(!model_face.initialized || !model_person.initialized)
+    {
+        loge("Failed with model loading. Loaded [ Face: %s, Person: %s ]", STR_BOOL(model_face.initialized), STR_BOOL(model_person.initialized));
+        return false;
     }
 
     return true;
@@ -86,6 +98,13 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
     ListArray boxes_arr = list_to_array(&boxes);
     list_array_sort(&boxes_arr, box_compare);
 
+    logv("Boxes array count: %u", boxes_arr.count);
+    for(int i = 0; i < boxes_arr.count; ++i)
+    {
+        Box *b = (Box *)(boxes_arr.items + i*sizeof(Box));
+        box_print(b);
+    }
+
     // suppress
 
     List boxes_curated = list_create(boxes.arena, sizeof(Box));
@@ -105,7 +124,7 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
 
         f64 a_area = box_a->w * box_a->h;
 
-        for(u64 j = i + 1; i < boxes_arr.count; ++j)
+        for(u64 j = i + 1; j < boxes_arr.count; ++j)
         {
             if(suppressed[j]) continue;
 
@@ -118,19 +137,22 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
 
             f64 b_area = box_b->w * box_b->h;
 
-            u32 ix1 = MAX(ax1, bx1);
-            u32 iy1 = MAX(ay1, by1);
-            u32 ix2 = MIN(ax2, bx2);
-            u32 iy2 = MIN(ay2, by2);
+            s32 ix1 = MAX(ax1, bx1);
+            s32 iy1 = MAX(ay1, by1);
+            s32 ix2 = MIN(ax2, bx2);
+            s32 iy2 = MIN(ay2, by2);
 
-            u64 inter = MAX(0, ix2 - ix1) * MAX(0, iy2 - iy1);
-
-            f32 iou = (f32)inter / (a_area + b_area - inter);
+            s32 inter_w = MAX(0, ix2 - ix1);
+            s32 inter_h = MAX(0, iy2 - iy1);
+            f64 inter = (f64)(inter_w * inter_h);
+            f64 iou = inter / (a_area + b_area - inter);
 
             if (iou > iou_threshold)
                 suppressed[j] = true;
         }
     }
+
+    logv("Boxes count after NMS: %u", boxes_curated.count);
 
     return boxes_curated;
 }
@@ -139,7 +161,7 @@ List detect_faces(Arena *arena, Image *image)
 {
     List boxes = list_create(arena, sizeof(Box));
 
-    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->w, image->h, image->n, 0);
+    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->w, image->h, image->w*image->n, 0);
     
     // Maps [0,255] --> [-1,1]
 
@@ -148,13 +170,18 @@ List detect_faces(Arena *arena, Image *image)
     ncnn_mat_substract_mean_normalize(input, mean, norm);
 
     ncnn_extractor_t ex = ncnn_extractor_create(model_face.net);
-    // ex.set_light_mode(true);
 
     ncnn_extractor_input(ex, "in0", input);
 
-    ncnn_mat_t score_8, score_16, score_32;
-    ncnn_mat_t bbox_8, bbox_16, bbox_32;
-    ncnn_mat_t kps_8, kps_16, kps_32;
+    ncnn_mat_t score_8;
+    ncnn_mat_t score_16;
+    ncnn_mat_t score_32;
+    ncnn_mat_t bbox_8;
+    ncnn_mat_t bbox_16;
+    ncnn_mat_t bbox_32;
+    ncnn_mat_t kps_8;
+    ncnn_mat_t kps_16;
+    ncnn_mat_t kps_32;
 
     ncnn_extractor_extract(ex, "out0", &score_8);
     ncnn_extractor_extract(ex, "out1", &score_16);
@@ -173,10 +200,10 @@ List detect_faces(Arena *arena, Image *image)
     // 2 anchors per location, strides 8/16/32
     // 640x640: 80x80x2=12800, 40x40x2=3200, 20x20x2=800
 
-    const s32 strides[] = {8, 16, 32};
+    const s32 strides[]      = {8, 16, 32};
     const s32 anchorCounts[] = {12800, 3200, 800};
 
-    f32 score_threshold = 0.25; // TODO
+    f32 score_threshold = 0.25;
 
     for (s32 s = 0; s < 3; s++)
     {
@@ -191,9 +218,9 @@ List detect_faces(Arena *arena, Image *image)
 
         // flat pointers — layout is anchor-major [count x channels]
         // for dims=2: w=channels, h=count, data is row-major
-        const f32* score = (const f32*)scoreMats[s]; // [count x 1]
-        const f32* bbox  = (const f32*)bboxMats[s]; // [count x 4]
-        const f32* kps   = (const f32*)kpsMats[s]; // [count x 10]
+        const f32* score = (const f32*)ncnn_mat_get_data(scoreMats[s]);
+        const f32* bbox  = (const f32*)ncnn_mat_get_data(bboxMats[s]);
+        const f32* kps   = (const f32*)ncnn_mat_get_data(kpsMats[s]);
 
         // 2 anchors per location, scales [1, 2]
         f32 anchor_scales[2] = {1.0f, 2.0f};
@@ -211,45 +238,51 @@ List detect_faces(Arena *arena, Image *image)
                     s32 idx = (i*cols+j)*2+a;
 
                     f32 prob = score[idx];
-                    if (prob < score_threshold) continue;
+                    if (prob < score_threshold)
+                        continue;
 
                     // anchor center
                     f32 cx = j * stride;
                     f32 cy = i * stride;
 
-                    // bbox decode: ltrb distances scaled by stride
                     f32 l = bbox[idx * 4 + 0] * stride;
                     f32 t = bbox[idx * 4 + 1] * stride;
                     f32 r = bbox[idx * 4 + 2] * stride;
                     f32 b = bbox[idx * 4 + 3] * stride;
 
-                    // map back to original image space
                     f32 x1 = cx - l;
                     f32 y1 = cy - t;
                     f32 x2 = cx + r;
                     f32 y2 = cy + b;
 
+                    s32 x1s = (s32)((x1 - image->pad_x) / image->scale);
+                    s32 y1s = (s32)((y1 - image->pad_y) / image->scale);
+                    s32 x2s = (s32)((x2 - image->pad_x) / image->scale);
+                    s32 y2s = (s32)((y2 - image->pad_y) / image->scale);
+
                     Box box;
-                    box.x = (s32)(((x1) - image->pad_x) / image->scale);
-                    box.y = (s32)(((y1) - image->pad_y) / image->scale);
-                    box.w = (s32)((x2 - x1) / image->scale);
-                    box.h = (s32)((y2 - y1) / image->scale);
+                    box.x = (u16)(x1s);
+                    box.y = (u16)(y1s);
+                    box.w = (u16)(x2s - x1s);
+                    box.h = (u16)(y2s - y1s);
 
-                    // this is maybe redundant
-                    box.x = MAX(0, MIN(box.x, image->w - 1));
-                    box.y = MAX(0, MIN(box.y, image->h - 1));
-                    box.w = MAX(1, MIN(box.w, image->w - box.x));
-                    box.h = MAX(1, MIN(box.h, image->h - box.y));
+                    u32 image_src_w = (u32)(image->w / image->scale);
+                    u32 image_src_h = (u32)(image->h / image->scale);
 
-                    box.confidence = (s32)(prob * 100);
+                    box.x = CLAMP(box.x, 0, image_src_w - 1);
+                    box.y = CLAMP(box.y, 0, image_src_h - 1);
+                    box.w = CLAMP(box.w, 1, image_src_w - box.x - 1);
+                    box.h = CLAMP(box.h, 1, image_src_h - box.y - 1);
+
+                    box.confidence = (u16)(prob*100);
 
                     // landmarks: 5 keypoints, (dx,dy) relative to anchor center
                     for (s32 k = 0; k < 5; k++)
                     {
-                        f32 lx = cx + kps[idx * 10 + k * 2 + 0] * stride;
-                        f32 ly = cy + kps[idx * 10 + k * 2 + 1] * stride;
-                        box.landmarks[k].x = (s32)((lx - image->pad_x) / image->scale);
-                        box.landmarks[k].y = (s32)((ly - image->pad_y) / image->scale);
+                        f32 lx = cx + kps[idx*10 + k*2 + 0] * stride;
+                        f32 ly = cy + kps[idx*10 + k*2 + 1] * stride;
+                        box.landmarks[k].x = (u16)((lx - image->pad_x) / image->scale);
+                        box.landmarks[k].y = (u16)((ly - image->pad_y) / image->scale);
                     }
 
                     list_add(&boxes, &box);
@@ -258,7 +291,23 @@ List detect_faces(Arena *arena, Image *image)
         }
     }
 
-    boxes = non_maximum_suppression(&boxes, 0.45);
+    // cleanup
+    ncnn_mat_destroy(score_8);
+    ncnn_mat_destroy(score_16);
+    ncnn_mat_destroy(score_32);
+    ncnn_mat_destroy(bbox_8);
+    ncnn_mat_destroy(bbox_16);
+    ncnn_mat_destroy(bbox_32);
+    ncnn_mat_destroy(kps_8);
+    ncnn_mat_destroy(kps_16);
+    ncnn_mat_destroy(kps_32);
+
+    ncnn_extractor_destroy(ex);
+    ncnn_mat_destroy(input);
+
+    logv("Found %u boxes before nms", boxes.count);
+
+    boxes = non_maximum_suppression(boxes, 0.45);
 
     return boxes;
 }
@@ -271,4 +320,9 @@ List detect_persons(Arena *arena, Image *image)
     list_add(&boxes, &box1);
 
     return boxes;
+}
+
+void box_print(Box *b)
+{
+    logv("Box: [ %u %u %u %u ], Confidence: %u", b->x, b->y, b->w, b->h, b->confidence);
 }

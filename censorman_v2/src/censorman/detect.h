@@ -48,3 +48,6 @@ List detect_persons(Arena *arena, Image *image);
 
 b32 detect_init(void);
 void *detect(void *args); // thread compatible
+
+void box_print(Box *b);
+

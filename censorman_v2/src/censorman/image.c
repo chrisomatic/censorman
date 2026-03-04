@@ -226,7 +226,7 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
 
             u32 dst_i = i + image_scaled.pad_x;
             u32 dst_j = j + image_scaled.pad_y;
-            MemoryCopy(&image_scaled.data[dst_j*image_scaled.w + dst_i], &p, sizeof(RGBColor));
+            MemoryCopy(&image_scaled.data[dst_j*target_width + dst_i], &p, sizeof(RGBColor));
         }
     }
 
