@@ -431,17 +431,24 @@ void os_log(LogLevel level, const char* file, int line, const char* fmt, ...)
     if(level > os_get_log_level())
         return;
 
-    OS_TimeData td = os_time_data_get();
+    va_list args;
+    va_start(args, fmt);
 
-    va_list ap;
-    va_start(ap, fmt);
+    int file_len = strlen(file);
+    char* file_trunc = file + file_len - MIN(file_len, 20);
 
-    fprintf(stdout, "%d:%d:%d %s%-5s\x1b[0m \x1b[90m%s:%-4d:\x1b[0m ", td.hour, td.minute, td.second, log_level_colors[level], log_level_strings[level], file, line);
+    f64 uptime = os_time_get();
 
-    vfprintf(stdout, fmt, ap);
+    s32 uptime_min = (s32)(uptime / 60.0);
+    s32 uptime_sec = (s32)(uptime);
+    s32 uptime_ms  = (s32)((uptime - uptime_sec)*1000.0);
+
+    fprintf(stdout, "[%02d:%02d.%03d] %s%-5s...\x1b[0m \x1b[90m%-20s:%-4d:\x1b[0m ", uptime_min, uptime_sec, uptime_ms, log_level_colors[level], log_level_strings[level], file_trunc, line);
+
+    vfprintf(stdout, fmt, args);
     fprintf(stdout, "\n");
     fflush(stdout);
-    va_end(ap);
+    va_end(args);
 }
 
 void os_printf(const char* fmt, ...)
@@ -571,4 +578,23 @@ s32 socket_recvfrom(s32 socket_handle, Address* address, u8* pkt)
     }
 
     return recv_bytes;
+}
+
+///////////////////////////////////////
+// Utility
+///////////////////////////////////////
+
+void os_wait_for_return_key(void)
+{
+    logi("Waiting for return key...");
+
+    for(;;)
+    {
+        int c = getchar();
+
+        if(c == '\n' || c == '\r')
+            break;;
+
+        os_time_delay_us(10*1000);
+    }
 }

@@ -2,7 +2,97 @@
 // The following functions are OS-agnostic,
 // derived from the core OS functions
 
+///////////////////////////////////////
+// Utility
+///////////////////////////////////////
+
+#define DELAY(s) os_time_delay_us((s)*1000*1000)
+
 LogLevel _system_log_level = LOG_LEVEL_DEBUG;
+
+///////////////////////////////////////
+// Stopwatch
+///////////////////////////////////////
+
+Stopwatch stopwatch_create()
+{
+    Stopwatch stopwatch = {0};
+    stopwatch.entry_count = 1; // entry[0] is unaccounted time
+
+    return stopwatch;
+}
+
+void stopwatch_reset(Stopwatch *stopwatch)
+{
+    MemoryZero(stopwatch, sizeof(stopwatch));
+    stopwatch->entry_count = 1;
+}
+
+static int stopwatch_get_entry_index(Stopwatch *stopwatch, String label)
+{
+    u32 hash = hash_string(label, 0);
+
+    int index = -1;
+    for(int i = 1; i < MIN(stopwatch->entry_count, STOPWATCH_MAX_ENTRIES); ++i)
+    {
+        StopwatchEntry *entry = &stopwatch->entries[i];
+
+        if(entry->hash == hash)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if(index == -1)
+    {
+        if(stopwatch->entry_count >= STOPWATCH_MAX_ENTRIES)
+        {
+            logw("Hit max Stopwatch entries, allocating to entry 0");
+            index = 0;
+        }
+        else
+        {
+            index = stopwatch->entry_count++;
+            stopwatch->entries[index].hash = hash;
+            stopwatch->entries[index].label = label;
+        }
+    }
+
+    return index;
+}
+
+void stopwatch_begin(Stopwatch *stopwatch, String label)
+{
+    int index = stopwatch_get_entry_index(stopwatch, label);
+    stopwatch->entries[index].start_value = os_time_value_u64();
+}
+
+void stopwatch_end(Stopwatch *stopwatch, String label)
+{
+    int index = stopwatch_get_entry_index(stopwatch, label);
+
+    StopwatchEntry *entry = &stopwatch->entries[index];
+
+    if(entry->start_value > 0)
+    {
+        f64 elapsed_time = (os_time_value_u64() - entry->start_value) / (f64)_timer.frequency;
+        entry->total_seconds += elapsed_time;
+    }
+}
+
+void stopwatch_print(Stopwatch *stopwatch)
+{
+    logi("=======================");
+    logi("Stopwatch Status [0x%p]", stopwatch);
+    for(int i = 0; i < stopwatch->entry_count; ++i)
+    {
+        StopwatchEntry *entry = &stopwatch->entries[i];
+        String label = i == 0 ? S("(none)") : entry->label;
+        logi("[ %10.*s ]: %6.3f s", label.len, label.data, entry->total_seconds);
+    }
+    logi("=======================");
+}
 
 ///////////////////////////////////////
 // File Helpers

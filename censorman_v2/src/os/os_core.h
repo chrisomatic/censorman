@@ -132,6 +132,32 @@ f64  os_time_get_prior_frame_fps(Timer* timer);
 void os_time_delay_us(u64 us);
 
 ///////////////////////////////////////
+// Stopwatch (simple profiling)
+///////////////////////////////////////
+
+#define STOPWATCH_MAX_ENTRIES 32
+typedef struct
+{
+    u32 hash;
+    String label;
+    u64 start_value;
+    f64 total_seconds;
+} StopwatchEntry;
+
+typedef struct
+{
+    StopwatchEntry entries[STOPWATCH_MAX_ENTRIES];
+    u8 entry_count;
+} Stopwatch;
+
+Stopwatch stopwatch_create();
+
+void stopwatch_reset(Stopwatch *stopwatch);
+void stopwatch_begin(Stopwatch *stopwatch, String entry_str);
+void stopwatch_end(Stopwatch *stopwatch, String entry_str);
+void stopwatch_print(Stopwatch *stopwatch);
+
+///////////////////////////////////////
 // Files
 ///////////////////////////////////////
 

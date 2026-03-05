@@ -433,9 +433,16 @@ void os_log(LogLevel level, const char* file, int line, const char* fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    OS_TimeData td = os_time_data_get();
+    int file_len = strlen(file);
+    char* file_trunc = (char *)file + file_len - MIN(file_len, 20);
 
-    os_printf("%d:%d:%d %-5s%s:%-4d: ", td.hour, td.minute, td.second, log_level_strings[level], file, line);
+    f64 uptime = os_time_get();
+
+    s32 uptime_min = (s32)(uptime / 60.0);
+    s32 uptime_sec = (s32)(uptime);
+    s32 uptime_ms  = (s32)((uptime - uptime_sec)*1000.0);
+
+    os_printf("[%02d:%02d.%03d] %-5s...%-20s:%-4d: ", uptime_min, uptime_sec, uptime_ms, log_level_strings[level], file_trunc, line);
     os_vprintf(fmt, args);
     os_print_raw("\n", 1);
 
@@ -589,4 +596,21 @@ s32 socket_recvfrom(s32 socket_handle, Address* address, u8* pkt)
     }
 
     return recv_bytes;
+}
+
+///////////////////////////////////////
+// Utility
+///////////////////////////////////////
+
+void os_wait_for_return_key()
+{
+    logi("Waiting for return key...");
+
+    for(;;)
+    {
+        if(GetAsyncKeyState(VK_RETURN) & 0x8000)
+            break;
+
+        os_time_delay_us(10*1000);
+    }
 }
