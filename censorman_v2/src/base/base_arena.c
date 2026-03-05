@@ -71,7 +71,7 @@ void* arena_push(Arena *arena, u64 size, b32 non_zero)
         
         u64 new_arena_size = (arena->capacity >= size ? 2*arena->capacity : size);
 
-        logi("Increasing arena size from %u to %u!", arena->capacity, new_arena_size);
+        logv("Increasing arena size from %u to %u!", arena->capacity, new_arena_size);
 
         arena->next = (Arena*)malloc(sizeof(Arena));
         arena->next->memory = (u8*)malloc(new_arena_size * sizeof(u8));

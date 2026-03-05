@@ -27,22 +27,24 @@ typedef struct
 
     u32 w; // width
     u32 h; // height
-    u32 n; // channels
 
     Rotation rotation;
 
     // scaled properties
+    // used for reversing boxes to unscaled image
     f32 scale;
     u32 pad_x;
     u32 pad_y;
 
     Arena *arena;
+    Stopwatch *stopwatch;
+
 } Image;
 
 Image image_nil();
 u32 image_step(Image *image);
 
-Image image_load(Arena *arena, String path);
+Image image_load(Arena *arena, String path, Stopwatch *stopwatch);
 b32 image_save(Image *image, String path);
 
 Image image_rotate(Image source, u32 degrees, ClockDir direction);

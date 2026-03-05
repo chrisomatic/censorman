@@ -24,6 +24,7 @@ Stopwatch stopwatch_create()
 
 void stopwatch_reset(Stopwatch *stopwatch)
 {
+    if(!stopwatch) return;
     MemoryZero(stopwatch, sizeof(stopwatch));
     stopwatch->entry_count = 1;
 }
@@ -64,12 +65,16 @@ static int stopwatch_get_entry_index(Stopwatch *stopwatch, String label)
 
 void stopwatch_begin(Stopwatch *stopwatch, String label)
 {
+    if(!stopwatch) return;
+
     int index = stopwatch_get_entry_index(stopwatch, label);
     stopwatch->entries[index].start_value = os_time_value_u64();
 }
 
 void stopwatch_end(Stopwatch *stopwatch, String label)
 {
+    if(!stopwatch) return;
+
     int index = stopwatch_get_entry_index(stopwatch, label);
 
     StopwatchEntry *entry = &stopwatch->entries[index];
@@ -83,15 +88,28 @@ void stopwatch_end(Stopwatch *stopwatch, String label)
 
 void stopwatch_print(Stopwatch *stopwatch)
 {
-    logi("=======================");
-    logi("Stopwatch Status [0x%p]", stopwatch);
+    if(!stopwatch) return;
+
+    f64 total = 0.0;
     for(int i = 0; i < stopwatch->entry_count; ++i)
+    {
+        total += stopwatch->entries[i].total_seconds;
+    }
+
+    const char *dots = "....................";
+
+    logi("============== STOPWATCH ==============");
+    for(int i = 1; i < stopwatch->entry_count; ++i)
     {
         StopwatchEntry *entry = &stopwatch->entries[i];
         String label = i == 0 ? S("(none)") : entry->label;
-        logi("[ %10.*s ]: %6.3f s", label.len, label.data, entry->total_seconds);
+        s32 num_dots = MAX(0, 20 - label.len);
+        logi("  " STR_FMT "%.*s%5.3f s (%05.2f%%)", STR_ARG(label), num_dots, dots, entry->total_seconds, 100.0*(entry->total_seconds / total));
     }
-    logi("=======================");
+
+    logi("---------------------------------------");
+    logi("  %s...............%5.3f s", "TOTAL", total);
+    logi("=======================================");
 }
 
 ///////////////////////////////////////

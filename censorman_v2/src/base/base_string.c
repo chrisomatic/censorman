@@ -529,6 +529,13 @@ StringList string_list_create(Arena *arena)
     return sl;
 }
 
+void string_list_clear(StringList *sl)
+{
+    sl->head = NULL;
+    sl->last = NULL;
+    sl->count = 0;
+}
+
 void string_list_add(StringList *sl, String str)
 {
     if(sl->head == NULL)

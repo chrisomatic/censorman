@@ -435,7 +435,7 @@ void os_log(LogLevel level, const char* file, int line, const char* fmt, ...)
     va_start(args, fmt);
 
     int file_len = strlen(file);
-    char* file_trunc = file + file_len - MIN(file_len, 20);
+    char* file_trunc = (char *)file + file_len - MIN(file_len, 20);
 
     f64 uptime = os_time_get();
 

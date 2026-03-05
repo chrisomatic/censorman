@@ -145,6 +145,23 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         }
     }
 
+    // Detect Types
+
+    if(strs_detect_types.count > 0)
+    {
+        settings.detect_type_count = 0;
+        for(u32 i = 0; i < strs_detect_types.count; ++i)
+        {
+            String detect_type_str = string_trim(strs_detect_types.items[i]);
+            DetectType type = detect_type_from_string(detect_type_str);
+            if(type == DETECT_TYPE_NONE) continue;
+
+            settings.detect_types[settings.detect_type_count++] = type;
+        }
+    }
+
+    // Filters
+
     if(strs_filters.count > 0)
     {
         settings.filter_count = 0;
@@ -182,56 +199,93 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
 void settings_print(Settings *settings)
 {
-    logi("");
-    logi("=============== Settings ===============");
-    logi("Assets (%d):", settings->asset_count);
-    for(int i = 0 ; i < settings->asset_count; ++i)
-    {
-        Asset *asset = &settings->assets[i];
-        logi("   %d: [%d] path: " STR_FMT ", output: " STR_FMT, i, asset->type, STR_ARG(asset->path), STR_ARG(asset->output_path));
-    }
+    Temp scratch = scratch_begin();
 
-    logi("Detect Types (%d):", settings->detect_type_count);
+    logi("=============== Settings ===============");
+    logi("%-22s %u", "Asset count", settings->asset_count);
+
+    StringList sl = string_list_create(scratch.arena);
+    string_list_add(&sl, S("["));
     for(int i = 0 ; i < settings->detect_type_count; ++i)
     {
-        DetectType *detect_type = &settings->detect_types[i];
-        logi("   %d: %d", i, *detect_type);
+        DetectType detect_type = settings->detect_types[i];
+        string_list_add(&sl, detect_type_to_string(detect_type));
+        if(i < settings->detect_type_count - 1)
+            string_list_add(&sl, S(", "));
     }
+    string_list_add(&sl, S("]"));
+    String detect_types_str = string_list_collapse(&sl);
+    logi("%-22s " STR_FMT, "Detect types", STR_ARG(detect_types_str));
 
-    logi("Filters (%d):", settings->filter_count);
+    string_list_clear(&sl);
+
+    string_list_add(&sl, S("["));
     for(int i = 0 ; i < settings->filter_count; ++i)
     {
-        Filter *filter = &settings->filters[i];
-        logi("   %d: " STR_FMT, i, STR_ARG(filter_to_string(filter->type)));
+        Filter filter = settings->filters[i];
+        string_list_add(&sl, filter_to_string(filter.type));
 
-        switch(filter->type)
+        switch(filter.type)
         {
             case FILTER_TYPE_BLUR_BOX:
             case FILTER_TYPE_BLUR_GAUSSIAN:
-                logi("      (blur strength: %f)", filter->blur_strength);
+                string_list_addf(&sl, ":%0.2f", filter.blur_strength);
                 break;
             case FILTER_TYPE_PIXELATE:
-                logi("      (block scale: %f)", filter->block_scale);
+                string_list_addf(&sl, ":%0.2f", filter.block_scale);
                 break;
             case FILTER_TYPE_TEXTURE:
-                logi("      (texture path: " STR_FMT ")", STR_ARG(filter->texture_path));
+                string_list_addf(&sl, ":" STR_FMT, STR_ARG(filter.texture_path));
                 break;
             case FILTER_TYPE_BLACKOUT:
             case FILTER_TYPE_NONE:
             default:
                 break;
         }
+
+        if(i < settings->filter_count - 1)
+            string_list_add(&sl, S(", "));
     }
 
-    logi("Thread Count:           %u", settings->thread_count);
-    logi("Confidence Threshold:   %f", settings->confidence_threshold);
-    logi("Buffer Size:            %lu B", settings->buffer_size);
-    logi("Box Padding:            %f", settings->box_padding);
-    logi("Smoothing Window:       %f", settings->smoothing_window);
-    logi("No Encoding:            %s", STR_BOOL(settings->no_encode));
-    logi("No Rotate:              %s", STR_BOOL(settings->no_rotate));
-    logi("Bounding Box Output:    " STR_FMT, STR_ARG(settings->bbx_output));
-    logi("Debug:                  %s", settings->debug ? "ON" : "OFF");
-    logi("Verbose:                %s", settings->verbose ? "ON" : "OFF");
+    string_list_add(&sl, S("]"));
+    String filters_str = string_list_collapse(&sl);
+    logi("%-22s " STR_FMT, "Filters", STR_ARG(filters_str));
+
+    logi("%-22s %u",    "Thread Count",         settings->thread_count);
+    logi("%-22s %f",    "Confidence Threshold", settings->confidence_threshold);
+    logi("%-22s %lu B", "Buffer Size",          settings->buffer_size);
+    logi("%-22s %f",    "Box Padding",          settings->box_padding);
+    logi("%-22s %f",    "Smoothing Window",     settings->smoothing_window);
+    logi("%-22s %s",    "No Encoding",          STR_BOOL(settings->no_encode));
+    logi("%-22s %s",    "No Rotate",            STR_BOOL(settings->no_rotate));
+    logi("%-22s %s",    "Debug",                settings->debug ? "ON" : "OFF");
+    logi("%-22s %s",    "Verbose",              settings->verbose ? "ON" : "OFF");
+    logi("%-22s " STR_FMT, "Bounding Box Output", STR_ARG(settings->bbx_output));
     logi("========================================");
+
+    scratch_end(scratch);
+}
+
+AssetType asset_from_string(String str)
+{
+    if(string_equal(str, S("image")))
+        return TYPE_IMAGE;
+
+    if(string_equal(str, S("video")))
+        return TYPE_VIDEO;
+
+    return TYPE_UNSUPPORTED;
+}
+
+String asset_to_string(AssetType type)
+{
+    switch(type)
+    {
+        case TYPE_IMAGE: return S("image");
+        case TYPE_VIDEO: return S("video");
+        case TYPE_UNSUPPORTED:
+        default:
+    }
+
+    return S("unsupported");
 }

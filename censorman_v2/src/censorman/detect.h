@@ -43,6 +43,9 @@ typedef struct
     u16 net_h;
 } Model;
 
+String detect_type_to_string(DetectType type);
+DetectType detect_type_from_string(String str);
+
 List detect_faces(Arena *arena, Image *image);
 List detect_persons(Arena *arena, Image *image);
 

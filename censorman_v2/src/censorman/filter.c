@@ -1,6 +1,7 @@
 
 void filter_apply(Filter filter, Image *image, Box *box)
 {
+    stopwatch_begin(image->stopwatch, S(__func__));
     switch(filter.type)
     {
         case FILTER_TYPE_BLACKOUT:
@@ -19,20 +20,42 @@ void filter_apply(Filter filter, Image *image, Box *box)
         default:
 
     }
+
+    stopwatch_end(image->stopwatch, S(__func__));
     return;
 }
 
-static void _draw_box(Image *image, Box *box, RGBColor color, b32 filled, f32 opacity);
-static void _convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size, bool horizontal);
+static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 border_thickness, f32 opacity);
+static void convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size, bool horizontal);
+static RGBColor blend_color(RGBColor *pixel, RGBColor color, f32 opacity);
 
 void filter_blackout(Image *image, Box *box)
 {
-    _draw_box(image, box, (RGBColor){0,0,0}, true, 1.0);
+    RGBColor black = (RGBColor){0,0,0};
+    draw_box(image, box, black, true, 1, 1.0);
 }
 
-void filter_outline(Image *image, Box *box)
+void filter_outline(Image *image, Box *box, RGBColor color, u32 border_thickness)
 {
-    _draw_box(image, box, (RGBColor){0,0,0}, false, 1.0);
+    draw_box(image, box, color, false, border_thickness, 1.0);
+}
+
+void filter_draw_debug_info(Image *image, Box *box)
+{
+    RGBColor color_list[] = {
+        {255,  0,  0},
+        {  0,255,  0},
+        {  0,  0,255},
+        {255,255,  0},
+        {255,  0,255}
+    };
+
+    RGBColor color_bad  = (RGBColor){255,0,0};
+    RGBColor color_good = (RGBColor){0,255,0};
+
+    RGBColor color = blend_color(&color_bad, color_good, box->confidence / 100.0);
+
+    filter_outline(image, box, color, 1);
 }
 
 String filter_to_string(FilterType type)
@@ -73,7 +96,7 @@ FilterType filter_from_string(String str)
 
 void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength)
 {
-    ArenaTemp scratch = scratch_begin();
+    Temp scratch = scratch_begin();
 
     f32 base = (box->w < box->h ? box->w : box->h);
     f32 sigma = MAX(0.70, 0.24 * blur_strength * base);
@@ -100,15 +123,15 @@ void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength)
     MemoryCopy(tmp.data, image->data, image->w * image->h * sizeof(RGBColor));
 
     // horizontal pass
-    _convolve(image, &tmp, box, kernel, k_size, true);
+    convolve(image, &tmp, box, kernel, k_size, true);
 
     // vertical pass (write back into original image buffer)
-    _convolve(&tmp, image, box, kernel, k_size, false);
+    convolve(&tmp, image, box, kernel, k_size, false);
 
     scratch_end(scratch);
 }
 
-static void _convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size, bool horizontal)
+static void convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size, bool horizontal)
 {
     s32 radius = k_size / 2;
 
@@ -150,7 +173,7 @@ static void _convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size,
     }
 }
 
-RGBColor blend_color(RGBColor *pixel, RGBColor color, f32 opacity)
+static RGBColor blend_color(RGBColor *pixel, RGBColor color, f32 opacity)
 {
     if(opacity == 1.0)
         return color;
@@ -164,16 +187,21 @@ RGBColor blend_color(RGBColor *pixel, RGBColor color, f32 opacity)
     return ret_color;
 }
 
-static void _draw_box(Image* image, Box *box, RGBColor color, b32 filled, f32 opacity)
+static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 border_thickness, f32 opacity)
 {
     RGBColor *start = &image->data[box->y*image->w + box->x];
-    RGBColor *curr = start;
+    RGBColor *curr  = start;
 
     // draw first line
-    for(s32 i = 0; i <= box->w; ++i)
+    for(u32 j = 0; j < border_thickness; ++j)
     {
-        RGBColor *r = &curr[i];
-        *r = blend_color(r, color, opacity);
+        for(s32 i = 0; i <= box->w; ++i)
+        {
+            RGBColor *r = &curr[i];
+            *r = blend_color(r, color, opacity);
+        }
+        if(j < border_thickness - 1)
+            curr += image->w;
     }
 
     curr += image->w;
@@ -194,19 +222,30 @@ static void _draw_box(Image* image, Box *box, RGBColor color, b32 filled, f32 op
     {
         for(s32 i = 0; i < box->h-1; ++i)
         {
-            RGBColor *cl = &curr[0];
-            RGBColor *cr = &curr[box->w];
+            for(u32 j = 0; j < border_thickness; ++j)
+            {
+                RGBColor *cl = &curr[0 + j];
+                RGBColor *cr = &curr[MAX(box->w - j,0)];
 
-            *cl = blend_color(cl, color, opacity);
-            *cr = blend_color(cr, color, opacity);
+                *cl = blend_color(cl, color, opacity);
+                *cr = blend_color(cr, color, opacity);
+            }
 
             curr += image->w;
         }
     }
 
-    for(s32 i = 0; i <= box->w; ++i)
+    curr -= (image->w*MAX(0,(border_thickness-1)));
+
+    for(u32 j = 0; j < border_thickness; ++j)
     {
-        RGBColor *r = &curr[i];
-        *r = blend_color(r, color, opacity);
+        for(s32 i = 0; i <= box->w; ++i)
+        {
+            RGBColor *r = &curr[i];
+            *r = blend_color(r, color, opacity);
+        }
+
+        if(j < border_thickness - 1)
+            curr += image->w;
     }
 }

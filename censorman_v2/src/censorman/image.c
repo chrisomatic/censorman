@@ -11,12 +11,15 @@ Image image_nil()
     return image;
 }
 
-Image image_load(Arena *arena, String path)
+Image image_load(Arena *arena, String path, Stopwatch *stopwatch)
 {
     Image image = {0};
     image.arena = arena;
+    image.stopwatch = stopwatch;
 
-    ArenaTemp scratch = scratch_begin();
+    stopwatch_begin(image.stopwatch, S(__func__));
+
+    Temp scratch = scratch_begin();
     char *path_cstr = string_to_cstr(scratch.arena, path);
 
     s32 w,h,n;
@@ -38,7 +41,6 @@ Image image_load(Arena *arena, String path)
 
     image.w = w;
     image.h = h;
-    image.n = 3;
     image.data = PUSH_ARRAY(image.arena, RGBColor, w*h);
     image.scale = 1.0;
 
@@ -52,35 +54,42 @@ Image image_load(Arena *arena, String path)
         pixel->b = data[i*n+2];
     }
 
-    logv("Loaded image " STR_FMT " [w: %u h: %u n: %u]", STR_ARG(path), image.w,image.h,image.n);
+    logv("Loaded image " STR_FMT " [w: %u h: %u]", STR_ARG(path), image.w,image.h);
 
     // free buffer
     stbi_image_free(data);
+
+    stopwatch_end(image.stopwatch, S(__func__));
 
     return image;
 }
 
 b32 image_save(Image *image, String path)
 {
-    ArenaTemp scratch = scratch_begin();
+    stopwatch_begin(image->stopwatch, S(__func__));
+
+    Temp scratch = scratch_begin();
 
     char *output_file_cstr = string_to_cstr(scratch.arena, path);
 
-    s32 res = stbi_write_png(output_file_cstr, image->w, image->h, image->n, image->data, image_step(image));
+    s32 res = stbi_write_png(output_file_cstr, image->w, image->h, 3, image->data, image_step(image));
 
     scratch_end(scratch);
+
+    stopwatch_end(image->stopwatch, S(__func__));
 
     if(res == 0)
     {
         loge("Failed to write output");
         return false;
     }
+
     return true;
 }
 
 inline u32 image_step(Image *image)
 {
-    return image->w * image->n;
+    return image->w * 3;
 }
 
 Image image_rotate(Image source, u32 degrees, ClockDir direction)
@@ -96,16 +105,15 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
         return source;
     }
 
-    Image output = {0};
+    stopwatch_begin(source.stopwatch, S(__func__));
+
+    Image output = source;
     
     b32 dim_flipped = (degrees == ROTATE_90 || degrees == ROTATE_270);
 
     output.data          = PUSH_ARRAY(source.arena, RGBColor, source.w * source.h);
     output.w             = dim_flipped ? source.h : source.w;
     output.h             = dim_flipped ? source.w : source.h;
-    output.n             = source.n;
-    output.rotation      = source.rotation;
-    output.arena         = source.arena;
 
     s32 out_x = 0;
     s32 out_y = 0;
@@ -148,6 +156,14 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
         }
     }
 
+    s32 adj_degrees = direction == CW ? degrees : -degrees;
+    s32 output_rotation = source.rotation + adj_degrees;
+    if(output_rotation < 0) output_rotation += 360;
+
+    output.rotation = output_rotation;
+
+    stopwatch_end(source.stopwatch, S(__func__));
+
     return output;
 }
 
@@ -156,11 +172,9 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
 
 Image image_scale(Image source, u32 target_width, u32 target_height)
 {
-    Image image_scaled = {0};
+    stopwatch_begin(source.stopwatch, S(__func__));
 
-    image_scaled.n = source.n;
-    image_scaled.arena = source.arena;
-    image_scaled.rotation = source.rotation;
+    Image image_scaled = source;
 
     b32 landscape = (source.w >= source.h);
 
@@ -233,8 +247,9 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
     image_scaled.w = landscape ? image_scaled.w : target_width;
     image_scaled.h = landscape ? target_height  : image_scaled.h;
 
+    stopwatch_end(source.stopwatch, S(__func__));
+
     return image_scaled;
-    
 }
 
 void image_print(Image *image)
@@ -243,7 +258,6 @@ void image_print(Image *image)
     logi("Image %p:", image);
     logi("    w: %u", image->w);
     logi("    h: %u", image->h);
-    logi("    n: %u", image->n);
     logi("  rot: %u", image->rotation);
     logi("arena: %p", image->arena);
     logi("===================");

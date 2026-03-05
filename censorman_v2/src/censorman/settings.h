@@ -49,6 +49,9 @@ typedef struct
 
 } Settings;
 
+AssetType asset_from_string(String str);
+String asset_to_string(AssetType type);
+
 Settings settings_default();
 
 Settings settings_parse(Arena *arena, int argc, char **args);

@@ -44,11 +44,13 @@ void *detect(void *args)
     Image *image       = detect_args->image;
     List  *total_boxes = detect_args->boxes;
 
+    stopwatch_begin(image->stopwatch, S("detect"));
+
     DetectType type = detect_args->type;
 
     List new_boxes  = {0};
 
-    ArenaTemp scratch = scratch_begin();
+    Temp scratch = scratch_begin();
 
     switch(type)
     {
@@ -76,6 +78,8 @@ void *detect(void *args)
     list_add_list(total_boxes, &new_boxes);
 
     scratch_end(scratch);
+
+    stopwatch_end(image->stopwatch, S("detect"));
 
     return NULL;
 }
@@ -161,7 +165,7 @@ List detect_faces(Arena *arena, Image *image)
 {
     List boxes = list_create(arena, sizeof(Box));
 
-    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->w, image->h, image->w*image->n, 0);
+    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->w, image->h, image->w*3, 0);
     
     // Maps [0,255] --> [-1,1]
 
@@ -325,4 +329,36 @@ List detect_persons(Arena *arena, Image *image)
 void box_print(Box *b)
 {
     logv("Box: [ %u %u %u %u ], Confidence: %u", b->x, b->y, b->w, b->h, b->confidence);
+}
+
+String detect_type_to_string(DetectType type)
+{
+    switch(type)
+    {
+        case DETECT_TYPE_FACE:          return S("face");
+        case DETECT_TYPE_PERSON:        return S("person");
+        case DETECT_TYPE_LICENSE_PLATE: return S("license_plate");
+        case DETECT_TYPE_DOCUMENT:      return S("document");
+        case DETECT_TYPE_NONE:
+        default:
+    }
+
+    return S("none");
+}
+
+DetectType detect_type_from_string(String str)
+{
+    if(string_equal(str, S("face")))
+        return DETECT_TYPE_FACE;
+
+    if(string_equal(str, S("person")))
+        return DETECT_TYPE_PERSON;
+
+    if(string_equal(str, S("license_plate")))
+        return DETECT_TYPE_LICENSE_PLATE;
+
+    if(string_equal(str, S("document")))
+        return DETECT_TYPE_DOCUMENT;
+
+    return DETECT_TYPE_NONE;
 }
