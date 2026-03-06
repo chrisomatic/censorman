@@ -1,5 +1,41 @@
 #pragma once
 
+#include "libavformat/avformat.h"
+#include "libavcodec/avcodec.h"
+#include "libswscale/swscale.h"
+#include "libavutil/imgutils.h"
+#include "libavutil/display.h"
+#include "libavutil/dict.h"
+
+typedef struct
+{
+    s32  stream_index;
+
+    // decoding 
+
+    AVFormatContext   *fmt_ctx;
+    AVCodecContext    *codec_ctx;
+    const AVCodec     *codec;
+    struct SwsContext *sws_ctx;
+    AVFrame           *frame;
+    AVFrame           *rgb_frame;
+    AVPacket          *pkt;
+    s32               codec_id;
+
+    // encoding
+
+    AVFormatContext   *enc_fmt_ctx;
+    AVCodecContext    *enc_codec_ctx;
+    const AVCodec     *enc_codec;
+    struct SwsContext *enc_sws_ctx;
+    AVFrame           *enc_frame_src;
+    AVFrame           *enc_frame;
+    AVPacket          *enc_pkt;
+    AVStream          *enc_stream;
+    AVDictionary      *enc_opts;
+
+} VideoContext;
+
 typedef struct
 {
     u32 w;
@@ -9,16 +45,25 @@ typedef struct
     s32 rotation;
 
     RGBColor* data;        // RGB buffer for current chunk
+    s64* pts_buffer;       // PTS for each frame in current chunk
 
-    u32 frame_count;       // number of frames currently in the buffer
-    s64 frame_count_total; // total number of frames in the video
+    u32 frame_count_max;   // Maximum frames the buffer can hold
+    u32 frame_count;       // Number of frames currently in the buffer
+    u64 frame_count_total; // Total number of frames in the video
+    u32 frames_processed;  // Used during encoding
+    b32 load_complete;     // Set when frame decoding is done
+
+    VideoContext context;  // Used by FFMPEG
 
     Arena *arena;
 } Video;
 
-Video video_begin(Arena *arena, String path);
+Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_size, b32 no_encode);
+void  video_end(Video *vid);
 
-void      video_load_frames(Video *vid, u64 buffer_size);
 ListArray video_get_detect_frames(Video *vid, f32 smoothing_window);
+b32       video_load_frames(Video *vid);
+b32       video_save_frames(Video *vid);
 
-void video_end(&vid);
+void video_print(Video *vid);
+void video_set_log_level(LogLevel level);

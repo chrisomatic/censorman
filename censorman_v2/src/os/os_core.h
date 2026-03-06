@@ -229,6 +229,7 @@ String os_path_get_file(String path);
 
 typedef enum
 {
+    LOG_LEVEL_QUIET = 0,
     LOG_LEVEL_INFO,
     LOG_LEVEL_WARN,
     LOG_LEVEL_ERROR,

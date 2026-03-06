@@ -118,12 +118,14 @@ int main(int argc, char **args)
         }
         else if(asset->type == TYPE_VIDEO)
         {
-#if 0
-            Video vid = video_begin(arena_frame, asset->path);
+            Video vid = video_begin(arena_frame, asset->path, asset->output_path, settings.buffer_size, settings.no_encode);
 
+            video_print(&vid);
+
+#if 0
             for(;;)
             {
-                video_load_frames(&vid, settings.buffer_size);
+                video_load_frames(&vid);
                 if(vid.frame_count == 0) break; // no more to load
 
                 List box_list = list_create(arena_frame, sizeof(Box));
@@ -167,8 +169,9 @@ int main(int argc, char **args)
                 // [output]
             }
 
-            video_end(&vid);
 #endif
+
+            video_end(&vid);
         }
     }
 

@@ -134,7 +134,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             {
                 asset->type = TYPE_VIDEO;
                 asset->path = string_copy(arena, string_concat(arena, 3, input_folder, S("/"), file_str));
-                asset->output_path = string_nil(); // TODO
+                asset->output_path = string_concat(arena, 3, settings.output_folder, S("/"), file_str);
             }
             else
             {

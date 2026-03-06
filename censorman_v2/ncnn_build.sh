@@ -32,5 +32,10 @@ popd
 # Copy built files
 mv $BUILD_DIR/ncnn_build src/third_party/ncnn
 
+# Build NCNN Shim lib
+g++ -c src/ncnn_shim.cpp -I src/third_party/ncnn/include/ncnn -o ncnn_shim.o
+ar rcs src/third_party/ncnn/lib/libncnn_shim.a ncnn_shim.o
+
 # Cleanup
+rm ncnn_shim.o
 rm -rf $BUILD_DIR

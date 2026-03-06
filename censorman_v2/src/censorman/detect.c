@@ -2,29 +2,40 @@
 static Model model_face    = {0};
 static Model model_person = {0};
 
+extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
+
+static void model_init(Model *model)
+{
+    model->net = ncnn_net_create();
+
+    model->net_w = 640;
+    model->net_h = 640;
+
+    ncnn_net_set_lightmode(model->net, 1);
+    ncnn_option_t opt = ncnn_net_get_option(model->net);
+    ncnn_option_set_num_threads(opt, 4);
+    ncnn_net_set_option(model->net, opt);
+}
+
 b32 detect_init(void)
 {
     if(!model_face.initialized)
     {
-        model_face.net = ncnn_net_create();
-        model_face.net_w = 640;
-        model_face.net_h = 640;
+        model_init(&model_face);
 
         int param_ret = ncnn_net_load_param(model_face.net, "models/scrfd_500m_gnkps.ncnn.param");
         int model_ret = ncnn_net_load_model(model_face.net, "models/scrfd_500m_gnkps.ncnn.bin");
 
         model_face.initialized = (param_ret == 0 && model_ret == 0);
-
     }
 
     if(!model_person.initialized)
     {
-        model_person.net = ncnn_net_create();
-        model_person.net_w = 640;
-        model_person.net_h = 640;
+        model_init(&model_person);
 
         int param_ret = ncnn_net_load_param(model_person.net, "models/scrfd_person_2.5g.ncnn.param");
         int model_ret = ncnn_net_load_model(model_person.net, "models/scrfd_person_2.5g.ncnn.bin");
+
         model_person.initialized = (param_ret == 0 && model_ret == 0);
     }
 
