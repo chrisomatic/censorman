@@ -95,6 +95,198 @@ void *detect(void *args)
     return NULL;
 }
 
+BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number)
+{
+    BoxFrame bf = {0};
+
+    if(!arena)
+        return bf;
+
+    bf.boxes        = PUSH_ARRAY(arena, Box, box_list.count);
+    bf.box_count    = box_list.count;
+    bf.frame_number = frame_number;
+
+    ListNode *ln = box_list.head;
+    if(!ln) return bf;
+
+    u32 box_counter = 0;
+    for(;;)
+    {
+        if(box_counter >= box_list.count)
+            break;
+
+        Box *box = (Box *)ln->item;
+        if(box) MemoryCopy(&bf.boxes[box_counter], box, sizeof(Box));
+        box_counter++;
+
+        if(!ln->next)
+            break;
+
+        ln = ln->next;
+    }
+
+    return bf;
+}
+
+void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
+{
+    // Interpolate detection boxes for frames that are
+    // missing boxes
+    //  
+    //               Frames
+    //
+    //  --|--------|--------|--------|--...
+    //   f0        x        x        f1
+    //     \        \        \         \
+    //   [filled]  [gap]    [gap]    [filled]
+    //
+
+    BoxFrame *f0 = NULL;
+    BoxFrame *f1 = NULL;
+
+    for(u32 i = 0; i < vid->frame_count; )
+    {
+        BoxFrame *curr = &box_frames[i];
+
+        // set previous frame
+        f0 = f1;
+
+        if(curr->box_count > 0)
+        {
+            // filled
+            f1 = curr;
+            i++;
+            continue;
+        }
+
+        // first gap frame
+
+        // find next filled frame
+        u32 j = i+1;
+        BoxFrame *box_frame_j = NULL;
+        for(;;)
+        {
+            if(j >= vid->frame_count) break;
+            box_frame_j = &box_frames[j];
+            if(box_frame_j && box_frame_j->box_count > 0) break;
+            j++;
+        }
+
+        s32 frames_in_between = j - i;
+
+        if(j >= vid->frame_count)
+        {
+            // end of video
+            // no future valid frame, copy f0 forward for remaining frames
+            for(u32 f = 0; f < frames_in_between; ++f)
+            {
+                BoxFrame *frame = &box_frames[i+f];
+                frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
+                frame->box_count = f0->box_count;
+                frame->frame_number = i+f;
+                MemoryCopy(frame->boxes, f0->boxes, f0->box_count*sizeof(Box));
+            }
+            break;
+        }
+
+        // set f1 to next filled frame
+        f1 = box_frame_j;
+
+        // interpolate frames between f0 and f1
+        for(u32 f = 0; f < frames_in_between; ++f)
+        {
+            BoxFrame *frame = &box_frames[i+f];
+
+            // Decide which box frame has more boxes
+            BoxFrame *a = (f0->box_count > f1->box_count) ? f0 : f1;
+            BoxFrame *b = (f0->box_count > f1->box_count) ? f1 : f0;
+
+            frame->box_count = a->box_count;
+            frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
+            frame->frame_number = i+f;
+
+            // Match boxes and smooth position exponentially
+
+            u32 matched_count = 0;
+            u32 *matches = PUSH_ARRAY(vid->arena, u32, a->box_count);
+
+            for(u32 k = 0; k < a->box_count; ++k)
+            {
+                f32 min_mv = 3.4e38;
+                s32 min_index = -1;
+
+                for(u32 l = 0; l < b->box_count; ++l)
+                {
+                    b32 already_matched = false;
+                    for(u32 m = 0; m < matched_count; ++m)
+                    {
+                        if(matches[m] == l)
+                        {
+                            already_matched = true;
+                            break;
+                        }
+                    }
+
+                    if(already_matched) continue;
+
+                    Box *ra = &a->boxes[k];
+                    Box *rb = &b->boxes[l];
+
+                    // find center point of boxes
+
+                    f32 acx = ra->x + ra->w * 0.5;
+                    f32 acy = ra->y + ra->h * 0.5;
+
+                    f32 bcx = rb->x + rb->w * 0.5;
+                    f32 bcy = rb->y + rb->h * 0.5;
+
+                    f32 mv = ABS(acx - bcx) + ABS(acy - bcy);
+
+                    if(mv < min_mv)
+                    {
+                        min_mv = mv;
+                        min_index = l;
+                    }
+                }
+
+                Box *box_interpolated = &frame->boxes[k];
+
+                if(min_index >= 0)
+                {
+                    // mark as matched
+                    matches[matched_count++] = min_index;
+
+                    Box *ra = &a->boxes[k];
+                    Box *rb = &b->boxes[min_index];
+
+                    const f32 alpha = 0.4; // smoothing
+
+                    box_interpolated->x = (s32)interp_exp_smooth((f32)ra->x, (f32)rb->x, alpha, f);
+                    box_interpolated->y = (s32)interp_exp_smooth((f32)ra->y, (f32)rb->y, alpha, f);
+                    box_interpolated->w = (s32)interp_exp_smooth((f32)ra->w, (f32)rb->w, alpha, f);
+                    box_interpolated->h = (s32)interp_exp_smooth((f32)ra->h, (f32)rb->h, alpha, f);
+                    box_interpolated->confidence = (s32)interp_exp_smooth((f32)ra->confidence, (f32)rb->confidence, alpha, f);
+                    box_interpolated->type = ra->type;
+
+                    for(s32 j2 = 0; j2 < 5; ++j2)
+                    {
+                        box_interpolated->landmarks[j2].x = (s32)interp_exp_smooth((f32)ra->landmarks[j2].x, (f32)rb->landmarks[j2].x, alpha, f);
+                        box_interpolated->landmarks[j2].y = (s32)interp_exp_smooth((f32)ra->landmarks[j2].y, (f32)rb->landmarks[j2].y, alpha, f);
+                    }
+                }
+                else
+                {
+                    // No match, just copy forward from a
+                    MemoryCopy(box_interpolated, &a->boxes[k], sizeof(Box));
+                }
+            }
+        }
+
+        // Advance i past interpolated frames
+        i += frames_in_between;
+    }
+}
+
 s32 box_compare(void *a, void *b)
 {
     Box *box_a = (Box *)a;
@@ -276,10 +468,10 @@ List detect_faces(Arena *arena, Image *image)
                     s32 y2s = (s32)((y2 - image->pad_y) / image->scale);
 
                     Box box;
-                    box.x = (u16)(x1s);
-                    box.y = (u16)(y1s);
-                    box.w = (u16)(x2s - x1s);
-                    box.h = (u16)(y2s - y1s);
+                    box.x = (u32)(x1s);
+                    box.y = (u32)(y1s);
+                    box.w = (u32)(x2s - x1s);
+                    box.h = (u32)(y2s - y1s);
 
                     u32 image_src_w = (u32)(image->w / image->scale);
                     u32 image_src_h = (u32)(image->h / image->scale);
@@ -289,6 +481,7 @@ List detect_faces(Arena *arena, Image *image)
                     box.w = CLAMP(box.w, 1, image_src_w - box.x - 1);
                     box.h = CLAMP(box.h, 1, image_src_h - box.y - 1);
 
+                    box.type = DETECT_TYPE_FACE;
                     box.confidence = (u16)(prob*100);
 
                     // landmarks: 5 keypoints, (dx,dy) relative to anchor center
@@ -296,8 +489,8 @@ List detect_faces(Arena *arena, Image *image)
                     {
                         f32 lx = cx + kps[idx*10 + k*2 + 0] * stride;
                         f32 ly = cy + kps[idx*10 + k*2 + 1] * stride;
-                        box.landmarks[k].x = (u16)((lx - image->pad_x) / image->scale);
-                        box.landmarks[k].y = (u16)((ly - image->pad_y) / image->scale);
+                        box.landmarks[k].x = (u32)((lx - image->pad_x) / image->scale);
+                        box.landmarks[k].y = (u32)((ly - image->pad_y) / image->scale);
                     }
 
                     list_add(&boxes, &box);

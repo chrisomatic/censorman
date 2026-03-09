@@ -62,8 +62,10 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
 void  video_end(Video *vid);
 
 ListArray video_get_detect_frames(Video *vid, f32 smoothing_window);
+
 b32       video_load_frames(Video *vid);
 b32       video_save_frames(Video *vid);
+void      video_save_done(Video *vid);
 
 void video_print(Video *vid);
 void video_set_log_level(LogLevel level);

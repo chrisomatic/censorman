@@ -305,7 +305,7 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
     ctx->enc_frame->format = ctx->enc_codec_ctx->pix_fmt;
     ctx->enc_frame->width  = ctx->enc_codec_ctx->width;
     ctx->enc_frame->height = ctx->enc_codec_ctx->height;
-    ctx->enc_frame->pict_type = AV_PICTURE_TYPE_I;
+    av_frame_get_buffer(ctx->enc_frame, 0);
 
     // SWS converter: RGB24 -> YUV420P
     ctx->enc_sws_ctx = sws_getContext(vid.w, vid.h, AV_PIX_FMT_RGB24,
@@ -419,12 +419,12 @@ b32 video_save_frames(Video *vid)
     s32 frame_rgb_size = rgb_stride * height;
     s32 ret;
 
-    for(s32 i = 0; i < vid->frame_count; ++i)
+    for(u32 i = 0; i < vid->frame_count; ++i)
     {
         av_frame_make_writable(ctx->enc_frame);
 
         // Source RGB data
-        ctx->enc_frame_src->data[0] = (u8 *)vid->data + ((u64)i * frame_rgb_size);
+        ctx->enc_frame_src->data[0] = ((u8 *)vid->data) + ((u64)i * frame_rgb_size);
         ctx->enc_frame_src->linesize[0] = rgb_stride;
 
         // Convert RGB -> YUV420P
@@ -481,6 +481,45 @@ b32 video_save_frames(Video *vid)
 
     return true;
 
+}
+
+void video_save_done(Video *vid)
+{
+    VideoContext *vid_ctx = &vid->context;
+
+    // Flush encoder: send NULL until encoder returns AVERROR_EOF
+    s32 ret = avcodec_send_frame(vid_ctx->enc_codec_ctx, NULL);
+    while(ret >= 0)
+    {
+        ret = avcodec_receive_packet(vid_ctx->enc_codec_ctx, vid_ctx->enc_pkt);
+        if (ret == AVERROR(EAGAIN))
+            continue;  // keep sending
+        else if (ret == AVERROR_EOF)
+            break;     // encoder fully flushed
+        else if (ret < 0)
+        {
+            char err[AV_ERROR_MAX_STRING_SIZE];
+            av_strerror(ret, err, sizeof(err));
+            loge("Error flushing encoder: %s", err);
+            break;
+        }
+
+        vid_ctx->enc_pkt->stream_index = vid_ctx->enc_stream->index;
+
+        // Rescale packet timestamps to output stream timebase
+        av_packet_rescale_ts(vid_ctx->enc_pkt, vid_ctx->enc_codec_ctx->time_base,
+                             vid_ctx->enc_stream->time_base);
+
+        av_interleaved_write_frame(vid_ctx->enc_fmt_ctx, vid_ctx->enc_pkt);
+        av_packet_unref(vid_ctx->enc_pkt);
+    }
+
+    // Write trailer
+    av_write_trailer(vid_ctx->enc_fmt_ctx);
+
+    // Optional: flush underlying IO
+    if (!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE) && vid_ctx->enc_fmt_ctx->pb)
+        avio_flush(vid_ctx->enc_fmt_ctx->pb);
 }
 
 

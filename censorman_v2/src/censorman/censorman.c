@@ -59,13 +59,14 @@ int main(int argc, char **args)
 
     for(u32 i = 0; i < settings.asset_count; ++i)
     {
-        arena_reset(arena_frame);
         Asset *asset = &settings.assets[i];
 
         logi("Processing asset [%03d/%03d]: " STR_FMT, i+1, settings.asset_count, STR_ARG(asset->path));
 
         if(asset->type == TYPE_IMAGE)
         {
+            arena_reset(arena_frame);
+
             Image img_src = image_load(arena_frame, asset->path, &stopwatch);
 
             Image img = img_src;
@@ -87,7 +88,8 @@ int main(int argc, char **args)
                 detect(&detect_args);
             }
 
-            logv("Box count: %u", box_list.count);
+            BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 1);
+            logv("Box count: %u", box_frame.box_count);
 
             if(!settings.no_encode)
             {
@@ -96,9 +98,9 @@ int main(int argc, char **args)
                 {
                     Filter filter = settings.filters[j];
 
-                    for(u64 k = 0; k < box_list.count; ++k)
+                    for(u64 k = 0; k < box_frame.box_count; ++k)
                     {
-                        Box *box = (Box *)list_get(&box_list, k);
+                        Box *box = &box_frame.boxes[k];
                         filter_apply(filter, &img_src, box);
                     }
                 }
@@ -107,7 +109,8 @@ int main(int argc, char **args)
                 {
                     for(u64 k = 0; k < box_list.count; ++k)
                     {
-                        Box *box = (Box *)list_get(&box_list, k);
+                        Box *box = &box_frame.boxes[k];
+                        //Box *box = (Box *)list_get(&box_list, k);
                         filter_draw_debug_info(&img_src, box);
                     }
                 }
@@ -122,33 +125,40 @@ int main(int argc, char **args)
 
             video_print(&vid);
 
-#if 0
             for(;;)
             {
-                video_load_frames(&vid);
-                if(vid.frame_count == 0) break; // no more to load
+                arena_reset(arena_frame);
 
-                List box_list = list_create(arena_frame, sizeof(Box));
+                // fill up buffer with frames
+                video_load_frames(&vid);
+                if(vid.frame_count == 0) break; // no frames left
 
                 // determine detect frames
                 ListArray frames = video_get_detect_frames(&vid, settings.smoothing_window);
 
+                // Allocate box frames for all frames of decoded video
+                BoxFrame *box_frames = PUSH_ARRAY(arena_frame, BoxFrame, vid.frame_count);
+
                 // detect on frames (threaded)
-                for(int i = 0; i < frames.count; ++i)
+                for(u32 i = 0; i < frames.count; ++i)
                 {
                     u32 frame = *(((u32 *)frames.items) + i);
 
                     // put frame into an image
-                    Image img_src = {
+                    Image img_src = 
+                    {
                         .w = vid.w,
                         .h = vid.h,
                         .data = &vid.data[frame*vid.w*vid.h],
-                        .rotation = vid.rotation
+                        .rotation = vid.rotation,
+                        .arena = vid.arena
                     };
 
                     Image img = img_src;
                     img = image_scale(img, 640, 640);
                     img = image_rotate(img, vid.rotation, CCW);
+
+                    List box_list = list_create(arena_frame, sizeof(Box));
 
                     // [detections]
                     for(u32 j = 0; j < settings.detect_type_count; ++j)
@@ -162,15 +172,45 @@ int main(int argc, char **args)
 
                         detect(&detect_args);
                     }
+
+                    logv("Box count: %u", box_list.count);
+
+                    box_frames[frame] = convert_list_to_box_frame(arena_frame, box_list, frame);
                 }
 
-                // [filters]
+                // fill in gap frames
+                detect_interpolate_boxes(&vid, box_frames);
+
+                // [apply filters]
+                for(u32 i = 0; i < vid.frame_count; ++i)
+                {
+                    Image img_src = 
+                    {
+                        .w = vid.w,
+                        .h = vid.h,
+                        .data = &vid.data[i*vid.w*vid.h],
+                        .rotation = vid.rotation,
+                        .arena = vid.arena
+                    };
+
+                    BoxFrame *box_frame = &box_frames[i];
+
+                    for(u64 j = 0; j < box_frame->box_count; ++j)
+                    {
+                        Box *box = &box_frame->boxes[j];
+
+                        for(u32 k = 0; k < settings.filter_count; ++k)
+                        {
+                            filter_apply(settings.filters[k], &img_src, box);
+                        }
+                    }
+                }
 
                 // [output]
+                video_save_frames(&vid);
             }
 
-#endif
-
+            video_save_done(&vid);
             video_end(&vid);
         }
     }
