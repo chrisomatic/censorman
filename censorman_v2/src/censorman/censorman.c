@@ -6,6 +6,7 @@
 
 #include "base/base.h"
 #include "os/os.h"
+#include "tests/tests.h"
 #include "censorman/image.h"
 #include "censorman/video.h"
 #include "censorman/detect.h"
@@ -14,6 +15,7 @@
 
 #include "base/base.c"
 #include "os/os.c"
+#include "tests/tests.c"
 #include "censorman/image.c"
 #include "censorman/video.c"
 #include "censorman/detect.c"
@@ -21,6 +23,7 @@
 #include "censorman/settings.c"
 
 #define CENSORMAN_VERSION 2
+#define RUN_TESTS 0
 
 enum CM_ReturnCode
 {
@@ -52,6 +55,11 @@ int main(int argc, char **args)
     //os_thread_init();
     Stopwatch stopwatch = stopwatch_create();
     detect_init();
+
+#if RUN_TESTS
+    tests_run();
+    return 0;
+#endif
 
     // parse command line
     Settings settings = settings_parse(arena_perm, argc, args);

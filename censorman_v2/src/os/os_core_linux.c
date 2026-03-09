@@ -474,6 +474,30 @@ int os_print_raw(const char* msg, s32 msg_len)
 }
 
 ///////////////////////////////////////
+// Threads
+///////////////////////////////////////
+
+Thread thread_create(ThreadFunc func, void *arg)
+{
+    Thread thread = {0};
+    int result = pthread_create(&thread.handle, NULL, func, arg);
+    return thread;
+}
+
+void thread_join(Thread *thread)
+{
+    int result = pthread_join(thread->handle, NULL);
+}
+
+void thread_join_many(u32 thread_count, Thread *threads)
+{
+    for(int i = 0; i < thread_count; ++i)
+    {
+        thread_join(&threads[i]);
+    }
+}
+
+///////////////////////////////////////
 // Socket
 ///////////////////////////////////////
 

@@ -4,4 +4,3 @@
 #include "base_list.c"
 #include "base_hash.c"
 #include "base_cmdline.c"
-#include "base_tests.c"

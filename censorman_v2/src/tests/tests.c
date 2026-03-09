@@ -1,6 +1,23 @@
 
+
 #define test_print(name, condition) logi("   %-25s: %s", (name), (condition) ? "Pass" : "Fail");
 
+typedef struct
+{
+    u32 num_begin;
+    u32 num_end;
+    u64 sum;
+} SumTest;
+
+static void *sum_func(void *arg)
+{
+    SumTest *test = (SumTest *)arg;
+
+    for(u32 i = test->num_begin; i < test->num_end; ++i)
+    {
+        test->sum += i;
+    }
+}
 static s32 vec3_compare_y(void *a, void *b)
 {
     Vec3 *va = (Vec3 *)a;
@@ -17,9 +34,14 @@ static s32 vec3_compare_z(void *a, void *b)
     return (va->z > vb->z) - (va->z < vb->z);
 }
 
-b32 base_tests_run()
+b32 tests_run()
 {
+
+    Stopwatch stopwatch = stopwatch_create();
+
     {
+        stopwatch_begin(&stopwatch, S("arenas"));
+
         u32 capacity = KB(16);
 
         // arenas
@@ -68,11 +90,15 @@ b32 base_tests_run()
         test_print("Arena Destroy", (my_arena == NULL));
 
         logi("======================");
+
+        stopwatch_end(&stopwatch, S("arenas"));
     }
 
     // Strings
 
     {
+        stopwatch_begin(&stopwatch, S("strings"));
+
         Temp scratch = scratch_begin();
 
         String s = S("Hello, World!");
@@ -154,10 +180,14 @@ b32 base_tests_run()
         logi("Old string len: %u, new string len: %u", replace_str.len, new_str.len);
 
         scratch_end(scratch);
+
+        stopwatch_end(&stopwatch, S("strings"));
     }
 
     // Generic Lists
     {
+        stopwatch_begin(&stopwatch, S("lists"));
+
         Temp scratch = scratch_begin();
 
         List list = list_create(scratch.arena, sizeof(Vec3));
@@ -195,11 +225,14 @@ b32 base_tests_run()
         }
 
         scratch_end(scratch);
+        stopwatch_end(&stopwatch, S("lists"));
     }
 
     // Command Line
 
     {
+        stopwatch_begin(&stopwatch, S("cmdline"));
+
         Temp scratch = scratch_begin();
 
         char *args[] = {"towers","something.txt","-s","assets/custom.settings","--debug","--mode","release","-f","bloom,grayscale"};
@@ -226,7 +259,53 @@ b32 base_tests_run()
         logi("]");
 
         scratch_end(scratch);
+
+        stopwatch_end(&stopwatch, S("cmdline"));
     }
+
+    // Threads
+
+    {
+        stopwatch_begin(&stopwatch, S("threads"));
+
+        Temp scratch = scratch_begin();
+
+        const u8 thread_count = 8;
+        const u32 max_num = 100000000;
+
+        logi("Adding Numbers 1 through %u in %u threads...", max_num, thread_count);
+
+        Thread  *threads = PUSH_ARRAY(scratch.arena, Thread, thread_count);
+        SumTest *tests   = PUSH_ARRAY(scratch.arena, SumTest, thread_count);
+
+        u32 chunk_size = max_num / thread_count;
+        for(int i = 0; i < thread_count; ++i)
+        {
+            SumTest *test = &tests[i];
+
+            test->num_begin = i * chunk_size;
+            test->num_end   = (i+1) * chunk_size;
+
+            threads[i] = thread_create(sum_func, (void *)test);
+        }
+
+        u64 total_sum = 0;
+
+        thread_join_many(thread_count, threads);
+
+        for(int i = 0; i < thread_count; ++i)
+        {
+            total_sum += tests[i].sum;
+        }
+
+        logi("Total Sum: %llu", total_sum);
+
+        scratch_end(scratch);
+
+        stopwatch_end(&stopwatch, S("threads"));
+    }
+
+    stopwatch_print(&stopwatch);
 
     return true;
 }

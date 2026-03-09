@@ -490,6 +490,34 @@ int os_print_raw(const char* msg, s32 msg_len)
 }
 
 ///////////////////////////////////////
+// Threads
+///////////////////////////////////////
+
+Thread thread_create(ThreadFunc func, void *arg)
+{
+    Thread thread = {0};
+    thread.handle = CreateThread(NULL, 0, func, arg, 0, &thread.id);
+
+    return thread;
+}
+
+void thread_join(Thread *thread)
+{
+    WaitForSingleObject(thread->handle, INFINITE);
+    CloseHandle(thread->handle);
+}
+
+void thread_join_many(u32 thread_count, Thread *threads)
+{
+    HANDLE handles[256] = {0};
+    for(int i = 0; i < thread_count; ++i)
+    {
+        handles[i] = threads[i].handle;
+    }
+    WaitForMultipleObjects(thread_count, handles, TRUE, INFINITE);
+}
+
+///////////////////////////////////////
 // Socket
 ///////////////////////////////////////
 

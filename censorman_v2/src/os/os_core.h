@@ -9,7 +9,9 @@
 // - Time
 // - File
 // - Log
+// - Threads
 // - Socket
+// - Utility
 ///////////////////////////////////////
 
 ///////////////////////////////////////
@@ -46,6 +48,7 @@
 #include <unistd.h> // for usleep
 #include <fcntl.h>
 #include <time.h>
+#include <pthread.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -246,6 +249,30 @@ void os_printf(const char* fmt, ...);
 void os_vprintf(const char* fmt, va_list args);
 s32  os_print_raw(const char* msg, s32 msg_len);
 
+///////////////////////////////////////
+// Threads
+///////////////////////////////////////
+
+typedef struct Thread Thread;
+
+#if OS == OS_WINDOWS
+struct Thread
+{
+    HANDLE handle;
+    DWORD  id;
+};
+typedef s32 (*ThreadFunc)(void *);
+#else
+struct Thread
+{
+    pthread_t handle;
+};
+typedef void* (*ThreadFunc)(void *);
+#endif
+
+Thread thread_create(ThreadFunc func, void *arg);
+void   thread_join(Thread *thread);
+void   thread_join_many(u32 thread_count, Thread *threads);
 
 ///////////////////////////////////////
 // Socket
@@ -271,3 +298,8 @@ s32 socket_recvfrom(s32 socket_handle, Address* address, u8* pkt);
 void socket_close(s32 socket_handle);
 void socket_shutdown();
 
+///////////////////////////////////////
+// Utility
+///////////////////////////////////////
+
+void os_wait_for_return_key(void);
