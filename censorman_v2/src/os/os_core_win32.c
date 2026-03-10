@@ -493,7 +493,7 @@ int os_print_raw(const char* msg, s32 msg_len)
 // Threads
 ///////////////////////////////////////
 
-Thread thread_create(ThreadFunc func, void *arg)
+Thread thread_launch(ThreadFunc func, void *arg)
 {
     Thread thread = {0};
     thread.handle = CreateThread(NULL, 0, func, arg, 0, &thread.id);
@@ -501,20 +501,50 @@ Thread thread_create(ThreadFunc func, void *arg)
     return thread;
 }
 
-void thread_join(Thread *thread)
+void thread_join(Thread thread)
 {
-    WaitForSingleObject(thread->handle, INFINITE);
-    CloseHandle(thread->handle);
+    WaitForSingleObject(thread.handle, INFINITE);
 }
 
-void thread_join_many(u32 thread_count, Thread *threads)
+void thread_join_many(Thread *threads, s64 thread_count)
 {
-    HANDLE handles[256] = {0};
-    for(int i = 0; i < thread_count; ++i)
+    HANDLE handles[2048] = {0}; // @HARDCODED
+    for(s64 i = 0; i < thread_count; ++i)
     {
         handles[i] = threads[i].handle;
     }
     WaitForMultipleObjects(thread_count, handles, TRUE, INFINITE);
+}
+
+void thread_close(Thread thread)
+{
+    CloseHandle(thread->handle);
+}
+
+void thread_close_many(Thread *threads, s64 thread_count)
+{
+    for(s64 i = 0; i < thread_count; ++i)
+    {
+        thread_close(threads[i]);
+    }
+}
+
+Barrier barrier_create(s64 thread_count)
+{
+    Barrier barrier = {0};
+    InitializeSynchronizationBarrier(barrier.barrier, (LONG)thread_count, (LONG)-1);
+
+    return barrier;
+}
+
+b32 barrier_sync(Barrier *barrier)
+{
+    return (b32)EnterSynchronizationBarrier(barrier->barrier, (DWORD)0);
+}
+
+void barrier_destroy(Barrier *barrier)
+{
+    DeleteSynchronizationBarrier(barrier->barrier);
 }
 
 ///////////////////////////////////////

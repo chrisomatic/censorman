@@ -122,7 +122,7 @@ String string_concat(Arena *arena, u64 count, ...)
     va_copy(args2, args1);
 
     u64 total_len = 0;
-    for(u64 i = 0; i < count; ++i)
+    for(s64 i = 0; i < count; ++i)
     {
         String s = va_arg(args1, String);
         total_len += s.len;
@@ -132,7 +132,7 @@ String string_concat(Arena *arena, u64 count, ...)
     String str = {0};
     str.data = PUSH_ARRAY(arena, u8, total_len);
 
-    for(u64 i = 0; i < count; ++i)
+    for(s64 i = 0; i < count; ++i)
     {
         String s = va_arg(args2, String);
         memcpy(&str.data[str.len],s.data, s.len);
@@ -146,7 +146,7 @@ String string_concat(Arena *arena, u64 count, ...)
 String string_to_lower(Arena *arena, String str)
 {
     String new_str = string_copy(arena, str);
-    for(u64 i = 0; i < new_str.len; ++i)
+    for(s64 i = 0; i < new_str.len; ++i)
     {
         new_str.data[i] = char_to_lower(new_str.data[i]);
     }
@@ -156,7 +156,7 @@ String string_to_lower(Arena *arena, String str)
 String string_to_upper(Arena *arena, String str)
 {
     String new_str = string_copy(arena, str);
-    for(u64 i = 0; i < new_str.len; ++i)
+    for(s64 i = 0; i < new_str.len; ++i)
     {
         new_str.data[i] = char_to_upper(new_str.data[i]);
     }
@@ -191,12 +191,12 @@ s64 string_get_first_index(String s, const char *find, b32 from_end)
 {
     String find_str = STR(find);
 
-    for(u64 i = from_end ? s.len - 1 : 0; from_end ? i >= 0 : i < s.len; i += from_end ? -1 : 1)
+    for(s64 i = from_end ? s.len - 1 : 0; from_end ? i >= 0 : i < s.len; i += from_end ? -1 : 1)
     {
         if(s.data[i] == find_str.data[0])
         {
             b32 match = true;
-            for(u64 j = 1; j < find_str.len; ++j)
+            for(s64 j = 1; j < find_str.len; ++j)
             {
                 ++i;
                 if(i >= s.len) {
@@ -225,7 +225,7 @@ b32 string_contains(String s, String find)
 {
     if(find.len == 0) return false;
 
-    for(u64 i = 0; i < s.len; ++i)
+    for(s64 i = 0; i < s.len; ++i)
     {
         String sub = string_substring(s, i,find.len);
         if(string_equal(sub, find))
@@ -249,7 +249,7 @@ String string_replace(Arena *arena, String str, String find, String replacement)
     u64 *instances = PUSH_ARRAY(arena, u64, str.len); // total possible in indices
     u32 instance_count = 0;
 
-    for(u64 i = 0; i < str.len; ++i)
+    for(s64 i = 0; i < str.len; ++i)
     {
         String sub = string_substring(str, i, find.len);
         if(string_equal(sub, find))
@@ -313,7 +313,7 @@ b32 string_in_list(String str, StringList list)
 
 b32 string_in_array(String str, StringArray arr)
 {
-    for(u64 i = 0; i < arr.count; ++i)
+    for(s64 i = 0; i < arr.count; ++i)
     {
         if(string_equal(str, arr.items[i]))
             return true;
@@ -326,7 +326,7 @@ b32 string_equal(String s, String t)
 {
     if(s.len != t.len) return false;
 
-    for(u64 i = 0; i < s.len; ++i)
+    for(s64 i = 0; i < s.len; ++i)
         if(s.data[i] != t.data[i])
             return false;
 
@@ -594,7 +594,7 @@ void string_list_addf(StringList *sl, const char *format, ...)
 b32 string_list_remove(StringList *sl, u64 index)
 {
     StringNode *ln = sl->head;
-    for(u64 idx = 0; ln && idx < index; ++idx)
+    for(s64 idx = 0; ln && idx < index; ++idx)
         ln = ln->next;
 
     if(!ln) return false;
@@ -779,7 +779,7 @@ StringArray string_list_to_array(StringList sl)
     StringNode *sn = sl.head;
     if(!sn) return sa;
 
-    for(u64 i = 0; i < sl.count; ++i)
+    for(s64 i = 0; i < sl.count; ++i)
     {
         MemoryCopy(&sa.items[i], &sn->str, sizeof(String));
         if(!sn->next) break;
@@ -794,12 +794,12 @@ StringArray string_split(Arena *arena, String base, String split)
     u64 num_strings = base.len > 0 ? 1 : 0;
     s64 split_indices[2048] = {0}; // @HARDCODED @NOTE: Arbitrary limit
 
-    for(u64 i = 0; i < base.len; ++i)
+    for(s64 i = 0; i < base.len; ++i)
     {
         if(base.data[i] == split.data[0])
         {
             b32 match = true;
-            for(u64 j = 1; j < split.len; ++j)
+            for(s64 j = 1; j < split.len; ++j)
             {
                 ++i;
                 if(i >= base.len) {
@@ -828,7 +828,7 @@ StringArray string_split(Arena *arena, String base, String split)
     sa.items = PUSH_ARRAY(arena, String, num_strings);
     sa.count = num_strings;
 
-    for(u64 i = 0; i < num_strings; ++i)
+    for(s64 i = 0; i < num_strings; ++i)
     {
         u64 string_len = split_indices[i+1] - split_indices[i] - split.len;
         if(i+1 == num_strings) string_len += split.len;

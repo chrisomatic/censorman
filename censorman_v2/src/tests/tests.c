@@ -4,8 +4,7 @@
 
 typedef struct
 {
-    u32 num_begin;
-    u32 num_end;
+    ThreadValuesRange range;
     u64 sum;
 } SumTest;
 
@@ -13,11 +12,12 @@ static void *sum_func(void *arg)
 {
     SumTest *test = (SumTest *)arg;
 
-    for(u32 i = test->num_begin; i < test->num_end; ++i)
+    for(s64 i = test->range.min; i < test->range.max; ++i)
     {
         test->sum += i;
     }
 }
+
 static s32 vec3_compare_y(void *a, void *b)
 {
     Vec3 *va = (Vec3 *)a;
@@ -120,7 +120,7 @@ b32 tests_run()
         string_list_add(&sl, S("is "));
         string_list_add(&sl, S("chris,"));
 
-        for(int i = 0; i < 10; ++i)
+        for(s64 i = 0; i < 10; ++i)
         {
             string_list_addf(&sl, "hello%d,",i);
         }
@@ -133,7 +133,7 @@ b32 tests_run()
         String str = S("120, 5.0, \"Chris\", true");
         StringArray sa = string_split(scratch.arena, str, S(","));
 
-        for(int i = 0; i < sa.count; ++i)
+        for(s64 i = 0; i < sa.count; ++i)
         {
             string_print(sa.items[i]);
         }
@@ -211,7 +211,7 @@ b32 tests_run()
         Vec3 *vec = arr.items;
 
         list_array_sort(&arr, vec3_compare_y);
-        for(int i = 0; i < arr.count; ++i)
+        for(s64 i = 0; i < arr.count; ++i)
         {
             vec3_print(vec[i], "Vector");
         }
@@ -219,7 +219,7 @@ b32 tests_run()
         logi("");
 
         list_array_sort(&arr, vec3_compare_z);
-        for(int i = 0; i < arr.count; ++i)
+        for(s64 i = 0; i < arr.count; ++i)
         {
             vec3_print(vec[i], "Vector");
         }
@@ -254,7 +254,7 @@ b32 tests_run()
         logi("mode:       " STR_FMT, STR_ARG(mode));
 
         logi("filters:    [");
-        for(s32 i = 0; i < filters.count; ++i)
+        for(s64 i = 0; i < filters.count; ++i)
             logi("  [%d]: " STR_FMT, i, STR_ARG(filters.items[i]));
         logi("]");
 
@@ -271,29 +271,26 @@ b32 tests_run()
         Temp scratch = scratch_begin();
 
         const u8 thread_count = 8;
-        const u32 max_num = 100000000;
+        const s64 max_num = 1e8;
 
         logi("Adding Numbers 1 through %u in %u threads...", max_num, thread_count);
 
-        Thread  *threads = PUSH_ARRAY(scratch.arena, Thread, thread_count);
+        Thread  *threads = PUSH_ARRAY(scratch.arena, Thread,  thread_count);
         SumTest *tests   = PUSH_ARRAY(scratch.arena, SumTest, thread_count);
 
-        u32 chunk_size = max_num / thread_count;
-        for(int i = 0; i < thread_count; ++i)
+        for(s64 i = 0; i < thread_count; ++i)
         {
             SumTest *test = &tests[i];
 
-            test->num_begin = i * chunk_size;
-            test->num_end   = (i+1) * chunk_size;
-
-            threads[i] = thread_create(sum_func, (void *)test);
+            test->range = thread_range(i, thread_count, max_num);
+            threads[i] = thread_launch(sum_func, (void *)test);
         }
 
+        thread_join_many(threads, thread_count);
+        thread_close_many(threads, thread_count);
+
         u64 total_sum = 0;
-
-        thread_join_many(thread_count, threads);
-
-        for(int i = 0; i < thread_count; ++i)
+        for(s64 i = 0; i < thread_count; ++i)
         {
             total_sum += tests[i].sum;
         }

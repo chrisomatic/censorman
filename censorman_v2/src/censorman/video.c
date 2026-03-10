@@ -225,8 +225,8 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
     ctx->enc_codec_ctx->pix_fmt      = AV_PIX_FMT_YUV420P;
     ctx->enc_codec_ctx->gop_size     = 12;
     ctx->enc_codec_ctx->max_b_frames = 0;
-    ctx->enc_codec_ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
     ctx->enc_codec_ctx->thread_count = 0; // auto
+    ctx->enc_codec_ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
 
     ctx->enc_stream->time_base  = ctx->enc_codec_ctx->time_base;
 

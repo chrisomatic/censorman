@@ -277,9 +277,9 @@ Matrix matrix_dot_matrix(Matrix a, Matrix b)
 {
     Matrix r = {0};
 
-    for(int i = 0; i < 4; ++i)
+    for(s64 i = 0; i < 4; ++i)
     {
-        for(int j = 0; j < 4; ++j)
+        for(s64 j = 0; j < 4; ++j)
         {
             r.data[i][j] =
                 a.data[i][0] * b.data[0][j] +

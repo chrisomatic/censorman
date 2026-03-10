@@ -8,7 +8,8 @@
 
 #define DELAY(s) os_time_delay_us((s)*1000*1000)
 
-LogLevel _system_log_level = LOG_LEVEL_DEBUG;
+THREAD_LOCAL LogLevel      _system_log_level = LOG_LEVEL_DEBUG;
+THREAD_LOCAL ThreadContext _thread_context   = {0};
 
 ///////////////////////////////////////
 // Stopwatch
@@ -33,8 +34,8 @@ static int stopwatch_get_entry_index(Stopwatch *stopwatch, String label)
 {
     u32 hash = hash_string(label, 0);
 
-    int index = -1;
-    for(int i = 1; i < MIN(stopwatch->entry_count, STOPWATCH_MAX_ENTRIES); ++i)
+    s64 index = -1;
+    for(s64 i = 1; i < MIN(stopwatch->entry_count, STOPWATCH_MAX_ENTRIES); ++i)
     {
         StopwatchEntry *entry = &stopwatch->entries[i];
 
@@ -91,7 +92,7 @@ void stopwatch_print(Stopwatch *stopwatch)
     if(!stopwatch) return;
 
     f64 total = 0.0;
-    for(int i = 0; i < stopwatch->entry_count; ++i)
+    for(s64 i = 0; i < stopwatch->entry_count; ++i)
     {
         total += stopwatch->entries[i].total_seconds;
     }
@@ -99,16 +100,16 @@ void stopwatch_print(Stopwatch *stopwatch)
     const char *dots = "....................";
 
     logi("============== STOPWATCH ==============");
-    for(int i = 1; i < stopwatch->entry_count; ++i)
+    for(s64 i = 1; i < stopwatch->entry_count; ++i)
     {
         StopwatchEntry *entry = &stopwatch->entries[i];
         String label = i == 0 ? S("(none)") : entry->label;
         s32 num_dots = MAX(0, 20 - label.len);
-        logi("  " STR_FMT "%.*s%5.3f s (%05.2f%%)", STR_ARG(label), num_dots, dots, entry->total_seconds, 100.0*(entry->total_seconds / total));
+        logi("  " STR_FMT "%.*s%8.6f s (%05.2f%%)", STR_ARG(label), num_dots, dots, entry->total_seconds, 100.0*(entry->total_seconds / total));
     }
 
     logi("---------------------------------------");
-    logi("  %s...............%5.3f s", "TOTAL", total);
+    logi("  %s...............%8.6f s", "TOTAL", total);
     logi("=======================================");
 }
 
@@ -220,12 +221,12 @@ StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArr
 
     StringList filtered = string_list_create(arena);
 
-    for(int i = 0; i < files.count; ++i)
+    for(s64 i = 0; i < files.count; ++i)
     {
         String file = files.items[i];
         String file_lowercase = string_to_lower(arena, file);
 
-        for(int j = 0; j < extensions.count; ++j)
+        for(s64 j = 0; j < extensions.count; ++j)
         {
             String ext = extensions.items[j];
             if(ext.len == 0) continue;
@@ -248,7 +249,7 @@ StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArr
 
 String os_path_get_extension(String path)
 {
-    int i = 0;
+    s64 i = 0;
     b32 found = false;
 
     for(i = path.len - 1; i >= 0; --i)
@@ -273,7 +274,7 @@ String os_path_get_extension(String path)
 
 String os_path_get_directory(String path)
 {
-    int i = 0;
+    s64 i = 0;
     b32 found = false;
 
     for(i = path.len - 1; i >= 0; --i)
@@ -298,7 +299,7 @@ String os_path_get_directory(String path)
 
 String os_path_get_file(String path)
 {
-    int i = 0;
+    s64 i = 0;
     b32 found = false;
 
     for(i = path.len - 1; i >= 0; --i)
@@ -320,3 +321,29 @@ String os_path_get_file(String path)
 
     return file;
 }
+
+///////////////////////////////////////
+// Threads
+///////////////////////////////////////
+
+ThreadValuesRange thread_range(u32 thread_index, u32 thread_count, u32 values_count)
+{
+    ThreadValuesRange range = {0};
+
+    s64 values_per_thread = values_count / thread_count;
+    s64 leftover_values_count = values_count % thread_count;
+    b32 thread_has_leftover = (thread_index < leftover_values_count);
+    s64 leftovers_before_this_thread_index = 
+        (thread_has_leftover ? thread_index : leftover_values_count);
+    s64 thread_first_value_idx = (values_per_thread * thread_index +
+                                  leftovers_before_this_thread_index);
+    s64 thread_opl_value_idx = (thread_first_value_idx + values_per_thread + 
+                                !!thread_has_leftover);
+
+    range.min = thread_first_value_idx;
+    range.max = thread_opl_value_idx;
+
+    return range;
+}
+
+

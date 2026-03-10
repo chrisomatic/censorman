@@ -477,24 +477,57 @@ int os_print_raw(const char* msg, s32 msg_len)
 // Threads
 ///////////////////////////////////////
 
-Thread thread_create(ThreadFunc func, void *arg)
+Thread thread_launch(ThreadFunc func, void *arg)
 {
     Thread thread = {0};
     int result = pthread_create(&thread.handle, NULL, func, arg);
     return thread;
 }
 
-void thread_join(Thread *thread)
+void thread_join(Thread thread)
 {
-    int result = pthread_join(thread->handle, NULL);
+    int result = pthread_join(thread.handle, NULL);
 }
 
-void thread_join_many(u32 thread_count, Thread *threads)
+void thread_join_many(Thread *threads, s64 thread_count)
 {
-    for(int i = 0; i < thread_count; ++i)
+    for(s64 i = 0; i < thread_count; ++i)
     {
-        thread_join(&threads[i]);
+        thread_join(threads[i]);
     }
+}
+
+void thread_close(Thread thread)
+{
+    // pthreads on Linux are destroyed on join
+    return;
+}
+
+void thread_close_many(Thread *threads, s64 thread_count)
+{
+    for(s64 i = 0; i < thread_count; ++i)
+    {
+        thread_close(threads[i]);
+    }
+}
+
+Barrier barrier_create(s64 thread_count)
+{
+    Barrier barrier = {0};
+    pthread_barrier_init(&barrier.barrier, NULL, thread_count);
+
+    return barrier;
+}
+
+b32 barrier_sync(Barrier *barrier)
+{
+    s32 result = pthread_barrier_wait(&barrier->barrier);
+    return (result == PTHREAD_BARRIER_SERIAL_THREAD);
+}
+
+void barrier_destroy(Barrier *barrier)
+{
+    pthread_barrier_destroy(&barrier->barrier);
 }
 
 ///////////////////////////////////////

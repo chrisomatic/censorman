@@ -48,8 +48,8 @@
 #include <unistd.h> // for usleep
 #include <fcntl.h>
 #include <time.h>
-#include <pthread.h>
 #include <dirent.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/mman.h>
@@ -254,25 +254,57 @@ s32  os_print_raw(const char* msg, s32 msg_len);
 ///////////////////////////////////////
 
 typedef struct Thread Thread;
+typedef struct Barrier Barrier;
 
 #if OS == OS_WINDOWS
+#define THREAD_LOCAL __declspec(thread)
 struct Thread
 {
     HANDLE handle;
     DWORD  id;
 };
+struct Barrier
+{
+    LPSYNCHRONIZATION_BARRIER barrier;
+};
 typedef s32 (*ThreadFunc)(void *);
 #else
+#define THREAD_LOCAL __thread
 struct Thread
 {
     pthread_t handle;
 };
+struct Barrier
+{
+    pthread_barrier_t barrier;
+};
 typedef void* (*ThreadFunc)(void *);
 #endif
 
-Thread thread_create(ThreadFunc func, void *arg);
-void   thread_join(Thread *thread);
-void   thread_join_many(u32 thread_count, Thread *threads);
+typedef struct
+{
+    s64 thread_index;
+    s64 thread_count;
+} ThreadContext;
+
+typedef struct
+{
+    s64 min;
+    s64 max;
+} ThreadValuesRange;
+
+Thread thread_launch(ThreadFunc func, void *arg);
+void   thread_join(Thread thread);
+void   thread_close(Thread thread);
+
+void   thread_join_many(Thread *threads, s64 thread_count);
+void   thread_close_many(Thread *threads, s64 thread_count);
+
+ThreadValuesRange thread_range(u32 thread_index, u32 thread_count, u32 values_count);
+
+Barrier barrier_create(s64 thread_count);
+b32     barrier_sync(Barrier *barrier);
+void barrier_destroy(Barrier *barrier);
 
 ///////////////////////////////////////
 // Socket

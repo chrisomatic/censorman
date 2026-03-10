@@ -62,7 +62,7 @@ void list_add(List *list, void *item)
 
 void list_add_list(List *list, List *add)
 {
-    for(u64 i = 0; i < add->count; ++i)
+    for(s64 i = 0; i < add->count; ++i)
     {
         list_add(list, list_get(add, i));
     }
@@ -71,7 +71,7 @@ void list_add_list(List *list, List *add)
 b32 list_remove(List *list, u64 index)
 {
     ListNode *ln = list->head;
-    for(u64 idx = 0; ln && idx < index; ++idx)
+    for(s64 idx = 0; ln && idx < index; ++idx)
         ln = ln->next;
 
     if(!ln) return false;
@@ -187,7 +187,7 @@ void list_print(List *list)
                 default:
                 {
                     string_list_addf(&sl, "  %lu: [ ", item_count);
-                    for(u32 i = 0; i < list->item_size; ++i)
+                    for(s32 i = 0; i < list->item_size; ++i)
                     {
                         u8 *x = (u8 *)it;
                         string_list_addf(&sl, "%02X ", *(x+i));
@@ -218,9 +218,9 @@ void list_array_sort(ListArray *arr, ListCompareFn cmp)
 
     u8 tmp[512]; // small buffer that should support "item_size"
 
-    for(u64 i = 1; i < arr->count; ++i)
+    for(s64 i = 1; i < arr->count; ++i)
     {
-        u64 j = i;
+        s64 j = i;
         for(; j > 0 && cmp(items + (j-1)*es, items + j*es) > 0; j--)
         {
             u8 *a = items + j*es;

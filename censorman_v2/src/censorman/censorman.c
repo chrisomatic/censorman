@@ -147,7 +147,9 @@ int main(int argc, char **args)
                 // Allocate box frames for all frames of decoded video
                 BoxFrame *box_frames = PUSH_ARRAY(arena_frame, BoxFrame, vid.frame_count);
 
-                // detect on frames (threaded)
+                // detect on frames
+                // @THREADED
+                // {
                 for(u32 i = 0; i < frames.count; ++i)
                 {
                     u32 frame = *(((u32 *)frames.items) + i);
@@ -185,11 +187,14 @@ int main(int argc, char **args)
 
                     box_frames[frame] = convert_list_to_box_frame(arena_frame, box_list, frame);
                 }
+                // }
 
                 // fill in gap frames
                 detect_interpolate_boxes(&vid, box_frames);
 
                 // [apply filters]
+                // @THREADED
+                // {
                 for(u32 i = 0; i < vid.frame_count; ++i)
                 {
                     Image img_src = 
@@ -213,6 +218,7 @@ int main(int argc, char **args)
                         }
                     }
                 }
+                // }
 
                 // [output]
                 video_save_frames(&vid);
