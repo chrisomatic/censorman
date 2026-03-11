@@ -253,6 +253,8 @@ s32  os_print_raw(const char* msg, s32 msg_len);
 // Threads
 ///////////////////////////////////////
 
+#define NARROW if(thread_index == 0)
+
 typedef struct Thread Thread;
 typedef struct Barrier Barrier;
 

@@ -8,7 +8,7 @@
 
 #define DELAY(s) os_time_delay_us((s)*1000*1000)
 
-THREAD_LOCAL LogLevel      _system_log_level = LOG_LEVEL_DEBUG;
+LogLevel      _system_log_level = LOG_LEVEL_DEBUG;
 THREAD_LOCAL ThreadContext _thread_context   = {0};
 
 ///////////////////////////////////////

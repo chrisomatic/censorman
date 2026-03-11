@@ -16,16 +16,16 @@ typedef enum
 
 typedef struct
 {
-    u32 x;
-    u32 y;
+    s32 x;
+    s32 y;
 } Point;
 
 typedef struct
 {
-    u32 x;
-    u32 y;
-    u32 w;
-    u32 h;
+    s32 x;
+    s32 y;
+    s32 w;
+    s32 h;
     u16 confidence;
     Point landmarks[LANDMARK_COUNT];
     DetectType type;

@@ -33,6 +33,7 @@ void filter_apply(Filter filter, Image *image, Box *box)
             filter_blur_gaussian(image, box, filter.blur_strength);
             break;
         case FILTER_TYPE_PIXELATE:
+            filter_pixelate(image, box, filter.block_scale);
             break;
         case FILTER_TYPE_TEXTURE:
             break;
@@ -48,6 +49,122 @@ void filter_blackout(Image *image, Box *box)
 {
     RGBColor black = (RGBColor){0,0,0};
     draw_box(image, box, black, true, 1, 1.0);
+}
+
+void filter_pixelate(Image* image, Box *box, f32 block_scale)
+{
+    RGBColor* limit = &image->data[image->w*image->h - 1];
+    RGBColor* start = &image->data[box->y*image->w + box->x];
+    RGBColor* curr = start;
+
+    s32 block_size = MAX(box->w, box->h)*block_scale;
+
+    if(block_size == 0 || block_size == 1)
+        return; // block_size matches pixel
+
+    s32 total_block_size = block_size * block_size;
+
+    f64 avg_r = 0.0;
+    f64 avg_g = 0.0;
+    f64 avg_b = 0.0;
+
+    s32 block_size_x = block_size;
+    s32 block_size_y = block_size;
+
+    s32 num_blocks_x = block_size_x > 0 ? ceil((f32)box->w / block_size_x) : 0;
+    s32 num_blocks_y = block_size_y > 0 ? ceil((f32)box->h / block_size_y) : 0;
+
+    s32 leftover_x = block_size_x > 0 ? box->w % block_size_x : 0;
+    s32 leftover_y = block_size_y > 0 ? box->h % block_size_y : 0;
+
+    for(s32 y = 0; y < num_blocks_y; ++y)
+    {
+        for(s32 x = 0; x < num_blocks_x; ++x)
+        {
+            avg_r = 0.0;
+            avg_g = 0.0;
+            avg_b = 0.0;
+
+            curr = start + y*block_size_y*image->w + x*block_size_x;
+
+            for(s32 j = 0; j < block_size_y; ++j)
+            {
+                if(curr > limit)
+                {
+                    logw("Hit end of image!");
+                    break;
+                }
+
+                for(s32 i = 0; i < block_size_x; ++i)
+                {
+                    avg_r += curr[i].r;
+                    avg_g += curr[i].g;
+                    avg_b += curr[i].b;
+                }
+
+                curr += MIN(image->w, limit - curr);
+            }
+
+            avg_r /= total_block_size;
+            avg_g /= total_block_size;
+            avg_b /= total_block_size;
+
+            RGBColor sc = {(u8)avg_r, (u8)avg_g, (u8)avg_b};
+
+            // offsets to deal with truncated blocks at edges of box
+            s32 adj_block_size_x = (x == num_blocks_x - 1 && leftover_x > 0) ? leftover_x : block_size_x;
+            s32 adj_block_size_y = (y == num_blocks_y - 1 && leftover_y > 0) ? leftover_y : block_size_y;
+
+            // apply avgcolor to range
+            curr = start + y*block_size_y*image->w + x*block_size_x;
+
+            for(s32 j = 0; j < adj_block_size_y; ++j)
+            {
+                for(s32 i = 0; i < adj_block_size_x; ++i)
+                {
+                    MemoryCopy(curr+i, &sc, sizeof(RGBColor));
+                }
+                curr += image->w;
+            }
+        }
+    }
+}
+
+void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength)
+{
+    Temp scratch = scratch_begin();
+
+    f32 base = (box->w < box->h ? box->w : box->h);
+    f32 sigma = MAX(0.70, 0.24 * blur_strength * base);
+    s32 radius = (s32)ceilf(3 * sigma);
+    s32 k_size = 2 * radius + 1;
+    f32 *kernel = PUSH_ARRAY(scratch.arena, f32, k_size);
+
+    f32 sum = 0.0;
+    for (s32 i = 0; i < k_size; ++i)
+    {
+        s32 x = i - radius;
+        kernel[i] = expf(-(x*x) / (2*sigma*sigma));
+        sum += kernel[i];
+    }
+
+    for (s32 i = 0; i < k_size; ++i)
+    {
+        kernel[i] /= sum;
+    }
+
+    // temp image buffer for intermediate result
+    Image tmp = *image;
+    tmp.data = PUSH_ARRAY(scratch.arena, RGBColor, image->w * image->h);
+    MemoryCopy(tmp.data, image->data, image->w * image->h * sizeof(RGBColor));
+
+    // horizontal pass
+    convolve(image, &tmp, box, kernel, k_size, true);
+
+    // vertical pass (write back into original image buffer)
+    convolve(&tmp, image, box, kernel, k_size, false);
+
+    scratch_end(scratch);
 }
 
 void filter_draw_debug_info(Image *image, Box *box)
@@ -121,42 +238,6 @@ FilterType filter_from_string(String str)
     return FILTER_TYPE_NONE;
 }
 
-void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength)
-{
-    Temp scratch = scratch_begin();
-
-    f32 base = (box->w < box->h ? box->w : box->h);
-    f32 sigma = MAX(0.70, 0.24 * blur_strength * base);
-    s32 radius = (s32)ceilf(3 * sigma);
-    s32 k_size = 2 * radius + 1;
-    f32 *kernel = PUSH_ARRAY(scratch.arena, f32, k_size);
-
-    f32 sum = 0.0;
-    for (s32 i = 0; i < k_size; ++i)
-    {
-        s32 x = i - radius;
-        kernel[i] = expf(-(x*x) / (2*sigma*sigma));
-        sum += kernel[i];
-    }
-
-    for (s32 i = 0; i < k_size; ++i)
-    {
-        kernel[i] /= sum;
-    }
-
-    // temp image buffer for intermediate result
-    Image tmp = *image;
-    tmp.data = PUSH_ARRAY(scratch.arena, RGBColor, image->w * image->h);
-    MemoryCopy(tmp.data, image->data, image->w * image->h * sizeof(RGBColor));
-
-    // horizontal pass
-    convolve(image, &tmp, box, kernel, k_size, true);
-
-    // vertical pass (write back into original image buffer)
-    convolve(&tmp, image, box, kernel, k_size, false);
-
-    scratch_end(scratch);
-}
 
 //===================================
 // Static functions

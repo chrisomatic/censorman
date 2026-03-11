@@ -46,6 +46,7 @@ typedef struct
     b8 no_rotate;
     b8 debug;
     b8 verbose;
+    b8 quiet;
 
 } Settings;
 

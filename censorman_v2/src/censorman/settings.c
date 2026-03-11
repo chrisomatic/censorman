@@ -18,13 +18,14 @@ Settings settings_default()
     settings.confidence_threshold = 0.25;
     settings.box_padding          = 0.15;
     settings.blur_strength        = 0.60;
-    settings.block_scale          = 0.18;
+    settings.block_scale          = 0.15;
     settings.smoothing_window     = 0.240; // 240ms
 
     settings.no_encode = false;
     settings.no_rotate = false;
     settings.debug     = false;
     settings.verbose   = false;
+    settings.quiet     = false;
 
     return settings;
 }
@@ -69,12 +70,14 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     b32 f_no_encode = cmdline_has_flag(&cmdline, S("no_encode"));
     b32 f_debug     = cmdline_has_flag(&cmdline, S("debug"));
     b32 f_verbose   = cmdline_has_flag(&cmdline, S("verbose"));
+    b32 f_quiet     = cmdline_has_flag(&cmdline, S("quiet"));
     b32 f_help      = cmdline_has_flag(&cmdline, S("h"));
         f_help     |= cmdline_has_flag(&cmdline, S("help"));
 
     if(f_no_encode) settings.no_encode = true;
     if(f_debug)     settings.debug     = true;
     if(f_verbose)   settings.verbose   = true;
+    if(f_quiet)     settings.quiet     = true;
     
     // create output directory if needed
     char *output_folder_cstr = string_to_cstr(scratch.arena, settings.output_folder);
@@ -190,6 +193,13 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(settings.verbose)
     {
         os_set_log_level(LOG_LEVEL_VERBOSE);
+        video_set_log_level(LOG_LEVEL_VERBOSE);
+    }
+
+    if(settings.quiet)
+    {
+        os_set_log_level(LOG_LEVEL_QUIET);
+        video_set_log_level(LOG_LEVEL_QUIET);
     }
 
     scratch_end(scratch);
@@ -201,7 +211,7 @@ void settings_print(Settings *settings)
 {
     Temp scratch = scratch_begin();
 
-    logi("=============== Settings ===============");
+    logi("============== Settings ===============");
     logi("%-22s %u", "Asset count", settings->asset_count);
 
     StringList sl = string_list_create(scratch.arena);
@@ -261,7 +271,7 @@ void settings_print(Settings *settings)
     logi("%-22s %s",    "Debug",                settings->debug ? "ON" : "OFF");
     logi("%-22s %s",    "Verbose",              settings->verbose ? "ON" : "OFF");
     logi("%-22s " STR_FMT, "Bounding Box Output", STR_ARG(settings->bbx_output));
-    logi("========================================");
+    logi("=======================================");
 
     scratch_end(scratch);
 }

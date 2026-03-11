@@ -69,7 +69,7 @@ int main(int argc, char **args)
     settings_print(&settings);
 
     // setup threads
-    threads      = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
+    threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
     barrier = barrier_create(settings.thread_count);
 
     for(s64 thread_index = 0; thread_index < settings.thread_count; ++thread_index)
@@ -89,13 +89,13 @@ void *entry_point(void *params)
 {
     s64 thread_index = (s64)params;
 
-    if(thread_index == 0)
+    for(u32 i = 0; i < settings.asset_count; ++i)
     {
-        for(u32 i = 0; i < settings.asset_count; ++i)
-        {
-            Asset *asset = &settings.assets[i];
+        Asset *asset = &settings.assets[i];
 
-            logi("Processing asset [%03d/%03d]: " STR_FMT, i+1, settings.asset_count, STR_ARG(asset->path));
+        NARROW logi("Processing asset [%03d/%03d]: " STR_FMT, i+1, settings.asset_count, STR_ARG(asset->path));
+
+        NARROW {
 
             if(asset->type == TYPE_IMAGE)
             {
@@ -123,7 +123,6 @@ void *entry_point(void *params)
                 }
 
                 BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 1);
-                logv("Box count: %u", box_frame.box_count);
 
                 if(!settings.no_encode)
                 {
@@ -248,9 +247,9 @@ void *entry_point(void *params)
                 video_end(&vid);
             }
         }
-
-        stopwatch_print(&stopwatch);
     }
+
+    NARROW stopwatch_print(&stopwatch);
 
     return NULL;
 }

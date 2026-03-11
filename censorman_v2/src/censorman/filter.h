@@ -29,6 +29,7 @@ void filter_apply(Filter filter, Image *image, Box *box);
 // filters
 void filter_blackout(Image *image, Box *box);
 void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength);
+void filter_pixelate(Image* image, Box *box, f32 block_scale);
 
 void filter_draw_debug_info(Image *image, Box *box);
 

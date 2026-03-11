@@ -1,5 +1,5 @@
 
-static Model model_face    = {0};
+static Model model_face   = {0};
 static Model model_person = {0};
 
 extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
@@ -305,13 +305,6 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
     ListArray boxes_arr = list_to_array(&boxes);
     list_array_sort(&boxes_arr, box_compare);
 
-    logv("Boxes array count: %u", boxes_arr.count);
-    for(int i = 0; i < boxes_arr.count; ++i)
-    {
-        Box *b = (Box *)(boxes_arr.items + i*sizeof(Box));
-        box_print(b);
-    }
-
     // suppress
 
     List boxes_curated = list_create(boxes.arena, sizeof(Box));
@@ -359,7 +352,12 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
         }
     }
 
-    logv("Boxes count after NMS: %u", boxes_curated.count);
+    logv("Box count: %u", boxes_curated.count);
+    for(int i = 0; i < boxes_curated.count; ++i)
+    {
+        Box *b = (Box *)list_get(&boxes_curated, i);
+        box_print(b);
+    }
 
     return boxes_curated;
 }
@@ -452,10 +450,10 @@ List detect_faces(Arena *arena, Image *image)
                     f32 cx = j * stride;
                     f32 cy = i * stride;
 
-                    f32 l = bbox[idx * 4 + 0] * stride;
-                    f32 t = bbox[idx * 4 + 1] * stride;
-                    f32 r = bbox[idx * 4 + 2] * stride;
-                    f32 b = bbox[idx * 4 + 3] * stride;
+                    f32 l = bbox[idx*4 + 0] * stride;
+                    f32 t = bbox[idx*4 + 1] * stride;
+                    f32 r = bbox[idx*4 + 2] * stride;
+                    f32 b = bbox[idx*4 + 3] * stride;
 
                     f32 x1 = cx - l;
                     f32 y1 = cy - t;
@@ -468,29 +466,33 @@ List detect_faces(Arena *arena, Image *image)
                     s32 y2s = (s32)((y2 - image->pad_y) / image->scale);
 
                     Box box;
-                    box.x = (u32)(x1s);
-                    box.y = (u32)(y1s);
-                    box.w = (u32)(x2s - x1s);
-                    box.h = (u32)(y2s - y1s);
+                    box.x = x1s;
+                    box.y = y1s;
+                    box.w = x2s - x1s;
+                    box.h = y2s - y1s;
 
-                    u32 image_src_w = (u32)(image->w / image->scale);
-                    u32 image_src_h = (u32)(image->h / image->scale);
+                    s32 image_src_w = (s32)(image->w / image->scale);
+                    s32 image_src_h = (s32)(image->h / image->scale);
+
+                    box.type = DETECT_TYPE_FACE;
+                    box.confidence = (u16)(prob*100);
 
                     box.x = CLAMP(box.x, 0, image_src_w - 1);
                     box.y = CLAMP(box.y, 0, image_src_h - 1);
                     box.w = CLAMP(box.w, 1, image_src_w - box.x - 1);
                     box.h = CLAMP(box.h, 1, image_src_h - box.y - 1);
 
-                    box.type = DETECT_TYPE_FACE;
-                    box.confidence = (u16)(prob*100);
-
                     // landmarks: 5 keypoints, (dx,dy) relative to anchor center
                     for (s32 k = 0; k < 5; k++)
                     {
                         f32 lx = cx + kps[idx*10 + k*2 + 0] * stride;
                         f32 ly = cy + kps[idx*10 + k*2 + 1] * stride;
-                        box.landmarks[k].x = (u32)((lx - image->pad_x) / image->scale);
-                        box.landmarks[k].y = (u32)((ly - image->pad_y) / image->scale);
+
+                        s32 _x = (lx - image->pad_x) / image->scale;
+                        s32 _y = (ly - image->pad_y) / image->scale;
+
+                        box.landmarks[k].x = CLAMP(_x, 0, image_src_w - 1);
+                        box.landmarks[k].y = CLAMP(_y, 0, image_src_h - 1);
                     }
 
                     list_add(&boxes, &box);
@@ -532,7 +534,14 @@ List detect_persons(Arena *arena, Image *image)
 
 void box_print(Box *b)
 {
-    logv("Box: [ %u %u %u %u ], Confidence: %u", b->x, b->y, b->w, b->h, b->confidence);
+    logv("Box: [ %4u %4u %4u %4u ], Confidence: %2u, Landmarks: [(%4u,%4u),(%4u,%4u),(%4u,%4u),(%4u,%4u),(%4u,%4u)]",
+            b->x, b->y, b->w, b->h, b->confidence,
+            b->landmarks[0].x, b->landmarks[0].y,
+            b->landmarks[1].x, b->landmarks[1].y,
+            b->landmarks[2].x, b->landmarks[2].y,
+            b->landmarks[3].x, b->landmarks[3].y,
+            b->landmarks[4].x, b->landmarks[4].y
+        );
 }
 
 String detect_type_to_string(DetectType type)
