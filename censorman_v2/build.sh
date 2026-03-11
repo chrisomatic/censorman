@@ -1,6 +1,6 @@
 #!/bin/sh
 
-BUILD_DIR=out
+BUILD_DIR=bin
 SOURCE_DIR=src
 APP_NAME=censorman
 

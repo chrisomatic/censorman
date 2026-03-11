@@ -12,7 +12,7 @@ Settings settings_default()
 
     settings.output_folder = S("output");
 
-    settings.thread_count         = 8;
+    settings.thread_count         = os_system_info.logical_processor_count;
     settings.buffer_size          = MB(512);
     settings.nms_threshold        = 0.45;
     settings.confidence_threshold = 0.25;

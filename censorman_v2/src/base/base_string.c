@@ -27,6 +27,11 @@ b32 char_is_upper(u8 c)
     return (c >= 'A' && c <= 'Z');
 }
 
+b32 char_is_printable(u8 c)
+{
+    return (c >= ' ' && c <= '~');
+}
+
 u8 char_to_lower(u8 c)
 {
     if(char_is_upper(c))

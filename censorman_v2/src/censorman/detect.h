@@ -2,6 +2,8 @@
 
 #include "ncnn/c_api.h"
 
+#define LANDMARK_COUNT 5
+
 typedef enum
 {
     DETECT_TYPE_NONE = 0,
@@ -25,7 +27,7 @@ typedef struct
     u32 w;
     u32 h;
     u16 confidence;
-    Point landmarks[5];
+    Point landmarks[LANDMARK_COUNT];
     DetectType type;
 } Box;
 

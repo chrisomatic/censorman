@@ -44,192 +44,213 @@ void censorman_version()
 Arena *arena_perm;
 Arena *arena_frame;
 
+Barrier barrier = {0};
+Thread *threads = NULL;
+Stopwatch stopwatch = {0};
+Settings settings = {0};
+
+void *entry_point(void *params);
+
 int main(int argc, char **args)
 {
     // initialization
-    censorman_version();
+    os_time_init();
+    os_system_init();
+
     arena_perm  = arena_create(MB(16));
     arena_frame = arena_create(MB(16));
-
-    os_time_init();
-    //os_thread_init();
-    Stopwatch stopwatch = stopwatch_create();
+    stopwatch   = stopwatch_create();
     detect_init();
 
-#if RUN_TESTS
-    tests_run();
-    return 0;
-#endif
+    censorman_version();
 
     // parse command line
-    Settings settings = settings_parse(arena_perm, argc, args);
+    settings = settings_parse(arena_perm, argc, args);
     settings_print(&settings);
 
-    for(u32 i = 0; i < settings.asset_count; ++i)
+    // setup threads
+    threads      = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
+    barrier = barrier_create(settings.thread_count);
+
+    for(s64 thread_index = 0; thread_index < settings.thread_count; ++thread_index)
     {
-        Asset *asset = &settings.assets[i];
+        threads[thread_index] = thread_launch(entry_point, (void *)thread_index);
+    }
 
-        logi("Processing asset [%03d/%03d]: " STR_FMT, i+1, settings.asset_count, STR_ARG(asset->path));
+    for(s64 thread_index = 0; thread_index < settings.thread_count; ++thread_index)
+    {
+        thread_join(threads[thread_index]);
+    }
 
-        if(asset->type == TYPE_IMAGE)
+    return CM_SUCCESS;
+}
+
+void *entry_point(void *params)
+{
+    s64 thread_index = (s64)params;
+
+    if(thread_index == 0)
+    {
+        for(u32 i = 0; i < settings.asset_count; ++i)
         {
-            arena_reset(arena_frame);
+            Asset *asset = &settings.assets[i];
 
-            Image img_src = image_load(arena_frame, asset->path, &stopwatch);
+            logi("Processing asset [%03d/%03d]: " STR_FMT, i+1, settings.asset_count, STR_ARG(asset->path));
 
-            Image img = img_src;
-            img = image_scale(img, 640, 640);
-            img = image_rotate(img, 0, CW);
-
-            List box_list = list_create(arena_frame, sizeof(Box));
-
-            // [detections]
-            for(u32 j = 0; j < settings.detect_type_count; ++j)
-            {
-                DetectArgs detect_args =
-                {
-                    .type  = settings.detect_types[j],
-                    .image = &img,
-                    .boxes = &box_list
-                };
-
-                detect(&detect_args);
-            }
-
-            BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 1);
-            logv("Box count: %u", box_frame.box_count);
-
-            if(!settings.no_encode)
-            {
-                // [apply filters]
-                for(u32 j = 0; j < settings.filter_count; ++j)
-                {
-                    Filter filter = settings.filters[j];
-
-                    for(u64 k = 0; k < box_frame.box_count; ++k)
-                    {
-                        Box *box = &box_frame.boxes[k];
-                        filter_apply(filter, &img_src, box);
-                    }
-                }
-
-                if(settings.debug)
-                {
-                    for(u64 k = 0; k < box_list.count; ++k)
-                    {
-                        Box *box = &box_frame.boxes[k];
-                        //Box *box = (Box *)list_get(&box_list, k);
-                        filter_draw_debug_info(&img_src, box);
-                    }
-                }
-
-                // [output]
-                image_save(&img_src, asset->output_path);
-            }
-        }
-        else if(asset->type == TYPE_VIDEO)
-        {
-            Video vid = video_begin(arena_frame, asset->path, asset->output_path, settings.buffer_size, settings.no_encode);
-
-            video_print(&vid);
-
-            for(;;)
+            if(asset->type == TYPE_IMAGE)
             {
                 arena_reset(arena_frame);
 
-                // fill up buffer with frames
-                video_load_frames(&vid);
-                if(vid.frame_count == 0) break; // no frames left
+                Image img_src = image_load(arena_frame, asset->path, &stopwatch);
 
-                // determine detect frames
-                ListArray frames = video_get_detect_frames(&vid, settings.smoothing_window);
+                Image img = img_src;
+                img = image_scale(img, 640, 640);
+                img = image_rotate(img, 0, CW);
 
-                // Allocate box frames for all frames of decoded video
-                BoxFrame *box_frames = PUSH_ARRAY(arena_frame, BoxFrame, vid.frame_count);
+                List box_list = list_create(arena_frame, sizeof(Box));
 
-                // detect on frames
-                // @THREADED
-                // {
-                for(u32 i = 0; i < frames.count; ++i)
+                // [detections]
+                for(u32 j = 0; j < settings.detect_type_count; ++j)
                 {
-                    u32 frame = *(((u32 *)frames.items) + i);
-
-                    // put frame into an image
-                    Image img_src = 
+                    DetectArgs detect_args =
                     {
-                        .w = vid.w,
-                        .h = vid.h,
-                        .data = &vid.data[frame*vid.w*vid.h],
-                        .rotation = vid.rotation,
-                        .arena = vid.arena
+                        .type  = settings.detect_types[j],
+                        .image = &img,
+                        .boxes = &box_list
                     };
 
-                    Image img = img_src;
-                    img = image_scale(img, 640, 640);
-                    img = image_rotate(img, vid.rotation, CCW);
-
-                    List box_list = list_create(arena_frame, sizeof(Box));
-
-                    // [detections]
-                    for(u32 j = 0; j < settings.detect_type_count; ++j)
-                    {
-                        DetectArgs detect_args =
-                        {
-                            .type  = settings.detect_types[j],
-                            .image = &img,
-                            .boxes = &box_list
-                        };
-
-                        detect(&detect_args);
-                    }
-
-                    logv("Box count: %u", box_list.count);
-
-                    box_frames[frame] = convert_list_to_box_frame(arena_frame, box_list, frame);
+                    detect(&detect_args);
                 }
-                // }
 
-                // fill in gap frames
-                detect_interpolate_boxes(&vid, box_frames);
+                BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 1);
+                logv("Box count: %u", box_frame.box_count);
 
-                // [apply filters]
-                // @THREADED
-                // {
-                for(u32 i = 0; i < vid.frame_count; ++i)
+                if(!settings.no_encode)
                 {
-                    Image img_src = 
+                    // [apply filters]
+                    for(u32 j = 0; j < settings.filter_count; ++j)
                     {
-                        .w = vid.w,
-                        .h = vid.h,
-                        .data = &vid.data[i*vid.w*vid.h],
-                        .rotation = vid.rotation,
-                        .arena = vid.arena
-                    };
+                        Filter filter = settings.filters[j];
 
-                    BoxFrame *box_frame = &box_frames[i];
-
-                    for(u64 j = 0; j < box_frame->box_count; ++j)
-                    {
-                        Box *box = &box_frame->boxes[j];
-
-                        for(u32 k = 0; k < settings.filter_count; ++k)
+                        for(u64 k = 0; k < box_frame.box_count; ++k)
                         {
-                            filter_apply(settings.filters[k], &img_src, box);
+                            Box *box = &box_frame.boxes[k];
+                            filter_apply(filter, &img_src, box);
                         }
                     }
+
+                    if(settings.debug)
+                    {
+                        for(u64 k = 0; k < box_list.count; ++k)
+                        {
+                            Box *box = &box_frame.boxes[k];
+                            //Box *box = (Box *)list_get(&box_list, k);
+                            filter_draw_debug_info(&img_src, box);
+                        }
+                    }
+
+                    // [output]
+                    image_save(&img_src, asset->output_path);
                 }
-                // }
-
-                // [output]
-                video_save_frames(&vid);
             }
+            else if(asset->type == TYPE_VIDEO)
+            {
+                Video vid = video_begin(arena_frame, asset->path, asset->output_path, settings.buffer_size, settings.no_encode);
 
-            video_save_done(&vid);
-            video_end(&vid);
+                video_print(&vid);
+
+                for(;;)
+                {
+                    arena_reset(arena_frame);
+
+                    // fill up buffer with frames
+                    video_load_frames(&vid);
+                    if(vid.frame_count == 0) break; // no frames left
+
+                    // determine detect frames
+                    ListArray frames = video_get_detect_frames(&vid, settings.smoothing_window);
+
+                    // Allocate box frames for all frames of decoded video
+                    BoxFrame *box_frames = PUSH_ARRAY(arena_frame, BoxFrame, vid.frame_count);
+
+                    // detect on frames
+                    for(u32 i = 0; i < frames.count; ++i)
+                    {
+                        u32 frame = *(((u32 *)frames.items) + i);
+
+                        // put frame into an image
+                        Image img_src = 
+                        {
+                            .w = vid.w,
+                            .h = vid.h,
+                            .data = &vid.data[frame*vid.w*vid.h],
+                            .rotation = vid.rotation,
+                            .arena = vid.arena
+                        };
+
+                        Image img = img_src;
+                        img = image_scale(img, 640, 640);
+                        img = image_rotate(img, vid.rotation, CCW);
+
+                        List box_list = list_create(arena_frame, sizeof(Box));
+
+                        // [detections]
+                        for(u32 j = 0; j < settings.detect_type_count; ++j)
+                        {
+                            DetectArgs detect_args =
+                            {
+                                .type  = settings.detect_types[j],
+                                .image = &img,
+                                .boxes = &box_list
+                            };
+
+                            detect(&detect_args);
+                        }
+
+                        logv("Box count: %u", box_list.count);
+
+                        box_frames[frame] = convert_list_to_box_frame(arena_frame, box_list, frame);
+                    }
+
+                    // fill in gap frames
+                    detect_interpolate_boxes(&vid, box_frames);
+
+                    // [apply filters]
+                    for(u32 i = 0; i < vid.frame_count; ++i)
+                    {
+                        Image img_src = 
+                        {
+                            .w = vid.w,
+                            .h = vid.h,
+                            .data = &vid.data[i*vid.w*vid.h],
+                            .rotation = vid.rotation,
+                            .arena = vid.arena
+                        };
+
+                        BoxFrame *box_frame = &box_frames[i];
+
+                        for(u64 j = 0; j < box_frame->box_count; ++j)
+                        {
+                            Box *box = &box_frame->boxes[j];
+
+                            for(u32 k = 0; k < settings.filter_count; ++k)
+                            {
+                                filter_apply(settings.filters[k], &img_src, box);
+                            }
+                        }
+                    }
+
+                    // [output]
+                    video_save_frames(&vid);
+                }
+
+                video_save_done(&vid);
+                video_end(&vid);
+            }
         }
+
+        stopwatch_print(&stopwatch);
     }
 
-    stopwatch_print(&stopwatch);
-
-    return CM_SUCCESS;
+    return NULL;
 }

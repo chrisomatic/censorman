@@ -24,8 +24,11 @@ typedef struct
 String     filter_to_string(FilterType type);
 FilterType filter_from_string(String str);
 
-void filter_outline(Image *image, Box *box, RGBColor color, u32 border_thickness);
+void filter_apply(Filter filter, Image *image, Box *box);
+
+// filters
 void filter_blackout(Image *image, Box *box);
 void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength);
 
-void filter_apply(Filter filter, Image *image, Box *box);
+void filter_draw_debug_info(Image *image, Box *box);
+
