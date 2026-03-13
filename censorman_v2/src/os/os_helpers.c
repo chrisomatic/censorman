@@ -326,7 +326,7 @@ String os_path_get_file(String path)
 // Threads
 ///////////////////////////////////////
 
-ThreadValuesRange thread_range(u32 thread_index, u32 thread_count, u32 values_count)
+ThreadValuesRange thread_range(s64 thread_index, s64 thread_count, u64 values_count)
 {
     ThreadValuesRange range = {0};
 

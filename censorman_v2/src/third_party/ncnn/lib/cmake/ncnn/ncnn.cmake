@@ -60,7 +60,7 @@ add_library(ncnn STATIC IMPORTED)
 
 set_target_properties(ncnn PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include/ncnn"
-  INTERFACE_LINK_LIBRARIES "OpenMP::OpenMP_CXX;Threads::Threads"
+  INTERFACE_LINK_LIBRARIES "Threads::Threads"
   INTERFACE_POSITION_INDEPENDENT_CODE "ON"
 )
 

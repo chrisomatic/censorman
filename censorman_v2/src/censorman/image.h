@@ -14,7 +14,7 @@ typedef enum
     CCW = 1,
 } ClockDir;
 
-typedef struct
+typedef struct __attribute__((packed))
 {
     u8 r;
     u8 g;
@@ -31,7 +31,9 @@ typedef struct
     Rotation rotation;
 
     // scaled properties
-    // used for reversing boxes to unscaled image
+    // used for reversing boxes to
+    // original scale/rotation
+    Rotation orig_rotation;
     f32 scale;
     u32 pad_x;
     u32 pad_y;

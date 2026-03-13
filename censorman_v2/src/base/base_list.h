@@ -41,5 +41,5 @@ void list_print(List *list);
 void list_array_sort(ListArray *arr, ListCompareFn cmp);
 
 // example compare functions
-s32 list_compare_fn_s32(void *a, void *b);
+s32 list_compare_fn_s32_asc(void *a, void *b);
 s32 list_compare_fn_s32_desc(void *a, void *b);

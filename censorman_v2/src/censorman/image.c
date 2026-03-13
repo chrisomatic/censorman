@@ -111,9 +111,10 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
     
     b32 dim_flipped = (degrees == ROTATE_90 || degrees == ROTATE_270);
 
-    output.data          = PUSH_ARRAY(source.arena, RGBColor, source.w * source.h);
-    output.w             = dim_flipped ? source.h : source.w;
-    output.h             = dim_flipped ? source.w : source.h;
+    output.data = PUSH_ARRAY(source.arena, RGBColor, source.w * source.h);
+    output.w    = dim_flipped ? source.h : source.w;
+    output.h    = dim_flipped ? source.w : source.h;
+    output.orig_rotation = source.rotation;;
 
     s32 out_x = 0;
     s32 out_y = 0;
@@ -256,9 +257,10 @@ void image_print(Image *image)
 {
     logi("===================");
     logi("Image %p:", image);
-    logi("    w: %u", image->w);
-    logi("    h: %u", image->h);
-    logi("  rot: %u", image->rotation);
-    logi("arena: %p", image->arena);
+    logi("        w: %u", image->w);
+    logi("        h: %u", image->h);
+    logi("      rot: %u", image->rotation);
+    logi("orig  rot: %u", image->orig_rotation);
+    logi("    arena: %p", image->arena);
     logi("===================");
 }

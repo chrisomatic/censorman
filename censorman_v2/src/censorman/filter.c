@@ -28,6 +28,7 @@ void filter_apply(Filter filter, Image *image, Box *box)
             filter_blackout(image, box);
             break;
         case FILTER_TYPE_BLUR_BOX:
+            filter_blur_box(image, box, filter.blur_strength);
             break;
         case FILTER_TYPE_BLUR_GAUSSIAN:
             filter_blur_gaussian(image, box, filter.blur_strength);
@@ -39,7 +40,7 @@ void filter_apply(Filter filter, Image *image, Box *box)
             break;
         case FILTER_TYPE_NONE:
         default:
-
+            break;
     }
 
     stopwatch_end(image->stopwatch, S(__func__));
@@ -167,38 +168,188 @@ void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength)
     scratch_end(scratch);
 }
 
-void filter_draw_debug_info(Image *image, Box *box)
+void filter_blur_box(Image *image, Box *box, f32 blur_strength)
 {
-    RGBColor color_list[LANDMARK_COUNT] = {0};
+    Temp scratch = scratch_begin();
 
-    color_list[0] = (RGBColor){255,0,0};   // red
-    color_list[1] = (RGBColor){0,255,0};   // green
-    color_list[2] = (RGBColor){0,0,255};   // blue
-    color_list[3] = (RGBColor){255,255,0}; // yellow
-    color_list[4] = (RGBColor){255,0,255}; // magenta
+    // calculate fitting radius based on box size
+    f32 longest_dimension = (box->w < box->h ? box->w : box->h);
+    s32 radius = (s32)(0.24 * blur_strength * longest_dimension);
+    radius = MAX(radius, 1);
 
-    RGBColor color_bad  = (RGBColor){255,0,0};
-    RGBColor color_good = (RGBColor){0,255,0};
+    s32 k_size = 2 * radius + 1;
+    f32 norm = 1.0 / k_size;
 
-    RGBColor color = blend_color(color_bad, color_good, box->confidence / 100.0);
+    // Precompute clamped indices for horizontal and vertical passes
+    s32 *h_indices = PUSH_ARRAY(scratch.arena, s32, box->w + 2 * radius);
+    s32 *v_indices = PUSH_ARRAY(scratch.arena, s32, box->h + 2 * radius);
 
-    // draw outline
-    draw_box(image, box, color, false, 1, 1.0);
-
-    // draw confidence string
-    draw_string(image, box->x+2, box->y+2, color, string_format(image->arena, "%u", box->confidence));
-
-    // draw detect type
-    /*
-    draw_string(image, box->x+1, MAX(box->y+1, box->y+box->h-17), (RGBColor){0,0,0}, detect_type_to_string(box->type));
-    draw_string(image, box->x+2, MAX(box->y+2, box->y+box->h-18), (RGBColor){200,200,0}, detect_type_to_string(box->type));
-    */
-
-    u32 radius = MAX(1, box->h / 50.0);
-    for(s64 i = 0; i < LANDMARK_COUNT; ++i)
+    for(s64 i = -radius; i < box->w + radius; ++i)
     {
-        Point p = box->landmarks[i];
-        draw_circle(image, p.x, p.y, radius, color_list[i], true, 1.0);
+        s32 idx = box->x + i;
+        if(idx < box->x) idx = box->x;
+        if(idx >= box->x + box->w) idx = box->x + box->w - 1;
+        h_indices[i + radius] = idx;
+    }
+
+    for(s64 i = -radius; i < box->h + radius; ++i)
+    {
+        s32 idx = box->y + i;
+        if(idx < box->y) idx = box->y;
+        if(idx >= box->y + box->h) idx = box->y + box->h - 1;
+        v_indices[i + radius] = idx;
+    }
+
+    RGBColor *p_buffer = PUSH_ARRAY(scratch.arena, RGBColor, image->w*image->h);
+
+    for(s32 pass = 0; pass < 3; ++pass)
+    {
+        // horizontal
+        for(s32 y = box->y; y < box->y + box->h; ++y)
+        {
+            RGBColor *src_row = image->data + y * image->w;
+            RGBColor *dst_row = p_buffer + y * image->w;
+
+            s64 sum_r = 0;
+            s64 sum_g = 0;
+            s64 sum_b = 0;
+
+            // Initialize sum for first pixel
+            for(s32 k = 0; k < k_size; ++k)
+            {
+                RGBColor pixel = src_row[h_indices[k]];
+
+                sum_r += pixel.r;
+                sum_g += pixel.g;
+                sum_b += pixel.b;
+            }
+
+            RGBColor *dst_pixel;
+
+            dst_pixel = &dst_row[box->x];
+
+            // write dest pixel
+            dst_pixel->r = (u8)(sum_r * norm);
+            dst_pixel->g = (u8)(sum_g * norm);
+            dst_pixel->b = (u8)(sum_b * norm);
+
+            for(s32 x = box->x + 1; x < box->x + box->w; ++x)
+            {
+                s32 left  = h_indices[x - box->x - 1 + 0]; // previous left
+                s32 right = h_indices[x - box->x + k_size - 1]; // new right
+
+                RGBColor right_pixel = src_row[right];
+                RGBColor left_pixel  = src_row[left];
+                
+                sum_r += right_pixel.r - left_pixel.r;
+                sum_g += right_pixel.g - left_pixel.g;
+                sum_b += right_pixel.b - left_pixel.b;
+
+                dst_pixel = &dst_row[x];
+
+                // write dest pixel
+                dst_pixel->r = (u8)(sum_r * norm);
+                dst_pixel->g = (u8)(sum_g * norm);
+                dst_pixel->b = (u8)(sum_b * norm);
+            }
+        }
+
+        // vertical
+        for(s32 x = box->x; x < box->x + box->w; ++x)
+        {
+            s64 sum_r = 0;
+            s64 sum_g = 0;
+            s64 sum_b = 0;
+
+            // Initialize sum for first pixel
+            for(s32 k = 0; k < k_size; ++k)
+            {
+                RGBColor pixel = p_buffer[v_indices[k] * image->w + x];
+                sum_r += pixel.r;
+                sum_g += pixel.g;
+                sum_b += pixel.b;
+            }
+
+            RGBColor *dst_row;
+            dst_row = image->data + box->y * image->w;
+
+            RGBColor *dst_pixel;
+            dst_pixel = &dst_row[x];
+
+            // write 
+            dst_pixel->r = (u8)(sum_r * norm);
+            dst_pixel->g = (u8)(sum_g * norm);
+            dst_pixel->b = (u8)(sum_b * norm);
+
+            for(s32 y = box->y + 1; y < box->y + box->h; ++y)
+            {
+                s32 top    = v_indices[y - box->y - 1 + 0];
+                s32 bottom = v_indices[y - box->y + k_size - 1];
+
+                RGBColor top_pixel    = p_buffer[top * image->w + x];
+                RGBColor bottom_pixel = p_buffer[bottom * image->w + x];
+
+                sum_r += bottom_pixel.r - top_pixel.r;
+                sum_g += bottom_pixel.g - top_pixel.g;
+                sum_b += bottom_pixel.b - top_pixel.b;
+
+                dst_row = image->data + y * image->w;
+
+                dst_pixel = &dst_row[x];
+                dst_pixel->r = (u8)(sum_r * norm);
+                dst_pixel->g = (u8)(sum_g * norm);
+                dst_pixel->b = (u8)(sum_b * norm);
+            }
+        }
+
+        if (pass < 2)
+        {
+            MemoryCopy(p_buffer, image->data, image->w * image->h * sizeof(RGBColor));
+        }
+    }
+
+    scratch_end(scratch);
+
+}
+
+void filter_draw_debug_info(Image *image, BoxFrame *box_frame)
+{
+    String label = string_format(image->arena, "%000d %s",
+            box_frame->frame_number, box_frame->interpolated ? "interpolated" : "");
+
+    draw_string(image, 2, image->h - 18, (RGBColor){200,200,0}, label);
+
+    for(s64 j = 0; j < box_frame->box_count; ++j)
+    {
+        Box *box = &box_frame->boxes[j];
+
+        RGBColor color_list[LANDMARK_COUNT] = {0};
+
+        color_list[0] = (RGBColor){255,0,0};   // red
+        color_list[1] = (RGBColor){0,255,0};   // green
+        color_list[2] = (RGBColor){0,0,255};   // blue
+        color_list[3] = (RGBColor){255,255,0}; // yellow
+        color_list[4] = (RGBColor){255,0,255}; // magenta
+
+        RGBColor color_bad  = (RGBColor){255,0,0};
+        RGBColor color_good = (RGBColor){0,255,0};
+        RGBColor color      = blend_color(color_bad, color_good, box->confidence / 100.0);
+
+        // draw outline
+        draw_box(image, box, color, false, 1, 1.0);
+
+        // draw confidence string
+        draw_string(image, box->x+2, box->y+2, color, string_format(image->arena, "%u", box->confidence));
+
+        // draw detect type
+        // draw_string(image, box->x+1, MAX(box->y+1, box->y+box->h-17), (RGBColor){0,0,0}, detect_type_to_string(box->type));
+
+        u32 radius = MAX(1, box->h / 50.0);
+        for(s64 i = 0; i < LANDMARK_COUNT; ++i)
+        {
+            Point p = box->landmarks[i];
+            draw_circle(image, p.x, p.y, radius, color_list[i], true, 1.0);
+        }
     }
 }
 
@@ -237,7 +388,6 @@ FilterType filter_from_string(String str)
 
     return FILTER_TYPE_NONE;
 }
-
 
 //===================================
 // Static functions

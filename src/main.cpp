@@ -431,7 +431,7 @@ CM_RetCode handle_video()
                     // get upper 4 bits from R,G,B channels and
                     // combine into a 12-bit number (4096 possible values) (stored in u16)
                     // this is the index into the histogram
-                    u16 color_bucket = ((u16)(r_curr & 0xF0) << 4) | (u16)(g_curr & 0xF0) | (u16)(b_curr & 0x0F);
+                    u16 color_bucket = ((u16)(r_curr & 0xF0) << 4) | (u16)(g_curr & 0xF0) | ((u16)(b_curr & 0x0F) >> 4);
                     curr_histogram[MIN(color_bucket, 4095)]++;
                 }
 
@@ -449,7 +449,7 @@ CM_RetCode handle_video()
             // perhaps a reasonable change from frame to frame would be 15% changed
             // to consider it a frame that should be scheduled for detection
 
-            u64 threshold = (u64)((vid.w * vid.h) * 0.15f);
+            u64 threshold = (u64)((vid.w * vid.h) * 0.10);
 
             for(s32 i = 1; i < vid.frame_count; ++i) // don't consider first frame
             {

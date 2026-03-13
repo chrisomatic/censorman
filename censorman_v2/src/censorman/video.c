@@ -399,6 +399,8 @@ b32 video_load_frames(Video *vid)
         }
     }
 
+    logv("Loaded %d frames", frame_count);
+
     vid->frame_count = frame_count;
     vid->load_complete = !hit_max_buffer || eof_reached;
 
@@ -431,7 +433,7 @@ b32 video_save_frames(Video *vid)
         ret = sws_scale_frame(ctx->enc_sws_ctx, ctx->enc_frame, ctx->enc_frame_src);
         if(ret < 0)
         {
-            logw("Error scaling frame %d", i);
+            logw("Error scaling frame %d (ret = 0x%d)", i, ret);
             continue;
         }
 
@@ -560,8 +562,8 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
     // for all video frames
     for(s32 i = 0; i < vid->frame_count; ++i)
     {
-        s32 icurr = (u64)i*vid->w*vid->h*3;
-        u8 *bcurr = (u8 *)&vid->data[icurr];
+        s32 icurr = (u64)i*vid->w*vid->h;
+        RGBColor *bcurr = &vid->data[icurr];
 
         if(i > 0)
         {
@@ -573,16 +575,12 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
         // go through each pixel and compute a difference image
         for(s32 j = 0; j < vid->w*vid->h; ++j)
         {
-            s32 idx = j*3;
-
-            u8 r_curr = bcurr[idx+0];
-            u8 g_curr = bcurr[idx+1];
-            u8 b_curr = bcurr[idx+2];
+            RGBColor curr = bcurr[j];
 
             // get upper 4 bits from R,G,B channels and
             // combine into a 12-bit number (4096 possible values) (stored in u16)
             // this is the index into the histogram
-            u16 color_bucket = ((u16)(r_curr & 0xF0) << 4) | (u16)(g_curr & 0xF0) | (u16)(b_curr & 0x0F);
+            u16 color_bucket = ((u16)(curr.r & 0xF0) << 4) | (u16)(curr.g & 0xF0) | ((u16)(curr.b & 0xF0) >> 4);
             curr_histogram[MIN(color_bucket, 4095)]++;
         }
 
@@ -597,10 +595,10 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
 
     // 4096 buckets that sum up to vid->w * vid->h
     // A maximum difference between frames is vid->w * vid->h
-    // perhaps a reasonable change from frame to frame would be 15% changed
+    // perhaps a reasonable change from frame to frame would be 10% changed
     // to consider it a frame that should be scheduled for detection
 
-    u64 threshold = (u64)((vid->w * vid->h) * 0.15f);
+    u64 threshold = (u64)((vid->w * vid->h) * 0.10);
 
     for(u32 i = 1; i < vid->frame_count; ++i) // don't consider first frame
     {
@@ -618,7 +616,7 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
             }
 
             // make sure both the frame with the discontinuity and prior frame are marked
-            // to avoid lerping across discontinuity
+            // to avoid interoplation across discontinuity
             if(!frame_1_in_array)
             {
                 u32 pi = i-1;
@@ -636,7 +634,10 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
 
     scratch_end(scratch);
 
-    return list_to_array(&detect_frames);
+    ListArray arr = list_to_array(&detect_frames);
+    list_array_sort(&arr, list_compare_fn_s32_asc);
+
+    return arr;
 }
 
 void video_end(Video *vid)

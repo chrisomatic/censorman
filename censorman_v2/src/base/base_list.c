@@ -1,5 +1,5 @@
 
-s32 list_compare_fn_s32(void *a, void *b)
+s32 list_compare_fn_s32_desc(void *a, void *b)
 {
     s32 *ia = (s32 *)a;
     s32 *ib = (s32 *)b;
@@ -7,7 +7,7 @@ s32 list_compare_fn_s32(void *a, void *b)
     return (*ia < *ib) - (*ia > *ib);
 }
 
-s32 list_compare_fn_s32_desc(void *a, void *b)
+s32 list_compare_fn_s32_asc(void *a, void *b)
 {
     s32 *ia = (s32 *)a;
     s32 *ib = (s32 *)b;

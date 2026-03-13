@@ -1,43 +1,49 @@
-
 static Model model_face   = {0};
 static Model model_person = {0};
 
 extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
+extern void ncnn_extractor_clear(ncnn_extractor_t ex);
+extern void ncnn_net_set_workspace_allocator(ncnn_net_t net);
 
-static void model_init(Model *model)
+static Model model_create(Arena *arena, s32 thread_count, const char *path_param, const char *path_bin)
 {
-    model->net = ncnn_net_create();
+    Model model = {0};
 
-    model->net_w = 640;
-    model->net_h = 640;
+    model.net_w = 640;
+    model.net_h = 640;
 
-    ncnn_net_set_lightmode(model->net, 1);
-    ncnn_option_t opt = ncnn_net_get_option(model->net);
-    ncnn_option_set_num_threads(opt, 4);
-    ncnn_net_set_option(model->net, opt);
+    model.nets = PUSH_ARRAY(arena, ncnn_net_t, thread_count);
+    for(s64 i = 0; i < thread_count; ++i)
+    {
+        model.nets[i] = ncnn_net_create();
+
+        ncnn_net_set_workspace_allocator(model.nets[i]);
+        ncnn_net_set_lightmode(model.nets[i], 1);
+        ncnn_option_t opt = ncnn_net_get_option(model.nets[i]);
+        ncnn_option_set_num_threads(opt, 1); // @LOOKAT
+        ncnn_option_set_use_packing_layout(opt, 1); // faster SIMD on x86
+        ncnn_net_set_option(model.nets[i], opt);
+
+        int param_ret = ncnn_net_load_param(model.nets[i], path_param);
+        int model_ret = ncnn_net_load_model(model.nets[i], path_bin);
+
+        model.initialized |= (param_ret == 0 && model_ret == 0);
+    }
+
+    return model;
 }
 
-b32 detect_init(void)
+b32 detect_init(Arena *arena, s32 thread_count)
 {
-    if(!model_face.initialized)
-    {
-        model_init(&model_face);
+    model_face = model_create(arena, thread_count,
+            "models/scrfd_500m_gnkps.ncnn.param",
+            "models/scrfd_500m_gnkps.ncnn.bin"
+    );
 
-        int param_ret = ncnn_net_load_param(model_face.net, "models/scrfd_500m_gnkps.ncnn.param");
-        int model_ret = ncnn_net_load_model(model_face.net, "models/scrfd_500m_gnkps.ncnn.bin");
-
-        model_face.initialized = (param_ret == 0 && model_ret == 0);
-    }
-
-    if(!model_person.initialized)
-    {
-        model_init(&model_person);
-
-        int param_ret = ncnn_net_load_param(model_person.net, "models/scrfd_person_2.5g.ncnn.param");
-        int model_ret = ncnn_net_load_model(model_person.net, "models/scrfd_person_2.5g.ncnn.bin");
-
-        model_person.initialized = (param_ret == 0 && model_ret == 0);
-    }
+    model_person = model_create(arena, thread_count,
+            "models/scrfd_person_2.5g.ncnn.param",
+            "models/scrfd_person_2.5g.ncnn.bin"
+    );
 
     if(!model_face.initialized || !model_person.initialized)
     {
@@ -48,12 +54,13 @@ b32 detect_init(void)
     return true;
 }
 
-void *detect(void *args)
+void detect(void *args)
 {
     DetectArgs *detect_args = (DetectArgs *)args;
 
     Image *image       = detect_args->image;
     List  *total_boxes = detect_args->boxes;
+    s64   thread_index = detect_args->thread_index;
 
     stopwatch_begin(image->stopwatch, S("detect"));
 
@@ -67,11 +74,11 @@ void *detect(void *args)
     {
         case DETECT_TYPE_FACE:
         {
-            new_boxes = detect_faces(scratch.arena, image);
+            new_boxes = detect_faces(scratch.arena, image, thread_index);
         } break;
         case DETECT_TYPE_PERSON:
         {
-            new_boxes = detect_persons(scratch.arena, image);
+            new_boxes = detect_persons(scratch.arena, image, thread_index);
         } break;
         case DETECT_TYPE_LICENSE_PLATE:
         {
@@ -91,9 +98,67 @@ void *detect(void *args)
     scratch_end(scratch);
 
     stopwatch_end(image->stopwatch, S("detect"));
-
-    return NULL;
 }
+
+void detect_box_rotate(Box *box, Rotation rotation, s32 img_w, s32 img_h)
+{
+    if(rotation == ROTATE_0) return;
+
+    // rotate center point
+    f32 cx = box->x + box->w * 0.5f;
+    f32 cy = box->y + box->h * 0.5f;
+
+    f32 rcx, rcy;
+
+    switch(rotation)
+    {
+        case ROTATE_90:
+            rcx = img_h - cy;
+            rcy = cx;
+            { s32 tmp = box->w; box->w = box->h; box->h = tmp; }
+            break;
+        case ROTATE_180:
+            rcx = img_w - cx;
+            rcy = img_h - cy;
+            break;
+        case ROTATE_270:
+            rcx = cy;
+            rcy = img_w - cx;
+            { s32 tmp = box->w; box->w = box->h; box->h = tmp; }
+            break;
+        default:
+            return;
+    }
+
+    box->x = (s32)(rcx - box->w * 0.5f);
+    box->y = (s32)(rcy - box->h * 0.5f);
+
+    // rotate landmarks
+    for(s32 i = 0; i < 5; ++i)
+    {
+        f32 lx = box->landmarks[i].x;
+        f32 ly = box->landmarks[i].y;
+
+        switch(rotation)
+        {
+            case ROTATE_90:
+                box->landmarks[i].x = (s32)(img_h - ly);
+                box->landmarks[i].y = (s32)(lx);
+                break;
+            case ROTATE_180:
+                box->landmarks[i].x = (s32)(img_w - lx);
+                box->landmarks[i].y = (s32)(img_h - ly);
+                break;
+            case ROTATE_270:
+                box->landmarks[i].x = (s32)(ly);
+                box->landmarks[i].y = (s32)(img_w - lx);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 
 BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number)
 {
@@ -141,6 +206,10 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
     //   [filled]  [gap]    [gap]    [filled]
     //
 
+
+    if(!vid || !box_frames)
+        return;
+
     BoxFrame *f0 = NULL;
     BoxFrame *f1 = NULL;
 
@@ -164,6 +233,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
         // find next filled frame
         u32 j = i+1;
         BoxFrame *box_frame_j = NULL;
+
         for(;;)
         {
             if(j >= vid->frame_count) break;
@@ -177,14 +247,18 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
         if(j >= vid->frame_count)
         {
             // end of video
-            // no future valid frame, copy f0 forward for remaining frames
-            for(u32 f = 0; f < frames_in_between; ++f)
+
+            if(f0)
             {
-                BoxFrame *frame = &box_frames[i+f];
-                frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
-                frame->box_count = f0->box_count;
-                frame->frame_number = i+f;
-                MemoryCopy(frame->boxes, f0->boxes, f0->box_count*sizeof(Box));
+                // no future valid frame, copy f0 forward for remaining frames
+                for(u32 f = 0; f < frames_in_between; ++f)
+                {
+                    BoxFrame *frame = &box_frames[i+f];
+                    frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
+                    frame->box_count = f0->box_count;
+                    frame->frame_number = i+f;
+                    MemoryCopy(frame->boxes, f0->boxes, f0->box_count*sizeof(Box));
+                }
             }
             break;
         }
@@ -198,12 +272,13 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
             BoxFrame *frame = &box_frames[i+f];
 
             // Decide which box frame has more boxes
-            BoxFrame *a = (f0->box_count > f1->box_count) ? f0 : f1;
-            BoxFrame *b = (f0->box_count > f1->box_count) ? f1 : f0;
+            BoxFrame *a = (f0->box_count >= f1->box_count) ? f0 : f1;
+            BoxFrame *b = (f0->box_count >= f1->box_count) ? f1 : f0;
 
             frame->box_count = a->box_count;
             frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
             frame->frame_number = i+f;
+            frame->interpolated = true;
 
             // Match boxes and smooth position exponentially
 
@@ -255,7 +330,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
                 {
                     // mark as matched
                     matches[matched_count++] = min_index;
-
+                    
                     Box *ra = &a->boxes[k];
                     Box *rb = &b->boxes[min_index];
 
@@ -352,17 +427,10 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
         }
     }
 
-    logv("Box count: %u", boxes_curated.count);
-    for(int i = 0; i < boxes_curated.count; ++i)
-    {
-        Box *b = (Box *)list_get(&boxes_curated, i);
-        box_print(b);
-    }
-
     return boxes_curated;
 }
 
-List detect_faces(Arena *arena, Image *image)
+List detect_faces(Arena *arena, Image *image, s64 thread_index)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -374,7 +442,8 @@ List detect_faces(Arena *arena, Image *image)
     const f32 norm[] = {1.0/128.0, 1.0/128.0, 1.0/128.0};
     ncnn_mat_substract_mean_normalize(input, mean, norm);
 
-    ncnn_extractor_t ex = ncnn_extractor_create(model_face.net);
+    ncnn_net_t net = model_face.nets[thread_index];
+    ncnn_extractor_t ex = ncnn_extractor_create(net);
 
     ncnn_extractor_input(ex, "in0", input);
 
@@ -442,7 +511,7 @@ List detect_faces(Arena *arena, Image *image)
                     // anchor 0 for all locations, then anchor 1
                     s32 idx = (i*cols+j)*2+a;
 
-                    f32 prob = score[idx];
+                    f32 prob = score ? score[idx] : 0.0;
                     if (prob < score_threshold)
                         continue;
 
@@ -495,6 +564,8 @@ List detect_faces(Arena *arena, Image *image)
                         box.landmarks[k].y = CLAMP(_y, 0, image_src_h - 1);
                     }
 
+                    detect_box_rotate(&box, 360 - image->orig_rotation, image_src_w, image_src_h);
+
                     list_add(&boxes, &box);
                 }
             }
@@ -522,7 +593,7 @@ List detect_faces(Arena *arena, Image *image)
     return boxes;
 }
 
-List detect_persons(Arena *arena, Image *image)
+List detect_persons(Arena *arena, Image *image, s64 thread_index)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -575,3 +646,4 @@ DetectType detect_type_from_string(String str)
 
     return DETECT_TYPE_NONE;
 }
+

@@ -33,9 +33,11 @@ typedef struct
 
 typedef struct
 {
-    u32 frame_number;
     u32 box_count;
     Box *boxes;
+
+    u32 frame_number;
+    b32 interpolated;
 } BoxFrame;
 
 typedef struct
@@ -43,11 +45,12 @@ typedef struct
     DetectType type;
     Image *image;
     List *boxes;
+    s64 thread_index;
 } DetectArgs;
 
 typedef struct
 {
-    ncnn_net_t net;
+    ncnn_net_t *nets;
     b32 initialized;
     u32 net_w;
     u32 net_h;
@@ -58,12 +61,13 @@ DetectType detect_type_from_string(String str);
 
 BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number);
 void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames);
+void detect_box_rotate(Box *box, Rotation rotation, s32 img_w, s32 img_h);
 
-List detect_faces(Arena *arena, Image *image);
-List detect_persons(Arena *arena, Image *image);
+List detect_faces(Arena *arena, Image *image, s64 thread_index);
+List detect_persons(Arena *arena, Image *image, s64 thread_index);
 
-b32 detect_init(void);
-void *detect(void *args); // thread compatible
+b32 detect_init(Arena *arena, s32 thread_count);
+void detect(void *args);
 
 void box_print(Box *b);
 

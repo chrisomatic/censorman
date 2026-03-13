@@ -5,7 +5,7 @@
 #define ARENA_ALIGN sizeof(void*)
 
 // global scratch arena
-static Arena *_scratch_arena = {0};
+static THREAD_LOCAL Arena *_scratch_arena = {0};
 
 Arena *arena_create(u64 capacity)
 {

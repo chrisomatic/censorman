@@ -6,7 +6,7 @@ Settings settings_default()
     settings.detect_types[0] = DETECT_TYPE_FACE;
     settings.detect_type_count = 1;
 
-    settings.filters[0].type = FILTER_TYPE_BLUR_GAUSSIAN;
+    settings.filters[0].type = FILTER_TYPE_BLUR_BOX;
     settings.filters[0].blur_strength = 0.6;
     settings.filter_count = 1;
 
