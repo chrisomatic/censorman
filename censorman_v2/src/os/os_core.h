@@ -259,7 +259,13 @@ typedef struct Thread Thread;
 typedef struct Barrier Barrier;
 
 #if OS == OS_WINDOWS
-#define THREAD_LOCAL __declspec(thread)
+
+#if defined(_MSC_VER)
+  #define THREAD_LOCAL __declspec(thread)
+#elif defined(__MINGW32__) || defined(__MINGW64__)
+  #define THREAD_LOCAL __thread
+#endif
+
 struct Thread
 {
     HANDLE handle;
@@ -269,7 +275,7 @@ struct Barrier
 {
     LPSYNCHRONIZATION_BARRIER barrier;
 };
-typedef s32 (*ThreadFunc)(void *);
+typedef long unsigned int (*ThreadFunc)(void *);
 #else
 #define THREAD_LOCAL __thread
 struct Thread

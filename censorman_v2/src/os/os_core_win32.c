@@ -504,6 +504,7 @@ Thread thread_launch(ThreadFunc func, void *arg)
 void thread_join(Thread thread)
 {
     WaitForSingleObject(thread.handle, INFINITE);
+    CloseHandle(thread.handle);
 }
 
 void thread_join_many(Thread *threads, s64 thread_count)
@@ -514,11 +515,16 @@ void thread_join_many(Thread *threads, s64 thread_count)
         handles[i] = threads[i].handle;
     }
     WaitForMultipleObjects(thread_count, handles, TRUE, INFINITE);
+
+    for(s64 i = 0; i < thread_count; ++i)
+    {
+        CloseHandle(threads[i].handle);
+    }
 }
 
 void thread_close(Thread thread)
 {
-    CloseHandle(thread->handle);
+    CloseHandle(thread.handle);
 }
 
 void thread_close_many(Thread *threads, s64 thread_count)
