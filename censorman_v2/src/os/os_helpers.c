@@ -26,7 +26,7 @@ Stopwatch stopwatch_create()
 void stopwatch_reset(Stopwatch *stopwatch)
 {
     if(!stopwatch) return;
-    MemoryZero(stopwatch, sizeof(stopwatch));
+    MemoryZero(stopwatch, sizeof(Stopwatch));
     stopwatch->entry_count = 1;
 }
 

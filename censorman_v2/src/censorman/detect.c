@@ -17,7 +17,7 @@ static Model model_create(Arena *arena, s32 thread_count, const char *path_param
     {
         model.nets[i] = ncnn_net_create();
 
-        ncnn_net_set_workspace_allocator(model.nets[i]);
+        //ncnn_net_set_workspace_allocator(model.nets[i]);
         ncnn_net_set_lightmode(model.nets[i], 1);
         ncnn_option_t opt = ncnn_net_get_option(model.nets[i]);
         ncnn_option_set_num_threads(opt, 1); // @LOOKAT
@@ -100,66 +100,6 @@ void detect(void *args)
     stopwatch_end(image->stopwatch, S("detect"));
 }
 
-void detect_box_rotate(Box *box, Rotation rotation, s32 img_w, s32 img_h)
-{
-    if(rotation == ROTATE_0) return;
-
-    // rotate center point
-    f32 cx = box->x + box->w * 0.5f;
-    f32 cy = box->y + box->h * 0.5f;
-
-    f32 rcx, rcy;
-
-    switch(rotation)
-    {
-        case ROTATE_90:
-            rcx = img_h - cy;
-            rcy = cx;
-            { s32 tmp = box->w; box->w = box->h; box->h = tmp; }
-            break;
-        case ROTATE_180:
-            rcx = img_w - cx;
-            rcy = img_h - cy;
-            break;
-        case ROTATE_270:
-            rcx = cy;
-            rcy = img_w - cx;
-            { s32 tmp = box->w; box->w = box->h; box->h = tmp; }
-            break;
-        default:
-            return;
-    }
-
-    box->x = (s32)(rcx - box->w * 0.5f);
-    box->y = (s32)(rcy - box->h * 0.5f);
-
-    // rotate landmarks
-    for(s32 i = 0; i < 5; ++i)
-    {
-        f32 lx = box->landmarks[i].x;
-        f32 ly = box->landmarks[i].y;
-
-        switch(rotation)
-        {
-            case ROTATE_90:
-                box->landmarks[i].x = (s32)(img_h - ly);
-                box->landmarks[i].y = (s32)(lx);
-                break;
-            case ROTATE_180:
-                box->landmarks[i].x = (s32)(img_w - lx);
-                box->landmarks[i].y = (s32)(img_h - ly);
-                break;
-            case ROTATE_270:
-                box->landmarks[i].x = (s32)(ly);
-                box->landmarks[i].y = (s32)(img_w - lx);
-                break;
-            default:
-                break;
-        }
-    }
-}
-
-
 BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number)
 {
     BoxFrame bf = {0};
@@ -200,9 +140,9 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
     //  
     //               Frames
     //
-    //  --|--------|--------|--------|--...
-    //   f0        x        x        f1
-    //     \        \        \         \
+    //    --|--------|--------|--------|--...
+    //     f0        x        x        f1
+    //     /        /        /         /
     //   [filled]  [gap]    [gap]    [filled]
     //
 
@@ -270,6 +210,17 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
         for(u32 f = 0; f < frames_in_between; ++f)
         {
             BoxFrame *frame = &box_frames[i+f];
+
+            if(!f0)
+            {
+                // no previous frame, copy f1 backward
+                frame->box_count = f1->box_count;
+                frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
+                frame->frame_number = i+f;
+                frame->interpolated = true;
+                MemoryCopy(frame->boxes, f1->boxes, f1->box_count * sizeof(Box));
+                continue;
+            }
 
             // Decide which box frame has more boxes
             BoxFrame *a = (f0->box_count >= f1->box_count) ? f0 : f1;
@@ -389,7 +340,7 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
     {
         if(suppressed[i]) continue;
 
-        Box *box_a = (Box *)(boxes_arr.items + i*sizeof(Box));
+        Box *box_a = (Box *)(((u8 *)boxes_arr.items) + i*sizeof(Box));
         list_add(&boxes_curated, box_a);
 
         u32 ax1 = box_a->x;
@@ -403,7 +354,7 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
         {
             if(suppressed[j]) continue;
 
-            Box *box_b = (Box *)(boxes_arr.items + j*sizeof(Box));
+            Box *box_b = (Box *)(((u8 *)boxes_arr.items) + j*sizeof(Box));
 
             u32 bx1 = box_b->x;
             u32 by1 = box_b->y;
@@ -434,7 +385,7 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
 {
     List boxes = list_create(arena, sizeof(Box));
 
-    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->w, image->h, image->w*3, 0);
+    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->props.w, image->props.h, image->props.w*3, 0);
     
     // Maps [0,255] --> [-1,1]
 
@@ -475,20 +426,15 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
     // 640x640: 80x80x2=12800, 40x40x2=3200, 20x20x2=800
 
     const s32 strides[]      = {8, 16, 32};
-    const s32 anchorCounts[] = {12800, 3200, 800};
 
-    f32 score_threshold = 0.25;
+    f32 score_threshold = 0.32f;
 
-    for (s32 s = 0; s < 3; s++)
+    for(s32 s = 0; s < 3; ++s)
     {
         s32 stride = strides[s];
-        s32 count = anchorCounts[s];
 
         s32 cols = model_face.net_w / stride; // feature map width
         s32 rows = model_face.net_h / stride; // feature map height
-
-        // anchor base size matches stride
-        f32 anchor_half = stride * 0.5f;
 
         // flat pointers — layout is anchor-major [count x channels]
         // for dims=2: w=channels, h=count, data is row-major
@@ -496,22 +442,17 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
         const f32* bbox  = (const f32*)ncnn_mat_get_data(bboxMats[s]);
         const f32* kps   = (const f32*)ncnn_mat_get_data(kpsMats[s]);
 
-        // 2 anchors per location, scales [1, 2]
-        f32 anchor_scales[2] = {1.0f, 2.0f};
-
-        for (s32 a = 0; a < 2; a++)
+        for(s32 a = 0; a < 2; ++a)
         {
-            f32 half = anchor_half * anchor_scales[a];
-
-            for (s32 i = 0; i < rows; i++)
+            for(s32 i = 0; i < rows; ++i)
             {
-                for (s32 j = 0; j < cols; j++)
+                for(s32 j = 0; j < cols; ++j)
                 {
                     // interleaved anchor index:
                     // anchor 0 for all locations, then anchor 1
                     s32 idx = (i*cols+j)*2+a;
 
-                    f32 prob = score ? score[idx] : 0.0;
+                    f32 prob = score ? score[idx] : 0.0f;
                     if (prob < score_threshold)
                         continue;
 
@@ -519,52 +460,33 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
                     f32 cx = j * stride;
                     f32 cy = i * stride;
 
-                    f32 l = bbox[idx*4 + 0] * stride;
-                    f32 t = bbox[idx*4 + 1] * stride;
-                    f32 r = bbox[idx*4 + 2] * stride;
-                    f32 b = bbox[idx*4 + 3] * stride;
+                    f32 x1 = cx - bbox[idx*4+0] * stride;
+                    f32 y1 = cy - bbox[idx*4+1] * stride;
+                    f32 x2 = cx + bbox[idx*4+2] * stride;
+                    f32 y2 = cy + bbox[idx*4+3] * stride;
 
-                    f32 x1 = cx - l;
-                    f32 y1 = cy - t;
-                    f32 x2 = cx + r;
-                    f32 y2 = cy + b;
-
-                    s32 x1s = (s32)((x1 - image->pad_x) / image->scale);
-                    s32 y1s = (s32)((y1 - image->pad_y) / image->scale);
-                    s32 x2s = (s32)((x2 - image->pad_x) / image->scale);
-                    s32 y2s = (s32)((y2 - image->pad_y) / image->scale);
-
-                    Box box;
-                    box.x = x1s;
-                    box.y = y1s;
-                    box.w = x2s - x1s;
-                    box.h = y2s - y1s;
-
-                    s32 image_src_w = (s32)(image->w / image->scale);
-                    s32 image_src_h = (s32)(image->h / image->scale);
-
+                    Box box = {0};
+                    box.x = (s32)x1;
+                    box.y = (s32)y1;
+                    box.w = (s32)(x2 - x1);
+                    box.h = (s32)(y2 - y1);
+                    box.confidence = (u16)(prob * 100);
                     box.type = DETECT_TYPE_FACE;
-                    box.confidence = (u16)(prob*100);
 
-                    box.x = CLAMP(box.x, 0, image_src_w - 1);
-                    box.y = CLAMP(box.y, 0, image_src_h - 1);
-                    box.w = CLAMP(box.w, 1, image_src_w - box.x - 1);
-                    box.h = CLAMP(box.h, 1, image_src_h - box.y - 1);
-
-                    // landmarks: 5 keypoints, (dx,dy) relative to anchor center
-                    for (s32 k = 0; k < 5; k++)
+                    for(s32 k = 0; k < LANDMARK_COUNT; k++)
                     {
-                        f32 lx = cx + kps[idx*10 + k*2 + 0] * stride;
-                        f32 ly = cy + kps[idx*10 + k*2 + 1] * stride;
-
-                        s32 _x = (lx - image->pad_x) / image->scale;
-                        s32 _y = (ly - image->pad_y) / image->scale;
-
-                        box.landmarks[k].x = CLAMP(_x, 0, image_src_w - 1);
-                        box.landmarks[k].y = CLAMP(_y, 0, image_src_h - 1);
+                        box.landmarks[k].x = (s32)(cx + kps[idx*10 + k*2 + 0] * stride);
+                        box.landmarks[k].y = (s32)(cy + kps[idx*10 + k*2 + 1] * stride);
                     }
 
-                    detect_box_rotate(&box, 360 - image->orig_rotation, image_src_w, image_src_h);
+                    box = box_unscale(box, image);
+                    box = box_rotate(box, image, image->props_orig.rotation, CW);
+#if 0
+                    logw("Box [%d], confidence: %u", boxes.count, box.confidence);
+                    logw("  after detect: [%-4d %-4d %-4d %-4d]", box.x, box.y, box.w, box.h);
+                    logw("  after unscale: [%-4d %-4d %-4d %-4d]", box.x, box.y, box.w, box.h);
+                    logw("  after rotate: [%-4d %-4d %-4d %-4d]", box.x, box.y, box.w, box.h);
+#endif
 
                     list_add(&boxes, &box);
                 }
@@ -586,9 +508,17 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
     ncnn_extractor_destroy(ex);
     ncnn_mat_destroy(input);
 
-    logv("Found %u boxes before nms", boxes.count);
-
     boxes = non_maximum_suppression(boxes, 0.45);
+
+    if(os_get_log_level() == LOG_LEVEL_VERBOSE)
+    {
+        logv("Found %d boxes", boxes.count);
+        for(s64 i = 0; i < boxes.count; ++i)
+        {
+            Box *b = (Box *)list_get(&boxes, i);
+            box_print(b);
+        }
+    }
 
     return boxes;
 }
@@ -603,9 +533,119 @@ List detect_persons(Arena *arena, Image *image, s64 thread_index)
     return boxes;
 }
 
+Box box_unscale(Box box, Image *image)
+{
+    const f32 scale_factor = image->props.scale == 0.0 ? 1.0 : 1.0 / image->props.scale;
+
+    b32 swap_dimensions = (image->props_orig.rotation == ROTATE_90 || image->props_orig.rotation == ROTATE_270);
+
+    s32 src_w = swap_dimensions ? image->props_orig.h : image->props_orig.w;
+    s32 src_h = swap_dimensions ? image->props_orig.w : image->props_orig.h;
+
+    box.x = (s32)((box.x - image->props.pad_x) * scale_factor);
+    box.y = (s32)((box.y - image->props.pad_y) * scale_factor);
+    box.w = (s32)(box.w * scale_factor);
+    box.h = (s32)(box.h * scale_factor);
+
+    box.x = CLAMP(box.x, 0, src_w - 1);
+    box.y = CLAMP(box.y, 0, src_h - 1);
+    box.w = CLAMP(box.w, 1, src_w - box.x - 1);
+    box.h = CLAMP(box.h, 1, src_h - box.y - 1);
+
+    for(s32 k = 0; k < LANDMARK_COUNT; k++)
+    {
+        Point *lm = &box.landmarks[k];
+
+        lm->x = (s32)((lm->x - image->props.pad_x) * scale_factor);
+        lm->y = (s32)((lm->y - image->props.pad_y) * scale_factor);
+
+        lm->x = CLAMP(lm->x, 0, src_w - 1);
+        lm->y = CLAMP(lm->y, 0, src_h - 1);
+    }
+
+    return box;
+}
+
+Box box_rotate(Box box, Image *image, Rotation rotation, ClockDir dir)
+{
+    if(rotation == ROTATE_0) return box;
+
+    b32 swap_dimensions = (image->props_orig.rotation == ROTATE_90 || image->props_orig.rotation == ROTATE_270);
+
+    s32 src_w = swap_dimensions ? image->props_orig.h : image->props_orig.w;
+    s32 src_h = swap_dimensions ? image->props_orig.w : image->props_orig.h;
+
+    // normalize to CW
+    Rotation effective = rotation;
+    if(dir == CCW)
+    {
+        switch(rotation)
+        {
+            case ROTATE_90:  effective = ROTATE_270; break;
+            case ROTATE_270: effective = ROTATE_90;  break;
+            default: break;
+        }
+    }
+
+    f32 cx = box.x + box.w * 0.5f;
+    f32 cy = box.y + box.h * 0.5f;
+    f32 rcx, rcy;
+
+    switch(effective)
+    {
+        case ROTATE_90:
+            rcx = src_h - cy;
+            rcy = cx;
+            SWAP(s32, box.w, box.h);
+            break;
+        case ROTATE_180:
+            rcx = src_w - cx;
+            rcy = src_h - cy;
+            break;
+        case ROTATE_270:
+            rcx = cy;
+            rcy = src_w - cx;
+            SWAP(s32, box.w, box.h);
+            break;
+        default:
+            return box;
+    }
+
+    box.x = (s32)(rcx - box.w * 0.5);
+    box.y = (s32)(rcy - box.h * 0.5);
+
+    for(s32 k = 0; k < LANDMARK_COUNT; k++)
+    {
+        f32 lx = box.landmarks[k].x;
+        f32 ly = box.landmarks[k].y;
+
+        switch(effective)
+        {
+            case ROTATE_90:
+                box.landmarks[k].x = (s32)(src_h - ly);
+                box.landmarks[k].y = (s32)(lx);
+                break;
+            case ROTATE_180:
+                box.landmarks[k].x = (s32)(src_w - lx);
+                box.landmarks[k].y = (s32)(src_h - ly);
+                break;
+            case ROTATE_270:
+                box.landmarks[k].x = (s32)(ly);
+                box.landmarks[k].y = (s32)(src_w - lx);
+                break;
+            default: break;
+        }
+    }
+
+    return box;
+}
+
 void box_print(Box *b)
 {
-    logv("Box: [ %4u %4u %4u %4u ], Confidence: %2u, Landmarks: [(%4u,%4u),(%4u,%4u),(%4u,%4u),(%4u,%4u),(%4u,%4u)]",
+    if(!b) return;
+
+    logv("Box: (" STR_FMT ") [%-4d %-4d %-4d %-4d], Confidence: %2u, Landmarks: [(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d)]",
+            STR_ARG(detect_type_to_string(b->type)),
             b->x, b->y, b->w, b->h, b->confidence,
             b->landmarks[0].x, b->landmarks[0].y,
             b->landmarks[1].x, b->landmarks[1].y,

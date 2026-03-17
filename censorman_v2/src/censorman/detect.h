@@ -61,13 +61,15 @@ DetectType detect_type_from_string(String str);
 
 BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number);
 void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames);
-void detect_box_rotate(Box *box, Rotation rotation, s32 img_w, s32 img_h);
 
 List detect_faces(Arena *arena, Image *image, s64 thread_index);
 List detect_persons(Arena *arena, Image *image, s64 thread_index);
 
 b32 detect_init(Arena *arena, s32 thread_count);
 void detect(void *args);
+
+Box box_unscale(Box box, Image *image);
+Box box_rotate(Box box, Image *image, Rotation rotation, ClockDir dir);
 
 void box_print(Box *b);
 

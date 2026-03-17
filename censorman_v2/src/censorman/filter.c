@@ -54,8 +54,8 @@ void filter_blackout(Image *image, Box *box)
 
 void filter_pixelate(Image* image, Box *box, f32 block_scale)
 {
-    RGBColor* limit = &image->data[image->w*image->h - 1];
-    RGBColor* start = &image->data[box->y*image->w + box->x];
+    RGBColor* limit = &image->data[image->props.w*image->props.h - 1];
+    RGBColor* start = &image->data[box->y*image->props.w + box->x];
     RGBColor* curr = start;
 
     s32 block_size = MAX(box->w, box->h)*block_scale;
@@ -86,7 +86,7 @@ void filter_pixelate(Image* image, Box *box, f32 block_scale)
             avg_g = 0.0;
             avg_b = 0.0;
 
-            curr = start + y*block_size_y*image->w + x*block_size_x;
+            curr = start + y*block_size_y*image->props.w + x*block_size_x;
 
             for(s32 j = 0; j < block_size_y; ++j)
             {
@@ -103,7 +103,7 @@ void filter_pixelate(Image* image, Box *box, f32 block_scale)
                     avg_b += curr[i].b;
                 }
 
-                curr += MIN(image->w, limit - curr);
+                curr += MIN(image->props.w, limit - curr);
             }
 
             avg_r /= total_block_size;
@@ -117,7 +117,7 @@ void filter_pixelate(Image* image, Box *box, f32 block_scale)
             s32 adj_block_size_y = (y == num_blocks_y - 1 && leftover_y > 0) ? leftover_y : block_size_y;
 
             // apply avgcolor to range
-            curr = start + y*block_size_y*image->w + x*block_size_x;
+            curr = start + y*block_size_y*image->props.w + x*block_size_x;
 
             for(s32 j = 0; j < adj_block_size_y; ++j)
             {
@@ -125,7 +125,7 @@ void filter_pixelate(Image* image, Box *box, f32 block_scale)
                 {
                     MemoryCopy(curr+i, &sc, sizeof(RGBColor));
                 }
-                curr += image->w;
+                curr += image->props.w;
             }
         }
     }
@@ -156,8 +156,8 @@ void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength)
 
     // temp image buffer for intermediate result
     Image tmp = *image;
-    tmp.data = PUSH_ARRAY(scratch.arena, RGBColor, image->w * image->h);
-    MemoryCopy(tmp.data, image->data, image->w * image->h * sizeof(RGBColor));
+    tmp.data = PUSH_ARRAY(scratch.arena, RGBColor, image->props.w * image->props.h);
+    MemoryCopy(tmp.data, image->data, image->props.w * image->props.h * sizeof(RGBColor));
 
     // horizontal pass
     convolve(image, &tmp, box, kernel, k_size, true);
@@ -172,8 +172,11 @@ void filter_blur_box(Image *image, Box *box, f32 blur_strength)
 {
     Temp scratch = scratch_begin();
 
+    box->w = CLAMP(box->w, 1, image->props.w);
+    box->h = CLAMP(box->h, 1, image->props.h);
+
     // calculate fitting radius based on box size
-    f32 longest_dimension = (box->w < box->h ? box->w : box->h);
+    f32 longest_dimension = (f32)(box->w >= box->h ? box->w : box->h);
     s32 radius = (s32)(0.24 * blur_strength * longest_dimension);
     radius = MAX(radius, 1);
 
@@ -200,15 +203,15 @@ void filter_blur_box(Image *image, Box *box, f32 blur_strength)
         v_indices[i + radius] = idx;
     }
 
-    RGBColor *p_buffer = PUSH_ARRAY(scratch.arena, RGBColor, image->w*image->h);
+    RGBColor *p_buffer = PUSH_ARRAY(scratch.arena, RGBColor, image->props.w*image->props.h);
 
     for(s32 pass = 0; pass < 3; ++pass)
     {
         // horizontal
         for(s32 y = box->y; y < box->y + box->h; ++y)
         {
-            RGBColor *src_row = image->data + y * image->w;
-            RGBColor *dst_row = p_buffer + y * image->w;
+            RGBColor *src_row = image->data + y * image->props.w;
+            RGBColor *dst_row = p_buffer + y * image->props.w;
 
             s64 sum_r = 0;
             s64 sum_g = 0;
@@ -264,14 +267,14 @@ void filter_blur_box(Image *image, Box *box, f32 blur_strength)
             // Initialize sum for first pixel
             for(s32 k = 0; k < k_size; ++k)
             {
-                RGBColor pixel = p_buffer[v_indices[k] * image->w + x];
+                RGBColor pixel = p_buffer[v_indices[k] * image->props.w + x];
                 sum_r += pixel.r;
                 sum_g += pixel.g;
                 sum_b += pixel.b;
             }
 
             RGBColor *dst_row;
-            dst_row = image->data + box->y * image->w;
+            dst_row = image->data + box->y * image->props.w;
 
             RGBColor *dst_pixel;
             dst_pixel = &dst_row[x];
@@ -286,14 +289,14 @@ void filter_blur_box(Image *image, Box *box, f32 blur_strength)
                 s32 top    = v_indices[y - box->y - 1 + 0];
                 s32 bottom = v_indices[y - box->y + k_size - 1];
 
-                RGBColor top_pixel    = p_buffer[top * image->w + x];
-                RGBColor bottom_pixel = p_buffer[bottom * image->w + x];
+                RGBColor top_pixel    = p_buffer[top * image->props.w + x];
+                RGBColor bottom_pixel = p_buffer[bottom * image->props.w + x];
 
                 sum_r += bottom_pixel.r - top_pixel.r;
                 sum_g += bottom_pixel.g - top_pixel.g;
                 sum_b += bottom_pixel.b - top_pixel.b;
 
-                dst_row = image->data + y * image->w;
+                dst_row = image->data + y * image->props.w;
 
                 dst_pixel = &dst_row[x];
                 dst_pixel->r = (u8)(sum_r * norm);
@@ -304,7 +307,7 @@ void filter_blur_box(Image *image, Box *box, f32 blur_strength)
 
         if (pass < 2)
         {
-            MemoryCopy(p_buffer, image->data, image->w * image->h * sizeof(RGBColor));
+            MemoryCopy(p_buffer, image->data, image->props.w * image->props.h * sizeof(RGBColor));
         }
     }
 
@@ -317,7 +320,7 @@ void filter_draw_debug_info(Image *image, BoxFrame *box_frame)
     String label = string_format(image->arena, "%000d %s",
             box_frame->frame_number, box_frame->interpolated ? "interpolated" : "");
 
-    draw_string(image, 2, image->h - 18, (RGBColor){200,200,0}, label);
+    draw_string(image, 2, image->props.h - 18, (RGBColor){200,200,0}, label);
 
     for(s64 j = 0; j < box_frame->box_count; ++j)
     {
@@ -344,7 +347,7 @@ void filter_draw_debug_info(Image *image, BoxFrame *box_frame)
         // draw detect type
         // draw_string(image, box->x+1, MAX(box->y+1, box->y+box->h-17), (RGBColor){0,0,0}, detect_type_to_string(box->type));
 
-        u32 radius = MAX(1, box->h / 50.0);
+        u32 radius = MAX(1, box->h * 0.015);
         for(s64 i = 0; i < LANDMARK_COUNT; ++i)
         {
             Point p = box->landmarks[i];
@@ -399,8 +402,7 @@ static void convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size, 
 
     for (s32 y = roi->y; y < roi->y + roi->h; ++y)
     {
-        RGBColor *src_row = src->data + y * src->w;
-        RGBColor *dst_row = dst->data + y * dst->w;
+        RGBColor *dst_row = dst->data + y * dst->props.w;
 
         for (s32 x = roi->x; x < roi->x + roi->w; ++x)
         {
@@ -419,7 +421,7 @@ static void convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size, 
                 if(xx >= roi->x + roi->w) xx = roi->x + roi->w - 1;
                 if(yy >= roi->y + roi->h) yy = roi->y + roi->h - 1;
 
-                RGBColor *p = src->data + yy * src->w + xx;
+                RGBColor *p = src->data + yy * src->props.w + xx;
 
                 sum_r += p->r * kernel[k + radius];
                 sum_g += p->g * kernel[k + radius];
@@ -452,23 +454,23 @@ static RGBColor blend_color(RGBColor base, RGBColor color, f32 factor)
 
 static void put_pixel(Image *image, s64 x, s64 y, RGBColor color)
 {
-    image->data[y*image->w + x] = color;
+    image->data[y*image->props.w + x] = color;
 }
 
 static RGBColor get_pixel(Image *image, s64 x, s64 y)
 {
-    return image->data[y*image->w + x];
+    return image->data[y*image->props.w + x];
 }
 
 static void blend_color_in_image(Image *img, s64 x, s64 y, RGBColor color, f32 factor)
 {
-    RGBColor *pixel = &img->data[y*img->w + x];
+    RGBColor *pixel = &img->data[y*img->props.w + x];
     *pixel = blend_color(*pixel, color, factor);
 }
 
 static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 border_thickness, f32 opacity)
 {
-    RGBColor *start = &image->data[box->y*image->w + box->x];
+    RGBColor *start = &image->data[box->y*image->props.w + box->x];
     RGBColor *curr  = start;
 
     // draw first line
@@ -480,10 +482,10 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 bor
             *r = blend_color(*r, color, opacity);
         }
         if(j < border_thickness - 1)
-            curr += image->w;
+            curr += image->props.w;
     }
 
-    curr += image->w;
+    curr += image->props.w;
 
     if(filled)
     {
@@ -494,7 +496,7 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 bor
                 RGBColor *r = &curr[i];
                 *r = blend_color(*r, color, opacity);
             }
-            curr += image->w;
+            curr += image->props.w;
         }
     }
     else
@@ -510,11 +512,11 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 bor
                 *cr = blend_color(*cr, color, opacity);
             }
 
-            curr += image->w;
+            curr += image->props.w;
         }
     }
 
-    curr -= (image->w*MAX(0,(border_thickness-1)));
+    curr -= (image->props.w*MAX(0,(border_thickness-1)));
 
     for(u32 j = 0; j < border_thickness; ++j)
     {
@@ -525,13 +527,13 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 bor
         }
 
         if(j < border_thickness - 1)
-            curr += image->w;
+            curr += image->props.w;
     }
 }
 
 static inline void draw_vline(Image* image, s64 x, s64 y1, s64 y2, RGBColor color, f32 opacity)
 {
-    if(x < 0 || x >= image->w)
+    if(x < 0 || x >= image->props.w)
         return;
 
     if(y1 > y2)
@@ -541,8 +543,8 @@ static inline void draw_vline(Image* image, s64 x, s64 y1, s64 y2, RGBColor colo
         y2 = tmp;
     }
 
-    if(y1 < 0)         y1 = 0;
-    if(y2 >= image->h) y2 = image->h - 1;
+    if(y1 < 0) y1 = 0;
+    if(y2 >= image->props.h) y2 = image->props.h - 1;
 
     for(s64 y = y1; y <= y2; y++)
     {
@@ -631,7 +633,7 @@ static void draw_string(Image* image, s64 x, s64 y, RGBColor color, String str)
     s64 dx = x;
     for(int i = 0; i < str.len; ++i)
     {
-        if(dx + 8 > image->w) break;
+        if(dx + 8 > image->props.w) break;
         draw_char(image, str.data[i], dx, y, color);
         dx += 8; // fixed width spacing
     }

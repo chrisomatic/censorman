@@ -41,7 +41,10 @@ void censorman_version()
     printf("  _/   \\_\n");
 }
 
-Arena *arena_perm;
+Arena *arena_perm;  // permanent allocations
+Arena *arena_chunk; // used for video frame chunks
+
+Mutex arena_chunk_mutex = {0};
 
 // Shared variables for threads
 Barrier   barrier = {0};
@@ -61,7 +64,9 @@ int main(int argc, char **args)
     os_time_init();
     os_system_init();
 
-    arena_perm  = arena_create(MB(16));
+    arena_perm  = arena_create(MB(8));
+    arena_chunk = arena_create(MB(8));
+    arena_chunk_mutex = mutex_create();
     stopwatch   = stopwatch_create();
 
     censorman_version();
@@ -95,7 +100,7 @@ void *entry_point(void *params)
     s64 thread_index = (s64)params;
 
     Stopwatch sw = stopwatch_create();
-    Arena *arena_frame = arena_create(MB(16));
+    Arena *arena_frame = arena_create(MB(8));
 
     for(u32 i = 0; i < settings.asset_count; ++i)
     {
@@ -136,7 +141,7 @@ void *entry_point(void *params)
                 if(!settings.no_encode)
                 {
                     // [apply filters]
-                    for(u32 j = 0; j < settings.filter_count; ++j)
+                    for(s64 j = 0; j < settings.filter_count; ++j)
                     {
                         Filter filter = settings.filters[j];
 
@@ -161,19 +166,19 @@ void *entry_point(void *params)
         {
             NARROW
             {
-                vid = video_begin(arena_frame, asset->path, asset->output_path, settings.buffer_size, settings.no_encode);
+                arena_reset(arena_chunk);
+                vid = video_begin(arena_chunk, asset->path, asset->output_path, settings.buffer_size, settings.no_encode);
                 video_print(&vid);
             }
 
             for(;;)
             {
-                arena_reset(arena_frame);
-
                 NARROW
                 {
                     stopwatch_begin(&sw, S("load frames"));
 
                     // fill up buffer with frames
+                    arena_reset(arena_chunk);
                     video_load_frames(&vid);
 
                     if(vid.frame_count == 0)
@@ -186,7 +191,7 @@ void *entry_point(void *params)
                         frames = video_get_detect_frames(&vid, settings.smoothing_window);
 
                         // Allocate box frames for all frames of decoded video
-                        box_frames = PUSH_ARRAY(arena_frame, BoxFrame, vid.frame_count);
+                        box_frames = PUSH_ARRAY(arena_chunk, BoxFrame, vid.frame_count);
                     }
 
                     stopwatch_end(&sw, S("load frames"));
@@ -201,24 +206,28 @@ void *entry_point(void *params)
                 
                 range = thread_range(thread_index, settings.thread_count, frames.count);
 
-                stopwatch_begin(&sw, S("detect"));
-
                 // detect on frames
                 for(u32 i = range.min; i < range.max; ++i)
                 {
+                    arena_reset(arena_frame);
+
                     u32 frame = *(((u32 *)frames.items) + i);
 
                     // put frame into an image
                     Image img_src = 
                     {
-                        .w = vid.w,
-                        .h = vid.h,
+                        .props.w = vid.w,
+                        .props.h = vid.h,
+                        .props.rotation = vid.rotation,
                         .data = &vid.data[frame*vid.w*vid.h],
-                        .rotation = vid.rotation,
-                        .arena = arena_frame
+                        .arena = arena_frame,
+                        .stopwatch = &sw
                     };
 
+                    MemoryCopy(&img_src.props_orig, &img_src.props, sizeof(ImageProps));
+
                     Image img = img_src;
+
                     img = image_scale(img, 640, 640);
                     img = image_rotate(img, vid.rotation, CCW);
 
@@ -238,10 +247,10 @@ void *entry_point(void *params)
                         detect(&detect_args);
                     }
 
-                    box_frames[frame] = convert_list_to_box_frame(arena_frame, box_list, frame);
+                    mutex_lock(&arena_chunk_mutex);
+                    box_frames[frame] = convert_list_to_box_frame(arena_chunk, box_list, frame);
+                    mutex_unlock(&arena_chunk_mutex);
                 }
-
-                stopwatch_end(&sw, S("detect"));
 
                 barrier_sync(&barrier);
 
@@ -264,12 +273,14 @@ void *entry_point(void *params)
                 // [apply filters]
                 for(s64 i = range.min; i < range.max; ++i)
                 {
+                    arena_reset(arena_frame);
+
                     Image img_src = 
                     {
-                        .w = vid.w,
-                        .h = vid.h,
+                        .props.w = vid.w,
+                        .props.h = vid.h,
+                        .props.rotation = vid.rotation,
                         .data = &vid.data[i*vid.w*vid.h],
-                        .rotation = vid.rotation,
                         .arena = arena_frame
                     };
 

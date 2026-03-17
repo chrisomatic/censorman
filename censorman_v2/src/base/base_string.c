@@ -84,7 +84,7 @@ String string_format(Arena *arena, const char *format, ...)
     }
 
     va_start(args, format);
-    stbsp_vsnprintf(buffer, required_len+1, format, args);
+    stbsp_vsnprintf((char *)buffer, required_len+1, format, args);
     va_end(args);
 
     return (String){ .len = (u32)required_len, .data = buffer };
@@ -585,7 +585,7 @@ void string_list_addf(StringList *sl, const char *format, ...)
     }
 
     va_start(args, format);
-    stbsp_vsnprintf(buffer, required_len+1, format, args);
+    stbsp_vsnprintf((char *)buffer, required_len+1, format, args);
     va_end(args);
 
     String str = {(u32)required_len, buffer};

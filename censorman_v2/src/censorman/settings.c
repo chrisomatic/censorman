@@ -19,7 +19,7 @@ Settings settings_default()
     settings.box_padding          = 0.15;
     settings.blur_strength        = 0.60;
     settings.block_scale          = 0.15;
-    settings.smoothing_window     = 0.240; // 240ms
+    settings.smoothing_window     = 0.200; // 200ms
 
     settings.no_encode = false;
     settings.no_rotate = false;

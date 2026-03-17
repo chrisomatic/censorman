@@ -12,8 +12,8 @@ mkdir $BUILD_DIR
 cd $SOURCE_DIR
 
 OPTS_PROD="-march=x86-64 -Ofast"
-OPTS_DEBUG="-march=x86-64 -Ofast"
-#-fsanitize=address -fno-omit-frame-pointer"
+OPTS_DEBUG="-march=x86-64 -Ofast -Wall -pedantic"
+#OPTS_DEBUG="-march=x86-64 -Ofast -Wall -pedantic -fsanitize=address -fno-omit-frame-pointer"
 
 OPTS=$OPTS_DEBUG
 

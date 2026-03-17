@@ -16,6 +16,8 @@ static void *sum_func(void *arg)
     {
         test->sum += i;
     }
+
+    return NULL;
 }
 
 static s32 vec3_compare_y(void *a, void *b)
@@ -66,17 +68,17 @@ b32 tests_run()
 
         logi(":: Growth");
 
-        u8* big_chunk = PUSH_ARRAY(my_arena, u8, capacity - 1);
+        PUSH_ARRAY(my_arena, u8, capacity - 1);
         test_print("Big chunk check", (my_arena->offset == capacity - 1));
         test_print("Null check", (my_arena->next == NULL));
 
-        u8* more_data = PUSH_ARRAY(my_arena, u8, 100);
+        PUSH_ARRAY(my_arena, u8, 100);
         test_print("Capacity check", (my_arena->offset != my_arena->capacity));
         test_print("Next arena check", (my_arena->next != NULL));
         test_print("Next arena size check", (my_arena->next && my_arena->next->capacity == 2*my_arena->capacity));
         test_print("Next arena offset check", (my_arena->next && my_arena->next->offset == 100));
 
-        u8* one = PUSH_ONE(my_arena, u8);
+        PUSH_ONE(my_arena, u8);
         logi(":: First available space");
         test_print("first arena check", (my_arena->offset == my_arena->capacity));
 
@@ -263,20 +265,20 @@ b32 tests_run()
         stopwatch_end(&stopwatch, S("cmdline"));
     }
 
-    // Random
+    // Random Generator
     {
-        random_seed_with_entropy();
+        randgen_seed_with_entropy();
 
         logi("Random ints:");
         for(s64 i = 0; i < 10; ++i)
         {
-            logi("%d: %u", i, random());
+            logi("%d: %u", i, randgen_u32());
         }
 
         logi("Random floats:");
         for(s64 i = 0; i < 10; ++i)
         {
-            logi("%d: %f", i, random_float());
+            logi("%d: %f", i, randgen_f32());
         }
     }
 

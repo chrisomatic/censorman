@@ -21,6 +21,7 @@ void    cmdline_print(CmdLine *cmdline);
 b32    cmdline_has_flag(CmdLine *cmdline,  String id);
 b32    cmdline_has_any_flags(CmdLine *cmdline, StringArray ids);
 String cmdline_get_value(CmdLine *cmdline, String id);
+String cmdline_get_value_first_match(CmdLine *cmdline, StringArray ids);
 
 // unflagged arguments
 u64    cmdline_get_unflagged_count(CmdLine *cmdline);

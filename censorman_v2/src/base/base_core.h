@@ -69,7 +69,7 @@ typedef struct
 #define BIT_SET(base,n)    ((base) |= (1UL<<(n)))
 #define BIT_CLR(base,n)    ((base) &= ~(1UL<<(n)))
 #define BIT_FLIP(base,n)   ((base) ^= (1UL<<(n)))
-#define BIT_CHECK(base,n)  ((base) & (n) == (n))
+#define BIT_CHECK(base,n)  (((base) & (n)) == (n))
 #define BIT_IS_SET(base,n) ((base) & (1UL<<(n)))
 
 //===================================

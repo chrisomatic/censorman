@@ -2,6 +2,7 @@
 // Arenas
 //===================================
 
+#define ARENA_HEADER_SIZE sizeof(Arena)
 #define ARENA_ALIGN sizeof(void*)
 
 // global scratch arena
@@ -9,11 +10,12 @@ static THREAD_LOCAL Arena *_scratch_arena = {0};
 
 Arena *arena_create(u64 capacity)
 {
-    Arena *a = (Arena *)malloc(sizeof(Arena));
+    u8 *memory = malloc(capacity);
+    Arena *a = (Arena *)memory;
 
-    a->memory = (u8*)malloc(capacity);
+    a->memory = memory;
     a->capacity = capacity;
-    a->offset = 0;
+    a->offset = ARENA_HEADER_SIZE;
     a->base_pos = 0;
     a->next = NULL;
 
@@ -26,67 +28,57 @@ void arena_destroy(Arena *arena)
 
     for(;;)
     {
-        if(arena->memory) free(arena->memory);
-
-        arena->memory = NULL;
-        arena->capacity = 0;
-        arena->offset = 0;
-        arena->base_pos = 0;
+        if(arena->memory)
+            free(arena->memory);
 
         if(arena->next)
         {
-            Arena* tmp = arena;
             arena = arena->next;
-            free(tmp);
             continue;
         }
 
         break;
     }
-
-    arena = NULL;
 }
 
 void* arena_push(Arena *arena, u64 size, b32 non_zero)
 {
     assert(arena);
 
-    u64 offset_aligned = ALIGN_UP_POW2(arena->offset, ARENA_ALIGN);
+    u32 chain_count = 0;
 
     for(;;)
     {
+        u64 offset_aligned = ALIGN_UP_POW2(arena->offset, ARENA_ALIGN);
+
         if(offset_aligned + size <= arena->capacity)
-            break; // enough space, we're good
+        {
+            // enough space, we're good
+            void *ptr = arena->memory + offset_aligned;
+            arena->offset = offset_aligned + size;
+
+            if(!non_zero) MemoryZero(ptr, size);
+            return ptr;
+        }
 
         // can't fit data on current arena
         // check for a next arena
         if(arena->next)
         {
+            chain_count++;
             arena = arena->next;
             continue;
         }
 
         // allocate a new arena that doubles the arena memory capacity
         // or more to accommodate a large allocation
-        
-        u64 new_arena_size = (arena->capacity >= size ? 2*arena->capacity : size);
 
-        logv("Increasing arena size from %u to %u!", arena->capacity, new_arena_size);
-
-        arena->next = (Arena*)malloc(sizeof(Arena));
-        arena->next->memory = (u8*)malloc(new_arena_size * sizeof(u8));
-        arena->next->offset = 0;
+        u64 new_arena_size = (arena->capacity >= size ? 1.5*arena->capacity : size);
+        arena->next = arena_create(new_arena_size);
         arena->next->base_pos = arena->base_pos + arena->capacity;
-        arena->next->capacity = new_arena_size;
-        arena->next->next = NULL;
+
+        logv("Increasing arena (%p, chain: %d) size from %u to %u!", arena, chain_count, arena->capacity, new_arena_size);
     }
-
-    void *ptr = arena->memory + offset_aligned;
-    arena->offset = offset_aligned + size;
-
-    if(!non_zero) MemoryZero(ptr, size);
-
-    return ptr;
 }
 
 void arena_pop_to(Arena *arena, u64 pos)
@@ -99,7 +91,7 @@ void arena_pop_to(Arena *arena, u64 pos)
         }
         else if(pos < arena->base_pos)
         {
-            arena->offset = 0;
+            arena->offset = ARENA_HEADER_SIZE;
         }
 
         if(arena->next)
@@ -147,7 +139,7 @@ void arena_reset(Arena *arena)
 {
     for(;;)
     {
-        arena->offset = 0;
+        arena->offset = ARENA_HEADER_SIZE;
 
         if(arena->next)
         {

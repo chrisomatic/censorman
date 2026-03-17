@@ -23,20 +23,23 @@ typedef struct __attribute__((packed))
 
 typedef struct
 {
-    RGBColor *data;
-
-    u32 w; // width
-    u32 h; // height
-
-    Rotation rotation;
-
-    // scaled properties
-    // used for reversing boxes to
-    // original scale/rotation
-    Rotation orig_rotation;
-    f32 scale;
+    u32 w;
+    u32 h;
     u32 pad_x;
     u32 pad_y;
+    Rotation rotation;
+    f32 scale;
+} ImageProps;
+
+typedef struct
+{
+    RGBColor *data;
+
+    ImageProps props;
+
+    // maintained original properties before
+    // image_rotate or image_scale
+    ImageProps props_orig;
 
     Arena *arena;
     Stopwatch *stopwatch;

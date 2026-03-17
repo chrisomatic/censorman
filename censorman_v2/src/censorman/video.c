@@ -236,8 +236,6 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
     av_dict_set(&ctx->enc_opts, "preset", "superfast", 0); // [ultrafast, superfast, fast, medium, slow, placebo]
     av_dict_set(&ctx->enc_opts, "tune", "zerolatency", 0);
 
-    s32 ret;
-
     // Open encoder
     s32 open_encoder = avcodec_open2(ctx->enc_codec_ctx, ctx->enc_codec, &ctx->enc_opts);
     if(open_encoder < 0)
@@ -401,6 +399,7 @@ b32 video_load_frames(Video *vid)
 
     logv("Loaded %d frames", frame_count);
 
+
     vid->frame_count = frame_count;
     vid->load_complete = !hit_max_buffer || eof_reached;
 
@@ -531,7 +530,6 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
     logv("Number of skip frames: %d (Based on %f smoothing window)", skip_frames, smoothing_window);
 
     List detect_frames = list_create(vid->arena, sizeof(u32));
-    u32 detect_frames_count = 0;
     u32 counter = 0;
 
     for(;;)

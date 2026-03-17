@@ -36,13 +36,14 @@ Image image_load(Arena *arena, String path, Stopwatch *stopwatch)
     if(n < 3)
     {
         loge("Not enough channels on image (n = %d)", n);
+        stbi_image_free(data);
         return image;
     }
 
-    image.w = w;
-    image.h = h;
+    image.props.w = w;
+    image.props.h = h;
     image.data = PUSH_ARRAY(image.arena, RGBColor, w*h);
-    image.scale = 1.0;
+    image.props.scale = 1.0;
 
     // pack RGB (remove alpha channel if needed)
     for(s32 i = 0; i < w*h; ++i)
@@ -54,13 +55,15 @@ Image image_load(Arena *arena, String path, Stopwatch *stopwatch)
         pixel->b = data[i*n+2];
     }
 
-    logv("Loaded image " STR_FMT " [w: %u h: %u]", STR_ARG(path), image.w,image.h);
+    logv("Loaded image " STR_FMT " [w: %u h: %u]", STR_ARG(path), image.props.w,image.props.h);
 
     // free buffer
     stbi_image_free(data);
 
     stopwatch_end(image.stopwatch, S(__func__));
 
+    MemoryCopy(&image.props_orig, &image.props, sizeof(ImageProps));
+    
     return image;
 }
 
@@ -72,7 +75,7 @@ b32 image_save(Image *image, String path)
 
     char *output_file_cstr = string_to_cstr(scratch.arena, path);
 
-    s32 res = stbi_write_png(output_file_cstr, image->w, image->h, 3, image->data, image_step(image));
+    s32 res = stbi_write_png(output_file_cstr, image->props.w, image->props.h, 3, image->data, image_step(image));
 
     scratch_end(scratch);
 
@@ -89,7 +92,7 @@ b32 image_save(Image *image, String path)
 
 inline u32 image_step(Image *image)
 {
-    return image->w * 3;
+    return image->props.w * 3;
 }
 
 Image image_rotate(Image source, u32 degrees, ClockDir direction)
@@ -111,10 +114,12 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
     
     b32 dim_flipped = (degrees == ROTATE_90 || degrees == ROTATE_270);
 
-    output.data = PUSH_ARRAY(source.arena, RGBColor, source.w * source.h);
-    output.w    = dim_flipped ? source.h : source.w;
-    output.h    = dim_flipped ? source.w : source.h;
-    output.orig_rotation = source.rotation;;
+    output.data = PUSH_ARRAY(source.arena, RGBColor, source.props.w * source.props.h);
+    output.props.w = dim_flipped ? source.props.h : source.props.w;
+    output.props.h = dim_flipped ? source.props.w : source.props.h;
+
+    output.props.pad_x = dim_flipped ? source.props.pad_y : source.props.pad_x;
+    output.props.pad_y = dim_flipped ? source.props.pad_x : source.props.pad_y;
 
     s32 out_x = 0;
     s32 out_y = 0;
@@ -125,23 +130,23 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
         else if(degrees == ROTATE_270) degrees = ROTATE_90;
     }
 
-    for(int y = 0; y < source.h; ++y)
+    for(int y = 0; y < source.props.h; ++y)
     {
-        for(int x = 0; x < source.w; ++x)
+        for(int x = 0; x < source.props.w; ++x)
         {
             switch(degrees)
             {
                 case ROTATE_90:
-                    out_x = source.h - y - 1;
+                    out_x = source.props.h - y - 1;
                     out_y = x;
                     break;
                 case ROTATE_180:
-                    out_x = source.w - x - 1;
-                    out_y = source.h - y - 1;
+                    out_x = source.props.w - x - 1;
+                    out_y = source.props.h - y - 1;
                     break;
                 case ROTATE_270:
                     out_x = y;
-                    out_y = source.w - x - 1;
+                    out_y = source.props.w - x - 1;
                     break;
                 case ROTATE_0:
                 default:
@@ -150,18 +155,16 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
                     break;
             }
 
-            RGBColor *s_pixel = &source.data[(y*source.w + x)];
-            RGBColor *d_pixel = &output.data[(out_y*output.w + out_x)];
+            RGBColor *s_pixel = &source.data[(y*source.props.w + x)];
+            RGBColor *d_pixel = &output.data[(out_y*output.props.w + out_x)];
 
             MemoryCopy(d_pixel, s_pixel, sizeof(RGBColor));
         }
     }
 
     s32 adj_degrees = direction == CW ? degrees : -degrees;
-    s32 output_rotation = source.rotation + adj_degrees;
+    s32 output_rotation = source.props.rotation + adj_degrees;
     if(output_rotation < 0) output_rotation += 360;
-
-    output.rotation = output_rotation;
 
     stopwatch_end(source.stopwatch, S(__func__));
 
@@ -175,35 +178,35 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
 {
     stopwatch_begin(source.stopwatch, S(__func__));
 
-    Image image_scaled = source;
+    Image output = source;
 
-    b32 landscape = (source.w >= source.h);
+    b32 landscape = (source.props.w >= source.props.h);
 
     if(landscape)
     {
-        image_scaled.scale = (f32)target_width / source.w;
-        image_scaled.w = target_width;
-        image_scaled.h = source.h * image_scaled.scale;
-        image_scaled.pad_y = ABS(target_height - image_scaled.h) / 2;
+        output.props.scale = (f32)target_width / source.props.w;
+        output.props.w = target_width;
+        output.props.h = source.props.h * output.props.scale;
+        output.props.pad_y = ABS(target_height - output.props.h) / 2;
     }
     else
     {
-        image_scaled.scale = (f32)target_height / source.h;
-        image_scaled.h = target_height;
-        image_scaled.w = source.w * image_scaled.scale;
-        image_scaled.pad_x = ABS(target_width - image_scaled.w) / 2;
+        output.props.scale = (f32)target_height / source.props.h;
+        output.props.h = target_height;
+        output.props.w = source.props.w * output.props.scale;
+        output.props.pad_x = ABS(target_width - output.props.w) / 2;
     }
 
-    image_scaled.data = PUSH_ARRAY(source.arena, RGBColor, target_width * target_height);
+    output.data = PUSH_ARRAY(source.arena, RGBColor, target_width * target_height);
 
     // resize
 
-    f32 ratio_x = (f32)(source.w - 1) / (image_scaled.w - 1);
-    f32 ratio_y = (f32)(source.h - 1) / (image_scaled.h - 1);
+    f32 ratio_x = (f32)(source.props.w - 1) / (output.props.w - 1);
+    f32 ratio_y = (f32)(source.props.h - 1) / (output.props.h - 1);
 
-    for(u32 j = 0; j < image_scaled.h; ++j)
+    for(u32 j = 0; j < output.props.h; ++j)
     {
-        for(u32 i = 0; i < image_scaled.w; ++i)
+        for(u32 i = 0; i < output.props.w; ++i)
         {
             f32 src_x = i * ratio_x;
             f32 src_y = j * ratio_y;
@@ -213,10 +216,10 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
             u32 x_h = ceil(src_x);
             u32 y_h = ceil(src_y);
 
-            RGBColor p11 = source.data[(source.w)*y_l + x_l];
-            RGBColor p12 = source.data[(source.w)*y_h + x_l];
-            RGBColor p21 = source.data[(source.w)*y_l + x_h];
-            RGBColor p22 = source.data[(source.w)*y_h + x_h];
+            RGBColor p11 = source.data[(source.props.w)*y_l + x_l];
+            RGBColor p12 = source.data[(source.props.w)*y_h + x_l];
+            RGBColor p21 = source.data[(source.props.w)*y_l + x_h];
+            RGBColor p22 = source.data[(source.props.w)*y_h + x_h];
 
             f32 weight_x = src_x - x_l;
             f32 weight_y = src_y - y_l;
@@ -239,28 +242,27 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
                 (r2.b * weight_y) + (r1.b * (1.0 - weight_y))
             };
 
-            u32 dst_i = i + image_scaled.pad_x;
-            u32 dst_j = j + image_scaled.pad_y;
-            MemoryCopy(&image_scaled.data[dst_j*target_width + dst_i], &p, sizeof(RGBColor));
+            u32 dst_i = i + output.props.pad_x;
+            u32 dst_j = j + output.props.pad_y;
+            MemoryCopy(&output.data[dst_j*target_width + dst_i], &p, sizeof(RGBColor));
         }
     }
 
-    image_scaled.w = landscape ? image_scaled.w : target_width;
-    image_scaled.h = landscape ? target_height  : image_scaled.h;
+    output.props.w = landscape ? output.props.w : target_width;
+    output.props.h = landscape ? target_height  : output.props.h;
 
     stopwatch_end(source.stopwatch, S(__func__));
 
-    return image_scaled;
+    return output;
 }
 
 void image_print(Image *image)
 {
     logi("===================");
     logi("Image %p:", image);
-    logi("        w: %u", image->w);
-    logi("        h: %u", image->h);
-    logi("      rot: %u", image->rotation);
-    logi("orig  rot: %u", image->orig_rotation);
+    logi("        w: %u", image->props.w);
+    logi("        h: %u", image->props.h);
+    logi("      rot: %u", image->props.rotation);
     logi("    arena: %p", image->arena);
     logi("===================");
 }

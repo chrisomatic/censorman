@@ -97,6 +97,17 @@ String cmdline_get_value(CmdLine *cmdline, String id)
     return string_nil();
 }
 
+String cmdline_get_value_first_match(CmdLine *cmdline, StringArray ids)
+{
+    for(s64 i = 0; i < ids.count; ++i)
+    {
+        String str = cmdline_get_value(cmdline, ids.items[i]);
+        if(str.len > 0) return str;
+    }
+
+    return string_nil();
+}
+
 u64 cmdline_get_unflagged_count(CmdLine *cmdline)
 {
     u64 count = 0;

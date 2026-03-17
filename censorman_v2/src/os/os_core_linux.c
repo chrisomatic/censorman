@@ -202,10 +202,10 @@ void os_time_delay_us(u64 us)
 // Entropy
 ///////////////////////////////////////
 
-b32 os_entropy(u8 *data, u64 len);
+b32 os_entropy(u8 *data, u64 len)
 {
-    s32 fd = open("/dev/urandom");
-    if(fd == -1) return random;
+    s32 fd = open("/dev/urandom", O_RDONLY);
+    if(fd == -1) return false;
 
     ssize_t bytes_read = read(fd, data, len);
     return (bytes_read == len);
@@ -339,7 +339,7 @@ void os_file_set_pos(OS_File file, s64 pos)
 s32 os_file_read_char(OS_File file)
 {
     u8 c = '\0';
-    s32 bytes_read = read(file.handle, &c, sizeof(u8));
+    read(file.handle, &c, sizeof(u8));
     return c;
 }
 
@@ -375,7 +375,7 @@ s32 os_file_write(OS_File file, void *data, s32 size)
 
 String os_get_current_directory()
 {
-    u8 cwd[1024] = {0};
+    char cwd[1024] = {0};
     if(!getcwd(cwd, sizeof(cwd)))
         return string_nil();
 
@@ -493,13 +493,13 @@ int os_print_raw(const char* msg, s32 msg_len)
 Thread thread_launch(ThreadFunc func, void *arg)
 {
     Thread thread = {0};
-    int result = pthread_create(&thread.handle, NULL, func, arg);
+    pthread_create(&thread.handle, NULL, func, arg);
     return thread;
 }
 
 void thread_join(Thread thread)
 {
-    int result = pthread_join(thread.handle, NULL);
+    pthread_join(thread.handle, NULL);
 }
 
 void thread_join_many(Thread *threads, s64 thread_count)
@@ -541,6 +541,28 @@ b32 barrier_sync(Barrier *barrier)
 void barrier_destroy(Barrier *barrier)
 {
     pthread_barrier_destroy(&barrier->barrier);
+}
+
+Mutex mutex_create(void)
+{
+    Mutex m = {0};
+    pthread_mutex_init(&m.handle, NULL);
+    return m;
+}
+
+void mutex_lock(Mutex *m)
+{
+    pthread_mutex_lock(&m->handle);
+}
+
+void mutex_unlock(Mutex *m)
+{
+    pthread_mutex_unlock(&m->handle);
+}
+
+void mutex_destroy(Mutex *m)
+{
+    pthread_mutex_destroy(&m->handle);
 }
 
 ///////////////////////////////////////

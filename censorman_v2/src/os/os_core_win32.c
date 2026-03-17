@@ -564,6 +564,28 @@ void barrier_destroy(Barrier *barrier)
     DeleteSynchronizationBarrier(barrier->barrier);
 }
 
+Mutex mutex_create(void)
+{
+    Mutex m = {0};
+    InitializeCriticalSection(&m.handle);
+    return m;
+}
+
+void mutex_lock(Mutex *m)
+{
+    EnterCriticalSection(&m->handle);
+}
+
+void mutex_unlock(Mutex *m)
+{
+    LeaveCriticalSection(&m->handle);
+}
+
+void mutex_destroy(Mutex *m)
+{
+    DeleteCriticalSection(&m->handle);
+}
+
 ///////////////////////////////////////
 // Socket
 ///////////////////////////////////////

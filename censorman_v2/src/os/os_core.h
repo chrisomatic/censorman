@@ -282,6 +282,11 @@ struct Barrier
 {
     LPSYNCHRONIZATION_BARRIER barrier;
 };
+typedef struct
+{
+    CRITICAL_SECTION handle;
+} Mutex;
+
 typedef long unsigned int (*ThreadFunc)(void *);
 #else
 #define THREAD_LOCAL __thread
@@ -293,6 +298,11 @@ struct Barrier
 {
     pthread_barrier_t barrier;
 };
+typedef struct
+{
+    pthread_mutex_t handle;
+} Mutex;
+
 typedef void* (*ThreadFunc)(void *);
 #endif
 
@@ -320,6 +330,11 @@ ThreadValuesRange thread_range(s64 thread_index, s64 thread_count, u64 values_co
 Barrier barrier_create(s64 thread_count);
 b32     barrier_sync(Barrier *barrier);
 void barrier_destroy(Barrier *barrier);
+
+Mutex mutex_create(void);
+void  mutex_lock(Mutex *m);
+void  mutex_unlock(Mutex *m);
+void  mutex_destroy(Mutex *m);
 
 ///////////////////////////////////////
 // Socket
