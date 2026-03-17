@@ -263,6 +263,23 @@ b32 tests_run()
         stopwatch_end(&stopwatch, S("cmdline"));
     }
 
+    // Random
+    {
+        random_seed_with_entropy();
+
+        logi("Random ints:");
+        for(s64 i = 0; i < 10; ++i)
+        {
+            logi("%d: %u", i, random());
+        }
+
+        logi("Random floats:");
+        for(s64 i = 0; i < 10; ++i)
+        {
+            logi("%d: %f", i, random_float());
+        }
+    }
+
     // Threads
 
     {

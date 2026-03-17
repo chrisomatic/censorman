@@ -199,6 +199,19 @@ void os_time_delay_us(u64 us)
 }
 
 ///////////////////////////////////////
+// Entropy
+///////////////////////////////////////
+
+b32 os_entropy(u8 *data, u64 len);
+{
+    s32 fd = open("/dev/urandom");
+    if(fd == -1) return random;
+
+    ssize_t bytes_read = read(fd, data, len);
+    return (bytes_read == len);
+}
+
+///////////////////////////////////////
 // Files
 ///////////////////////////////////////
 

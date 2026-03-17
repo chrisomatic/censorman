@@ -177,6 +177,17 @@ void os_time_delay_us(u64 us)
 }
 
 ///////////////////////////////////////
+// Entropy
+///////////////////////////////////////
+
+b32 os_entropy(u8 *data, u64 len)
+{
+    NTSTATUS status = BCryptGenRandom(NULL, data, len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if(FAILED(status))  return false;
+    return true;
+}
+
+///////////////////////////////////////
 // Files
 ///////////////////////////////////////
 

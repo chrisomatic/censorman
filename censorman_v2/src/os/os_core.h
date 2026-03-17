@@ -43,6 +43,7 @@
 #include <synchapi.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <bcrypt.h>
 #pragma comment( lib, "wsock32.lib" )
 #else
 #include <unistd.h> // for usleep
@@ -133,6 +134,12 @@ void os_time_wait_for_frame(Timer* timer);
 f64  os_time_get_elapsed(Timer* timer);
 f64  os_time_get_prior_frame_fps(Timer* timer);
 void os_time_delay_us(u64 us);
+
+///////////////////////////////////////
+// Entropy
+///////////////////////////////////////
+
+b32 os_entropy(u8 *data, u64 len);
 
 ///////////////////////////////////////
 // Stopwatch (simple profiling)
