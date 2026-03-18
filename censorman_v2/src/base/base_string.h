@@ -132,4 +132,5 @@ f64 string_to_f64(String str);
 ///////////////////////////
 
 u64 cstring_strlen(const char *str);
+char *cstring_from_s64(Arena *arena, s64 value);
 

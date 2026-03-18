@@ -6,6 +6,7 @@ typedef enum
     FILTER_TYPE_BLUR_BOX,
     FILTER_TYPE_BLUR_GAUSSIAN,
     FILTER_TYPE_PIXELATE,
+    FILTER_TYPE_SCRAMBLE,
     FILTER_TYPE_TEXTURE,
     FILTER_TYPE_MAX,
 } FilterType;
@@ -31,6 +32,7 @@ void filter_blackout(Image *image, Box *box);
 void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength);
 void filter_blur_box(Image *image, Box *box, f32 blur_strength);
 void filter_pixelate(Image* image, Box *box, f32 block_scale);
+void filter_scramble(Image *image, Box *box);
 
 void filter_draw_debug_info(Image *image, BoxFrame *box_frame);
 

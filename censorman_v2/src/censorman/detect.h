@@ -45,7 +45,6 @@ typedef struct
     DetectType type;
     Image *image;
     List *boxes;
-    s64 thread_index;
 } DetectArgs;
 
 typedef struct
@@ -62,10 +61,11 @@ DetectType detect_type_from_string(String str);
 BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number);
 void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames);
 
-List detect_faces(Arena *arena, Image *image, s64 thread_index);
-List detect_persons(Arena *arena, Image *image, s64 thread_index);
+List detect_faces(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold);
+List detect_persons(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold);
+List detect_license_plates(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold);
 
-b32 detect_init(Arena *arena, s32 thread_count);
+b32 detect_init(Arena *arena);
 void detect(void *args);
 
 Box box_unscale(Box box, Image *image);

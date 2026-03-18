@@ -256,11 +256,10 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
         return vid;
     }
     
-    // set rotation on encoder stream
-    char rotate[16];
-    snprintf(rotate, sizeof(rotate), "%d", vid.rotation);
-    av_dict_set(&ctx->enc_stream->metadata, "rotate", rotate, 0);
-
+    // write rotation to encoder stream
+    char *rotate_str = cstring_from_s64(arena, vid.rotation);
+    av_dict_set(&ctx->enc_stream->metadata, "rotate", rotate_str, 0);
+    
     // Open output file
     if(!(ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE))
     {
@@ -515,10 +514,11 @@ void video_save_done(Video *vid)
         av_packet_unref(vid_ctx->enc_pkt);
     }
 
+    
     // Write trailer
     av_write_trailer(vid_ctx->enc_fmt_ctx);
 
-    // Optional: flush underlying IO
+    // flush underlying IO
     if (!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE) && vid_ctx->enc_fmt_ctx->pb)
         avio_flush(vid_ctx->enc_fmt_ctx->pb);
 }

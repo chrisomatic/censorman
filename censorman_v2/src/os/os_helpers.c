@@ -9,7 +9,7 @@
 #define DELAY(s) os_time_delay_us((s)*1000*1000)
 
 LogLevel      _system_log_level = LOG_LEVEL_DEBUG;
-THREAD_LOCAL ThreadContext _thread_context   = {0};
+THREAD_LOCAL ThreadContext s_thread_context = {0};
 
 ///////////////////////////////////////
 // Stopwatch
@@ -326,8 +326,11 @@ String os_path_get_file(String path)
 // Threads
 ///////////////////////////////////////
 
-ThreadValuesRange thread_range(s64 thread_index, s64 thread_count, u64 values_count)
+ThreadValuesRange thread_range(u64 values_count)
 {
+    s64 thread_index = s_thread_context.index;
+    s64 thread_count = s_thread_context.count;
+
     ThreadValuesRange range = {0};
 
     s64 values_per_thread = values_count / thread_count;

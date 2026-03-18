@@ -47,13 +47,14 @@ typedef struct
     b8 debug;
     b8 verbose;
     b8 quiet;
+    b8 help;
 
 } Settings;
 
 AssetType asset_from_string(String str);
 String asset_to_string(AssetType type);
 
+void     settings_print_help();
 Settings settings_default();
-
 Settings settings_parse(Arena *arena, int argc, char **args);
-void settings_print(Settings *settings);
+void     settings_print(Settings *settings);

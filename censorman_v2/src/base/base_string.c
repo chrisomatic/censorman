@@ -61,6 +61,65 @@ u64 cstring_strlen(const char *str)
     return len;
 }
 
+char *cstring_from_s64(Arena *arena, s64 value)
+{
+    char* buffer = PUSH_ARRAY(arena, char, 32);
+    s32 radix = 10;
+
+    char* ptr = buffer;
+    char* fast_ptr;
+    s32 sign = 0;
+    u64 temp_val;
+
+    // Handle base cases and sign
+    if(value == 0)
+    {
+        *ptr++ = '0';
+        *ptr = '\0';
+        return buffer;
+    }
+
+    if(value < 0 && radix == 10)
+    {
+        sign = 1;
+        // Cannot simply negate INT64_MIN, so use unsigned for conversion
+        temp_val = (u64)-(value + 1) + 1;
+    }
+    else
+    {
+        temp_val = (u64)value;
+    }
+
+    // Convert number to string in reverse order
+    fast_ptr = ptr;
+    while(temp_val)
+    {
+        s32 digit = temp_val % radix;
+
+        if(digit < 10) *fast_ptr++ = digit + '0';
+        else           *fast_ptr++ = digit + 'a' - 10;
+
+        temp_val /= radix;
+    }
+
+    // Add sign if necessary
+    if(sign) *fast_ptr++ = '-';
+    *fast_ptr = '\0'; // Null-terminate the string
+
+    // Reverse the string
+    char *start = ptr;
+    char *end = fast_ptr - 1;
+
+    while(start < end)
+    {
+        char temp = *start;
+        *start++ = *end;
+        *end-- = temp;
+    }
+
+    return buffer;
+}
+
 //===================================
 // Strings
 //===================================

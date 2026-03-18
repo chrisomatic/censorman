@@ -308,8 +308,8 @@ typedef void* (*ThreadFunc)(void *);
 
 typedef struct
 {
-    s64 thread_index;
-    s64 thread_count;
+    s64 index;
+    s64 count;
 } ThreadContext;
 
 typedef struct
@@ -325,7 +325,7 @@ void   thread_close(Thread thread);
 void   thread_join_many(Thread *threads, s64 thread_count);
 void   thread_close_many(Thread *threads, s64 thread_count);
 
-ThreadValuesRange thread_range(s64 thread_index, s64 thread_count, u64 values_count);
+ThreadValuesRange thread_range(u64 values_count);
 
 Barrier barrier_create(s64 thread_count);
 b32     barrier_sync(Barrier *barrier);

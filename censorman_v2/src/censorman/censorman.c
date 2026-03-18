@@ -47,13 +47,13 @@ Arena *arena_chunk; // used for video frame chunks
 Mutex arena_chunk_mutex = {0};
 
 // Shared variables for threads
-Barrier   barrier = {0};
-Thread    *threads = NULL;
-Stopwatch stopwatch = {0};
-Settings  settings = {0};
-Video     vid = {0};
-ListArray frames = {0};
-BoxFrame  *box_frames = NULL;
+Barrier   barrier        = {0};
+Thread    *threads       = NULL;
+Stopwatch stopwatch      = {0};
+Settings  settings       = {0};
+Video     vid            = {0};
+ListArray frames         = {0};
+BoxFrame  *box_frames    = NULL;
 b32       video_complete = false;
 
 void *entry_point(void *params);
@@ -69,14 +69,27 @@ int main(int argc, char **args)
     arena_chunk_mutex = mutex_create();
     stopwatch   = stopwatch_create();
 
+    randgen_seed_with_entropy();
+
     censorman_version();
+
+#if RUN_TESTS
+    tests_run();
+#endif
 
     // parse command line
     settings = settings_parse(arena_perm, argc, args);
+    if(settings.help)
+    {
+        settings_print_help();   
+        return CM_SUCCESS;
+    }
+
     settings_print(&settings);
+    s_thread_context.count = settings.thread_count;
 
     // initialize models
-    detect_init(arena_perm, settings.thread_count);
+    detect_init(arena_perm);
 
     // setup threads
     threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
@@ -99,6 +112,9 @@ void *entry_point(void *params)
 {
     s64 thread_index = (s64)params;
 
+    s_thread_context.index = thread_index;
+    s_thread_context.count = settings.thread_count;
+
     Stopwatch sw = stopwatch_create();
     Arena *arena_frame = arena_create(MB(8));
 
@@ -106,7 +122,7 @@ void *entry_point(void *params)
     {
         Asset *asset = &settings.assets[i];
 
-        NARROW logi("Processing asset [%03d/%03d]: " STR_FMT, i+1, settings.asset_count, STR_ARG(asset->path));
+        NARROW logi("Processing " STR_FMT " [%03d/%03d]: " STR_FMT, STR_ARG(asset_to_string(asset->type)), i+1, settings.asset_count, STR_ARG(asset->path));
 
         if(asset->type == TYPE_IMAGE)
         {
@@ -129,7 +145,6 @@ void *entry_point(void *params)
                     {
                         .type  = settings.detect_types[j],
                         .image = &img,
-                        .thread_index = 0,
                         .boxes = &box_list
                     };
 
@@ -166,7 +181,9 @@ void *entry_point(void *params)
         {
             NARROW
             {
+
                 arena_reset(arena_chunk);
+                video_complete = false;
                 vid = video_begin(arena_chunk, asset->path, asset->output_path, settings.buffer_size, settings.no_encode);
                 video_print(&vid);
             }
@@ -204,7 +221,7 @@ void *entry_point(void *params)
 
                 ThreadValuesRange range = {0};
                 
-                range = thread_range(thread_index, settings.thread_count, frames.count);
+                range = thread_range(frames.count);
 
                 // detect on frames
                 for(u32 i = range.min; i < range.max; ++i)
@@ -240,7 +257,6 @@ void *entry_point(void *params)
                         {
                             .type  = settings.detect_types[j],
                             .image = &img,
-                            .thread_index = thread_index,
                             .boxes = &box_list
                         };
 
@@ -268,7 +284,7 @@ void *entry_point(void *params)
 
                 stopwatch_begin(&sw, S("apply filters"));
 
-                range = thread_range(thread_index, settings.thread_count, vid.frame_count);
+                range = thread_range(vid.frame_count);
 
                 // [apply filters]
                 for(s64 i = range.min; i < range.max; ++i)

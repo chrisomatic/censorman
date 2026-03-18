@@ -1,4 +1,38 @@
 
+/*
+ 
+USAGE
+
+    censorman <asset_path> [options]
+
+ASSET_PATH
+
+    Accespt 
+
+OPTIONS
+
+    --filters [-f] <filters>
+        a comma-separated list of filters [blur_gaussian, blur, pixelate, scramble, blackout]
+        default: blur
+
+    --detect [-d] <detect-types>
+        default: face
+    
+EXAMPLES
+
+    # Detect faces in test1.jpg and pixelate with a block scale of 0.12
+    censorman assets/images/test1.jpg -d face -f pixelate:0.12
+   
+    censorman assets/videos/vid1.mp4 -d face -f blur --debug
+
+*/
+
+void settings_print_help()
+{
+    // @TODO
+    fprintf(stdout, "Help!\n");
+}
+
 Settings settings_default()
 {
     Settings settings = {0};
@@ -18,7 +52,7 @@ Settings settings_default()
     settings.confidence_threshold = 0.25;
     settings.box_padding          = 0.15;
     settings.blur_strength        = 0.60;
-    settings.block_scale          = 0.15;
+    settings.block_scale          = 0.12;
     settings.smoothing_window     = 0.200; // 200ms
 
     settings.no_encode = false;
@@ -26,6 +60,7 @@ Settings settings_default()
     settings.debug     = false;
     settings.verbose   = false;
     settings.quiet     = false;
+    settings.help      = false;
 
     return settings;
 }
@@ -38,24 +73,43 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
     CmdLine cmdline = cmdline_parse(scratch.arena, argc, args);
 
-    String str_assets           = cmdline_get_unflagged(&cmdline, 0);
-    String str_detect_types     = cmdline_get_value(&cmdline, S("d"));
-    String str_filters          = cmdline_get_value(&cmdline, S("f"));
-    String str_output_folder    = cmdline_get_value(&cmdline, S("o"));
-    String str_confidence       = cmdline_get_value(&cmdline, S("c"));
-    String str_thread_count     = cmdline_get_value(&cmdline, S("thread_count"));
-    String str_buffer_size      = cmdline_get_value(&cmdline, S("buffer_size"));
-    String str_nms_threshold    = cmdline_get_value(&cmdline, S("nms_threshold"));
-    String str_box_padding      = cmdline_get_value(&cmdline, S("box_padding"));
-    String str_smoothing_window = cmdline_get_value(&cmdline, S("smoothing_window"));
-    String str_texture_path     = cmdline_get_value(&cmdline, S("texture"));
-    String str_block_scale      = cmdline_get_value(&cmdline, S("block_scale"));
-    String str_blur_strength    = cmdline_get_value(&cmdline, S("blur_strength"));
-    String str_bbx_output       = cmdline_get_value(&cmdline, S("bbx_output"));
+    StringArray ids_help             = string_array_create(scratch.arena, 3, S("help"),             S("?"),      S("h"));
+    StringArray ids_no_encode        = string_array_create(scratch.arena, 3, S("no_encode"),        S("ne"),     S("z"));
+    StringArray ids_quiet            = string_array_create(scratch.arena, 3, S("quiet"),            S("shh"),    S("q"));
+    StringArray ids_debug            = string_array_create(scratch.arena, 3, S("debug"),            S("db") ,    S("g"));
+    StringArray ids_verbose          = string_array_create(scratch.arena, 3, S("verbose"),          S("vb") ,    S("v"));
+    StringArray ids_detect_types     = string_array_create(scratch.arena, 3, S("detect_types"),     S("detect"), S("d"));
+    StringArray ids_filters          = string_array_create(scratch.arena, 3, S("filters"),          S("filter"), S("f"));
+    StringArray ids_output_folder    = string_array_create(scratch.arena, 3, S("output_folder"),    S("output"), S("o"));
+    StringArray ids_confidence       = string_array_create(scratch.arena, 3, S("confidence"),       S("conf"),   S("c"));
+    StringArray ids_thread_count     = string_array_create(scratch.arena, 3, S("thread_count"),     S("tc"),     S("j"));
+    StringArray ids_buffer_size      = string_array_create(scratch.arena, 3, S("buffer_size"),      S("bs"),     S("b"));
+    StringArray ids_nms_threshold    = string_array_create(scratch.arena, 3, S("nms_threshold"),    S("nms"),    S("n"));
+    StringArray ids_box_padding      = string_array_create(scratch.arena, 3, S("box_padding"),      S("bp"),     S("p"));
+    StringArray ids_smoothing_window = string_array_create(scratch.arena, 3, S("smoothing_window"), S("sw"),     S("s"));
+    StringArray ids_texture_path     = string_array_create(scratch.arena, 3, S("texture_path"),     S("tp"),     S("t"));
+    StringArray ids_block_scale      = string_array_create(scratch.arena, 3, S("block_scale"),      S("bsca"),   S("u"));
+    StringArray ids_blur_strength    = string_array_create(scratch.arena, 3, S("blur_strength"),    S("bstr"),   S("w"));
+    StringArray ids_bbx_output       = string_array_create(scratch.arena, 3, S("bbx_output"),       S("bbx"),    S("x"));
 
-    StringArray strs_assets       = string_split(scratch.arena, str_assets, S(","));
+    String str_assets           = cmdline_get_unflagged(&cmdline, 0);
+    String str_detect_types     = cmdline_get_value_first_match(&cmdline, ids_detect_types);
+    String str_filters          = cmdline_get_value_first_match(&cmdline, ids_filters);
+    String str_output_folder    = cmdline_get_value_first_match(&cmdline, ids_output_folder);
+    String str_confidence       = cmdline_get_value_first_match(&cmdline, ids_confidence);
+    String str_thread_count     = cmdline_get_value_first_match(&cmdline, ids_thread_count);
+    String str_buffer_size      = cmdline_get_value_first_match(&cmdline, ids_buffer_size);
+    String str_nms_threshold    = cmdline_get_value_first_match(&cmdline, ids_nms_threshold);
+    String str_box_padding      = cmdline_get_value_first_match(&cmdline, ids_box_padding);
+    String str_smoothing_window = cmdline_get_value_first_match(&cmdline, ids_smoothing_window);
+    String str_texture_path     = cmdline_get_value_first_match(&cmdline, ids_texture_path);
+    String str_block_scale      = cmdline_get_value_first_match(&cmdline, ids_block_scale);
+    String str_blur_strength    = cmdline_get_value_first_match(&cmdline, ids_blur_strength);
+    String str_bbx_output       = cmdline_get_value_first_match(&cmdline, ids_bbx_output);
+
+    StringArray strs_assets       = string_split(scratch.arena, str_assets,       S(","));
     StringArray strs_detect_types = string_split(scratch.arena, str_detect_types, S(","));
-    StringArray strs_filters      = string_split(scratch.arena, str_filters, S(","));
+    StringArray strs_filters      = string_split(scratch.arena, str_filters,      S(","));
 
     if(str_output_folder.len > 0)    settings.output_folder        = str_output_folder;
     if(str_confidence.len > 0)       settings.confidence_threshold = string_to_f64(str_confidence);
@@ -67,13 +121,13 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(str_thread_count.len > 0)     settings.thread_count         = string_to_s64(str_thread_count);
     if(str_buffer_size.len > 0)      settings.buffer_size          = string_to_s64(str_buffer_size);
 
-    b32 f_no_encode = cmdline_has_flag(&cmdline, S("no_encode"));
-    b32 f_debug     = cmdline_has_flag(&cmdline, S("debug"));
-    b32 f_verbose   = cmdline_has_flag(&cmdline, S("verbose"));
-    b32 f_quiet     = cmdline_has_flag(&cmdline, S("quiet"));
-    b32 f_help      = cmdline_has_flag(&cmdline, S("h"));
-        f_help     |= cmdline_has_flag(&cmdline, S("help"));
+    b32 f_help      = cmdline_has_any_flags(&cmdline, ids_help);
+    b32 f_no_encode = cmdline_has_any_flags(&cmdline, ids_no_encode);
+    b32 f_debug     = cmdline_has_any_flags(&cmdline, ids_debug);
+    b32 f_verbose   = cmdline_has_any_flags(&cmdline, ids_verbose);
+    b32 f_quiet     = cmdline_has_any_flags(&cmdline, ids_quiet);
 
+    if(f_help)      settings.help      = true;
     if(f_no_encode) settings.no_encode = true;
     if(f_debug)     settings.debug     = true;
     if(f_verbose)   settings.verbose   = true;
@@ -90,14 +144,8 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
     // handle input assets
     
-    StringList exts_image = string_list_create(scratch.arena);
-    string_list_add(&exts_image, S("png"));
-    string_list_add(&exts_image, S("jpg"));
-    string_list_add(&exts_image, S("jpeg"));
-
-    StringList exts_video = string_list_create(scratch.arena);
-    string_list_add(&exts_video, S("mp4"));
-    string_list_add(&exts_video, S("mov"));
+    StringArray exts_image = string_array_create(scratch.arena, 3, S("png"), S("jpg"), S("jpeg"));
+    StringArray exts_video = string_array_create(scratch.arena, 2, S("mp4"), S("mov"));
     
     for(int i = 0; i < strs_assets.count; ++i)
     {
@@ -127,13 +175,13 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             String ext = os_path_get_extension(file_str);
             ext = string_to_lower(scratch.arena, ext);
 
-            if(string_in_list(ext, exts_image))
+            if(string_in_array(ext, exts_image))
             {
                 asset->type = TYPE_IMAGE;
                 asset->path = string_copy(arena, string_concat(arena, 3, input_folder, S("/"), file_str));
                 asset->output_path = string_concat(arena, 3, settings.output_folder, S("/"), file_str);
             }
-            else if(string_in_list(ext, exts_video))
+            else if(string_in_array(ext, exts_video))
             {
                 asset->type = TYPE_VIDEO;
                 asset->path = string_copy(arena, string_concat(arena, 3, input_folder, S("/"), file_str));

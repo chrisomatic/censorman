@@ -36,6 +36,9 @@ void filter_apply(Filter filter, Image *image, Box *box)
         case FILTER_TYPE_PIXELATE:
             filter_pixelate(image, box, filter.block_scale);
             break;
+        case FILTER_TYPE_SCRAMBLE:
+            filter_scramble(image, box);
+            break;
         case FILTER_TYPE_TEXTURE:
             break;
         case FILTER_TYPE_NONE:
@@ -129,6 +132,56 @@ void filter_pixelate(Image* image, Box *box, f32 block_scale)
             }
         }
     }
+}
+
+void filter_scramble(Image *image, Box *box)
+{
+    Temp scratch = scratch_begin();
+
+    RGBColor* start = &image->data[box->y*image->props.w + box->x];
+
+    // initialize unprocessed list
+    s64 num_pixels = box->w * box->h;
+    s64 *unprocessed = (s64 *)PUSH_ARRAY(scratch.arena, s64, num_pixels);
+    s64 unprocessed_count = num_pixels;
+
+    for(s64 i = 0; i < num_pixels; ++i)
+        unprocessed[i] = i;
+
+    for(;;)
+    {
+        if(unprocessed_count <= 1)
+            break;
+
+        s64 idx1 = (randgen_u32() % unprocessed_count);
+        s64 idx2 = (randgen_u32() % unprocessed_count);
+
+        // swap two pixels
+        s64 u1 = unprocessed[idx1];
+        s64 u2 = unprocessed[idx2];
+
+        s64 offset1 = image->props.w*(u1/box->w) + (u1%box->w);
+        s64 offset2 = image->props.w*(u2/box->w) + (u2%box->w);
+
+        RGBColor tmp = {0};
+        RGBColor *a = start+offset1;
+        RGBColor *b = start+offset2;
+
+        // Swap pixels
+        tmp = *a;
+        *a = *b;
+        *b = tmp;
+
+        // remove both indices from unprocessed
+        memcpy(&unprocessed[idx1],&unprocessed[unprocessed_count-1], sizeof(s64));
+        unprocessed_count--;
+
+        memcpy(&unprocessed[idx2],&unprocessed[unprocessed_count-1], sizeof(s64));
+        unprocessed_count--;
+    }
+
+    scratch_end(scratch);
+
 }
 
 void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength)
@@ -364,6 +417,7 @@ String filter_to_string(FilterType type)
         case FILTER_TYPE_BLUR_BOX:      return S("box_blur");
         case FILTER_TYPE_BLUR_GAUSSIAN: return S("gaussian_blur");
         case FILTER_TYPE_PIXELATE:      return S("pixelate");
+        case FILTER_TYPE_SCRAMBLE:      return S("scramble");
         case FILTER_TYPE_TEXTURE:       return S("texture");
         case FILTER_TYPE_NONE:
         default:
@@ -385,6 +439,9 @@ FilterType filter_from_string(String str)
 
     if(string_equal(str, S("pixelate")))
         return FILTER_TYPE_PIXELATE;
+
+    if(string_equal(str, S("scramble")))
+        return FILTER_TYPE_SCRAMBLE;
 
     if(string_equal(str, S("texture")))
         return FILTER_TYPE_TEXTURE;

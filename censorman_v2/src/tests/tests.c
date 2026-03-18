@@ -181,6 +181,16 @@ b32 tests_run()
         string_print(new_str);
         logi("Old string len: %u, new string len: %u", replace_str.len, new_str.len);
 
+        s64 nums[] = {19482302583, -17, 90};
+
+        char *num_str1 = cstring_from_s64(scratch.arena, nums[0]);
+        char *num_str2 = cstring_from_s64(scratch.arena, nums[1]);
+        char *num_str3 = cstring_from_s64(scratch.arena, nums[2]);
+
+        test_print("CString S64 Conv 1", string_equal(S("19482302583"),STR(num_str1)));
+        test_print("CString S64 Conv 2", string_equal(S("-17"),STR(num_str2)));
+        test_print("CString S64 Conv 3", string_equal(S("90"),STR(num_str3)));
+
         scratch_end(scratch);
 
         stopwatch_end(&stopwatch, S("strings"));
@@ -301,7 +311,7 @@ b32 tests_run()
         {
             SumTest *test = &tests[i];
 
-            test->range = thread_range(i, thread_count, max_num);
+            test->range = thread_range(max_num);
             threads[i] = thread_launch(sum_func, (void *)test);
         }
 

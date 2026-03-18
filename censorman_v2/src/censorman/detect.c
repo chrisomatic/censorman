@@ -1,16 +1,20 @@
+
 static Model model_face   = {0};
 static Model model_person = {0};
+static Model model_license_plate = {0};
 
 extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
 extern void ncnn_extractor_clear(ncnn_extractor_t ex);
 extern void ncnn_net_set_workspace_allocator(ncnn_net_t net);
 
-static Model model_create(Arena *arena, s32 thread_count, const char *path_param, const char *path_bin)
+static Model model_create(Arena *arena, const char *path_param, const char *path_bin)
 {
     Model model = {0};
 
     model.net_w = 640;
     model.net_h = 640;
+
+    s64 thread_count = s_thread_context.count;
 
     model.nets = PUSH_ARRAY(arena, ncnn_net_t, thread_count);
     for(s64 i = 0; i < thread_count; ++i)
@@ -33,21 +37,30 @@ static Model model_create(Arena *arena, s32 thread_count, const char *path_param
     return model;
 }
 
-b32 detect_init(Arena *arena, s32 thread_count)
+b32 detect_init(Arena *arena)
 {
-    model_face = model_create(arena, thread_count,
+    model_face = model_create(arena,
             "models/scrfd_500m_gnkps.ncnn.param",
             "models/scrfd_500m_gnkps.ncnn.bin"
     );
 
-    model_person = model_create(arena, thread_count,
+    model_person = model_create(arena,
             "models/scrfd_person_2.5g.ncnn.param",
             "models/scrfd_person_2.5g.ncnn.bin"
     );
 
-    if(!model_face.initialized || !model_person.initialized)
+    model_license_plate = model_create(arena,
+            "models/license_plate.ncnn.param",
+            "models/license_plate.ncnn.bin"
+    );
+
+    if(!model_face.initialized || !model_person.initialized || !model_license_plate.initialized)
     {
-        loge("Failed with model loading. Loaded [ Face: %s, Person: %s ]", STR_BOOL(model_face.initialized), STR_BOOL(model_person.initialized));
+        loge("Failed with model loading. Loaded [ Face: %s, Person: %s, License Plate: %s]",
+                STR_BOOL(model_face.initialized),
+                STR_BOOL(model_person.initialized),
+                STR_BOOL(model_license_plate.initialized)
+            );
         return false;
     }
 
@@ -60,7 +73,6 @@ void detect(void *args)
 
     Image *image       = detect_args->image;
     List  *total_boxes = detect_args->boxes;
-    s64   thread_index = detect_args->thread_index;
 
     stopwatch_begin(image->stopwatch, S("detect"));
 
@@ -74,15 +86,15 @@ void detect(void *args)
     {
         case DETECT_TYPE_FACE:
         {
-            new_boxes = detect_faces(scratch.arena, image, thread_index);
+            new_boxes = detect_faces(scratch.arena, image, 0.32f, 0.45f);
         } break;
         case DETECT_TYPE_PERSON:
         {
-            new_boxes = detect_persons(scratch.arena, image, thread_index);
+            new_boxes = detect_persons(scratch.arena, image, 0.50f, 0.50f);
         } break;
         case DETECT_TYPE_LICENSE_PLATE:
         {
-            logd("TODO: License Plate Model");
+            new_boxes = detect_license_plates(scratch.arena, image, 0.50f, 0.45f);
         } break;
         case DETECT_TYPE_DOCUMENT:
         {
@@ -90,6 +102,16 @@ void detect(void *args)
         } break;
         default:
             break;
+    }
+
+    if(os_get_log_level() == LOG_LEVEL_VERBOSE)
+    {
+        logv("Found %d boxes", new_boxes.count);
+        for(s64 i = 0; i < new_boxes.count; ++i)
+        {
+            Box *box = (Box *)list_get(&new_boxes, i);
+            box_print(box);
+        }
     }
 
     // add new boxes to total list
@@ -381,7 +403,7 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
     return boxes_curated;
 }
 
-List detect_faces(Arena *arena, Image *image, s64 thread_index)
+List detect_faces(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -389,11 +411,11 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
     
     // Maps [0,255] --> [-1,1]
 
-    const f32 mean[] = {127.5, 127.5, 127.5};
-    const f32 norm[] = {1.0/128.0, 1.0/128.0, 1.0/128.0};
+    const f32 mean[] = {127.5f, 127.5f, 127.5f};
+    const f32 norm[] = {1.0f/128.0f, 1.0f/128.0f, 1.0f/128.0f};
     ncnn_mat_substract_mean_normalize(input, mean, norm);
 
-    ncnn_net_t net = model_face.nets[thread_index];
+    ncnn_net_t net = model_face.nets[s_thread_context.index];
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
     ncnn_extractor_input(ex, "in0", input);
@@ -425,9 +447,7 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
     // 2 anchors per location, strides 8/16/32
     // 640x640: 80x80x2=12800, 40x40x2=3200, 20x20x2=800
 
-    const s32 strides[]      = {8, 16, 32};
-
-    f32 score_threshold = 0.32f;
+    const s32 strides[] = {8, 16, 32};
 
     for(s32 s = 0; s < 3; ++s)
     {
@@ -453,7 +473,7 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
                     s32 idx = (i*cols+j)*2+a;
 
                     f32 prob = score ? score[idx] : 0.0f;
-                    if (prob < score_threshold)
+                    if (prob < conf_threshold)
                         continue;
 
                     // anchor center
@@ -466,6 +486,7 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
                     f32 y2 = cy + bbox[idx*4+3] * stride;
 
                     Box box = {0};
+
                     box.x = (s32)x1;
                     box.y = (s32)y1;
                     box.w = (s32)(x2 - x1);
@@ -481,12 +502,6 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
 
                     box = box_unscale(box, image);
                     box = box_rotate(box, image, image->props_orig.rotation, CW);
-#if 0
-                    logw("Box [%d], confidence: %u", boxes.count, box.confidence);
-                    logw("  after detect: [%-4d %-4d %-4d %-4d]", box.x, box.y, box.w, box.h);
-                    logw("  after unscale: [%-4d %-4d %-4d %-4d]", box.x, box.y, box.w, box.h);
-                    logw("  after rotate: [%-4d %-4d %-4d %-4d]", box.x, box.y, box.w, box.h);
-#endif
 
                     list_add(&boxes, &box);
                 }
@@ -508,34 +523,196 @@ List detect_faces(Arena *arena, Image *image, s64 thread_index)
     ncnn_extractor_destroy(ex);
     ncnn_mat_destroy(input);
 
-    boxes = non_maximum_suppression(boxes, 0.45);
-
-    if(os_get_log_level() == LOG_LEVEL_VERBOSE)
-    {
-        logv("Found %d boxes", boxes.count);
-        for(s64 i = 0; i < boxes.count; ++i)
-        {
-            Box *b = (Box *)list_get(&boxes, i);
-            box_print(b);
-        }
-    }
+    boxes = non_maximum_suppression(boxes, nms_threshold);
 
     return boxes;
 }
 
-List detect_persons(Arena *arena, Image *image, s64 thread_index)
+List detect_persons(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold)
 {
     List boxes = list_create(arena, sizeof(Box));
 
-    Box box1 = {50, 50, 100, 50};
-    list_add(&boxes, &box1);
+    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->props.w, image->props.h, image->props.w*3, 0);
+
+    const f32 mean[] = {127.5f, 127.5f, 127.5f};
+    const f32 norm[] = {1.0f/128.0f, 1.0f/128.0f, 1.0f/128.0f};
+    ncnn_mat_substract_mean_normalize(input, mean, norm);
+
+    ncnn_net_t net = model_person.nets[s_thread_context.index];
+    ncnn_extractor_t ex = ncnn_extractor_create(net);
+
+    ncnn_extractor_input(ex, "in0", input);
+
+    ncnn_mat_t score_8, score_16, score_32, score_64, score_128;
+    ncnn_mat_t bbox_8,  bbox_16,  bbox_32,  bbox_64,  bbox_128;
+    ncnn_mat_t kps_8,   kps_16,   kps_32,   kps_64,   kps_128;
+
+    ncnn_extractor_extract(ex, "out0",  &score_8);
+    ncnn_extractor_extract(ex, "out1",  &score_16);
+    ncnn_extractor_extract(ex, "out2",  &score_32);
+    ncnn_extractor_extract(ex, "out3",  &score_64);
+    ncnn_extractor_extract(ex, "out4",  &score_128);
+    ncnn_extractor_extract(ex, "out5",  &bbox_8);
+    ncnn_extractor_extract(ex, "out6",  &bbox_16);
+    ncnn_extractor_extract(ex, "out7",  &bbox_32);
+    ncnn_extractor_extract(ex, "out8",  &bbox_64);
+    ncnn_extractor_extract(ex, "out9",  &bbox_128);
+    ncnn_extractor_extract(ex, "out10", &kps_8);
+    ncnn_extractor_extract(ex, "out11", &kps_16);
+    ncnn_extractor_extract(ex, "out12", &kps_32);
+    ncnn_extractor_extract(ex, "out13", &kps_64);
+    ncnn_extractor_extract(ex, "out14", &kps_128);
+
+    const ncnn_mat_t scoreMats[] = {score_8,  score_16,  score_32,  score_64,  score_128};
+    const ncnn_mat_t bboxMats[]  = {bbox_8,   bbox_16,   bbox_32,   bbox_64,   bbox_128};
+    const ncnn_mat_t kpsMats[]   = {kps_8,    kps_16,    kps_32,    kps_64,    kps_128};
+
+    const s32 strides[] = {8, 16, 32, 64, 128};
+
+    for(s32 s = 0; s < 5; ++s)
+    {
+        s32 stride = strides[s];
+
+        s32 cols = model_person.net_w / stride;
+        s32 rows = model_person.net_h / stride;
+
+        const f32 *score = (const f32 *)ncnn_mat_get_data(scoreMats[s]);
+        const f32 *bbox  = (const f32 *)ncnn_mat_get_data(bboxMats[s]);
+        const f32 *kps   = (const f32 *)ncnn_mat_get_data(kpsMats[s]);
+
+        for(s32 i = 0; i < rows; ++i)
+        {
+            for(s32 j = 0; j < cols; ++j)
+            {
+                // 1 anchor per location
+                s32 idx = i*cols + j;
+
+                f32 prob = score ? score[idx] : 0.0f;
+                if(prob < conf_threshold)
+                    continue;
+
+                f32 cx = j * stride;
+                f32 cy = i * stride;
+
+                f32 x1 = cx - bbox[idx*4+0] * stride;
+                f32 y1 = cy - bbox[idx*4+1] * stride;
+                f32 x2 = cx + bbox[idx*4+2] * stride;
+                f32 y2 = cy + bbox[idx*4+3] * stride;
+
+                Box box = {0};
+
+                box.x = (s32)x1;
+                box.y = (s32)y1;
+                box.w = (s32)(x2 - x1);
+                box.h = (s32)(y2 - y1);
+                box.confidence = (u16)(prob * 100);
+                box.type = DETECT_TYPE_PERSON;
+
+                for(s32 k = 0; k < LANDMARK_COUNT; k++)
+                {
+                    box.landmarks[k].x = (s32)(cx + kps[idx*10 + k*2 + 0] * stride);
+                    box.landmarks[k].y = (s32)(cy + kps[idx*10 + k*2 + 1] * stride);
+                }
+
+                box = box_unscale(box, image);
+                box = box_rotate(box, image, image->props_orig.rotation, CW);
+
+                list_add(&boxes, &box);
+            }
+        }
+    }
+
+    // cleanup
+    ncnn_mat_destroy(score_8);   ncnn_mat_destroy(score_16);  ncnn_mat_destroy(score_32);
+    ncnn_mat_destroy(score_64);  ncnn_mat_destroy(score_128);
+    ncnn_mat_destroy(bbox_8);    ncnn_mat_destroy(bbox_16);   ncnn_mat_destroy(bbox_32);
+    ncnn_mat_destroy(bbox_64);   ncnn_mat_destroy(bbox_128);
+    ncnn_mat_destroy(kps_8);     ncnn_mat_destroy(kps_16);    ncnn_mat_destroy(kps_32);
+    ncnn_mat_destroy(kps_64);    ncnn_mat_destroy(kps_128);
+
+    ncnn_extractor_destroy(ex);
+    ncnn_mat_destroy(input);
+
+    boxes = non_maximum_suppression(boxes, nms_threshold);
+
+    return boxes;
+}
+
+List detect_license_plates(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold)
+{
+    List boxes = list_create(arena, sizeof(Box));
+
+    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->props.w, image->props.h, image->props.w*3, 0);
+
+    const f32 mean[] = {0.0f, 0.0f, 0.0f};
+    const f32 norm[] = {1.0f/255.0f, 1.0f/255.0f, 1.0f/255.0f};
+    ncnn_mat_substract_mean_normalize(input, mean, norm);
+
+    ncnn_net_t net = model_license_plate.nets[s_thread_context.index];
+    ncnn_extractor_t ex = ncnn_extractor_create(net);
+
+    ncnn_extractor_input(ex, "in0", input);
+
+    ncnn_mat_t out0;
+    ncnn_extractor_extract(ex, "out0", &out0);
+
+    // out0 layout: [8400, 84] — cx, cy, w, h, score
+    const f32 *data = (const f32 *)ncnn_mat_get_data(out0);
+
+    s32 num_anchors  = ncnn_mat_get_w(out0); // 8400
+    s32 num_channels = ncnn_mat_get_h(out0); // 84
+
+    const f32 *cx_data = data + 0 * num_anchors;
+    const f32 *cy_data = data + 1 * num_anchors;
+    const f32 *w_data  = data + 2 * num_anchors;
+    const f32 *h_data  = data + 3 * num_anchors;
+
+    for(s32 i = 0; i < num_anchors; ++i)
+    {
+        // find max class score across all 80 classes
+        f32 max_score = 0.0f;
+        for(s32 c = 0; c < num_channels - 4; ++c)
+        {
+            f32 s = data[(4 + c) * num_anchors + i];
+            if(s > max_score) max_score = s;
+        }
+
+        if(max_score < conf_threshold)
+            continue;
+
+        f32 cx = cx_data[i];
+        f32 cy = cy_data[i];
+        f32 w  = w_data[i];
+        f32 h  = h_data[i];
+        
+        logi("raw: cx=%.1f cy=%.1f w=%.1f h=%.1f score=%.2f", cx, cy, w, h, max_score);
+
+        Box box = {0};
+        box.x = (s32)(cx - w * 0.5f);
+        box.y = (s32)(cy - h * 0.5f);
+        box.w = (s32)w;
+        box.h = (s32)h;
+        box.confidence = (u16)(max_score * 100);
+        box.type = DETECT_TYPE_LICENSE_PLATE;
+
+        box = box_unscale(box, image);
+        box = box_rotate(box, image, image->props_orig.rotation, CW);
+
+        list_add(&boxes, &box);
+    }
+
+    ncnn_mat_destroy(out0);
+    ncnn_extractor_destroy(ex);
+    ncnn_mat_destroy(input);
+
+    boxes = non_maximum_suppression(boxes, nms_threshold);
 
     return boxes;
 }
 
 Box box_unscale(Box box, Image *image)
 {
-    const f32 scale_factor = image->props.scale == 0.0 ? 1.0 : 1.0 / image->props.scale;
+    const f32 scale_factor = image->props.scale == 0.0f ? 1.0f : 1.0f / image->props.scale;
 
     b32 swap_dimensions = (image->props_orig.rotation == ROTATE_90 || image->props_orig.rotation == ROTATE_270);
 

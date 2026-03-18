@@ -453,8 +453,8 @@ void os_log(LogLevel level, const char* file, int line, const char* fmt, ...)
     f64 uptime = os_time_get();
 
     s32 uptime_min = (s32)(uptime / 60.0);
-    s32 uptime_sec = (s32)(uptime);
-    s32 uptime_ms  = (s32)((uptime - uptime_sec)*1000.0);
+    s32 uptime_sec = (s32)(uptime - (60.0*uptime_min));
+    s32 uptime_ms  = (s32)((uptime - (60.0*uptime_min + uptime_sec))*1000.0);
 
     fprintf(stdout, "[%02d:%02d.%03d] %s%-5s...\x1b[0m \x1b[90m%-20s:%-4d:\x1b[0m ", uptime_min, uptime_sec, uptime_ms, log_level_colors[level], log_level_strings[level], file_trunc, line);
 
