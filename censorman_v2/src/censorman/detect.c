@@ -685,8 +685,6 @@ List detect_license_plates(Arena *arena, Image *image, f32 conf_threshold, f32 n
         f32 w  = w_data[i];
         f32 h  = h_data[i];
         
-        logi("raw: cx=%.1f cy=%.1f w=%.1f h=%.1f score=%.2f", cx, cy, w, h, max_score);
-
         Box box = {0};
         box.x = (s32)(cx - w * 0.5f);
         box.y = (s32)(cy - h * 0.5f);
