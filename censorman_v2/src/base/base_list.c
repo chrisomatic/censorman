@@ -116,6 +116,13 @@ void *list_get(List *list, u64 index)
     return NULL;
 }
 
+void list_clear(List *list)
+{
+    list->head = NULL;
+    list->last = NULL;
+    list->count = 0;
+}
+
 ListArray list_to_array(List *list)
 {
     ListArray arr = {0};

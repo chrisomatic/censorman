@@ -33,6 +33,7 @@ void list_add(List *list, void *item);
 void list_add_list(List *list, List *add);
 b32 list_remove(List *list, u64 index);
 void *list_get(List *list, u64 index);
+void list_clear(List *list);
 
 ListArray list_to_array(List *list);
 void list_print(List *list);
