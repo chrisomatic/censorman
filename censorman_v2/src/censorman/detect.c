@@ -1,3 +1,4 @@
+// #include "models/scrfd_face_bin.h"
 
 static Model model_face   = {0};
 static Model model_person = {0};
@@ -37,6 +38,36 @@ static Model model_create(Arena *arena, const char *path_param, const char *path
     return model;
 }
 
+static Model model_create_mem(Arena *arena, const u8 *param_bin, const u8 *model_bin)
+{
+    Model model = {0};
+
+    model.net_w = 640;
+    model.net_h = 640;
+
+    s64 thread_count = s_thread_context.count;
+
+    model.nets = PUSH_ARRAY(arena, ncnn_net_t, thread_count);
+    for(s64 i = 0; i < thread_count; ++i)
+    {
+        model.nets[i] = ncnn_net_create();
+
+        //ncnn_net_set_workspace_allocator(model.nets[i]);
+        ncnn_net_set_lightmode(model.nets[i], 1);
+        ncnn_option_t opt = ncnn_net_get_option(model.nets[i]);
+        ncnn_option_set_num_threads(opt, 1); // @LOOKAT
+        ncnn_option_set_use_packing_layout(opt, 1); // faster SIMD on x86
+        ncnn_net_set_option(model.nets[i], opt);
+
+        int param_ret = ncnn_net_load_param_memory(model.nets[i], param_bin);
+        int model_ret = ncnn_net_load_model_memory(model.nets[i], model_bin);
+
+        model.initialized |= (param_ret == 0 && model_ret == 0);
+    }
+
+    return model;
+}
+
 b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
 {
     for(s64 i = 0; i < type_count; ++i)
@@ -53,6 +84,12 @@ b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
                             "models/scrfd_500m_gnkps.ncnn.param",
                             "models/scrfd_500m_gnkps.ncnn.bin"
                     );
+                    /*
+                    model_face = model_create_mem(arena,
+                            scrfd_500m_gnkps_ncnn_param_bin,
+                            scrfd_500m_gnkps_ncnn_bin
+                    );
+                    */
                 }
             } break;
             case DETECT_TYPE_PERSON:
