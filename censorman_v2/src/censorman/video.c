@@ -63,6 +63,17 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
 
     vid.fps = (f64)fps.num / fps.den;
 
+    // find audio stream
+    ctx->audio_stream_index = -1;
+    for(u32 i = 0; i < ctx->fmt_ctx->nb_streams; ++i)
+    {
+        if(ctx->fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
+        {
+            ctx->audio_stream_index = i;
+            break;
+        }
+    }
+
     // figure out rotation...
     s32 _rotation = 0;
     {
@@ -273,6 +284,25 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
         }
     }
 
+    // audio passthrough stream
+    if(ctx->audio_stream_index >= 0)
+    {
+        ctx->enc_audio_stream = avformat_new_stream(ctx->enc_fmt_ctx, NULL);
+        if(ctx->enc_audio_stream)
+        {
+            avcodec_parameters_copy(ctx->enc_audio_stream->codecpar,
+                ctx->fmt_ctx->streams[ctx->audio_stream_index]->codecpar);
+            ctx->enc_audio_stream->codecpar->codec_tag = 0;
+            ctx->enc_audio_stream->time_base =
+                ctx->fmt_ctx->streams[ctx->audio_stream_index]->time_base;
+        }
+
+        // allocate packet store — generous upper bound
+        ctx->audio_packet_max = 8192;
+        ctx->audio_packets = (AVPacket **)malloc(sizeof(AVPacket*) * ctx->audio_packet_max);
+        ctx->audio_packet_count = 0;
+    }
+
     // Write header
     s32 write_header = avformat_write_header(ctx->enc_fmt_ctx, NULL);
     if(write_header < 0)
@@ -349,6 +379,13 @@ b32 video_load_frames(Video *vid)
 
         if(pkt->stream_index != ctx->stream_index)
         {
+            // capture audio packets for passthrough
+            if(pkt->stream_index == ctx->audio_stream_index &&
+               ctx->audio_packets &&
+               ctx->audio_packet_count < ctx->audio_packet_max)
+            {
+                ctx->audio_packets[ctx->audio_packet_count++] = av_packet_clone(pkt);
+            }
             av_packet_unref(pkt);
             continue;
         }
@@ -475,6 +512,20 @@ b32 video_save_frames(Video *vid)
             av_packet_unref(ctx->enc_pkt);
         }
     }
+
+    // write audio packets for this chunk
+    AVStream *in_audio = ctx->fmt_ctx->streams[ctx->audio_stream_index];
+    for(u32 i = 0; i < ctx->audio_packet_count; ++i)
+    {
+        AVPacket *apkt = ctx->audio_packets[i];
+        apkt->stream_index = ctx->enc_audio_stream->index;
+        av_packet_rescale_ts(apkt, in_audio->time_base,
+                             ctx->enc_audio_stream->time_base);
+        av_interleaved_write_frame(ctx->enc_fmt_ctx, apkt);
+        av_packet_free(&ctx->audio_packets[i]);
+        ctx->audio_packets[i] = NULL;
+    }
+    ctx->audio_packet_count = 0;
 
     // Update global frames processed for next chunk
     vid->frames_processed += vid->frame_count;
@@ -650,6 +701,14 @@ void video_end(Video *vid)
     if(ctx->enc_frame)     av_frame_free(&ctx->enc_frame);
     if(ctx->enc_pkt)       av_packet_free(&ctx->enc_pkt);
     if(ctx->enc_codec_ctx) avcodec_free_context(&ctx->enc_codec_ctx);
+
+    if(ctx->audio_packets)
+    {
+        for(u32 i = 0; i < ctx->audio_packet_count; ++i)
+            if(ctx->audio_packets[i]) av_packet_free(&ctx->audio_packets[i]);
+        free(ctx->audio_packets);
+        ctx->audio_packets = NULL;
+    }
 
     if(ctx->fmt_ctx)
     {

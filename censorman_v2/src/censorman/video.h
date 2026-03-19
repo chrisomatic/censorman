@@ -34,6 +34,13 @@ typedef struct
     AVStream          *enc_stream;
     AVDictionary      *enc_opts;
 
+    // audio
+    s32        audio_stream_index;
+    AVStream  *enc_audio_stream;
+    AVPacket **audio_packets;
+    u32        audio_packet_count;
+    u32        audio_packet_max;
+
 } VideoContext;
 
 typedef struct
