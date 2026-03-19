@@ -40,6 +40,7 @@ typedef struct
     f32 smoothing_window; // [0.0 - 1.0]
     f32 blur_strength;    // [0.0 - 1.0]
     f32 block_scale;      // [0.0 - 1.0]
+    f32 distort_audio_carrier_hz;
 
     // flags
     b8 no_encode;
@@ -47,6 +48,7 @@ typedef struct
     b8 debug;
     b8 verbose;
     b8 quiet;
+    b8 distort_audio;
     b8 help;
 
 } Settings;

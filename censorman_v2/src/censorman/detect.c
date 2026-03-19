@@ -37,31 +37,47 @@ static Model model_create(Arena *arena, const char *path_param, const char *path
     return model;
 }
 
-b32 detect_init(Arena *arena)
+b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
 {
-    model_face = model_create(arena,
-            "models/scrfd_500m_gnkps.ncnn.param",
-            "models/scrfd_500m_gnkps.ncnn.bin"
-    );
-
-    model_person = model_create(arena,
-            "models/scrfd_person_2.5g.ncnn.param",
-            "models/scrfd_person_2.5g.ncnn.bin"
-    );
-
-    model_license_plate = model_create(arena,
-            "models/license_plate.ncnn.param",
-            "models/license_plate.ncnn.bin"
-    );
-
-    if(!model_face.initialized || !model_person.initialized || !model_license_plate.initialized)
+    for(s64 i = 0; i < type_count; ++i)
     {
-        loge("Failed with model loading. Loaded [ Face: %s, Person: %s, License Plate: %s]",
-                STR_BOOL(model_face.initialized),
-                STR_BOOL(model_person.initialized),
-                STR_BOOL(model_license_plate.initialized)
-            );
-        return false;
+        DetectType type = types[i];
+
+        switch(type)
+        {
+            case DETECT_TYPE_FACE:
+            {
+                if(!model_face.initialized)
+                {
+                    model_face = model_create(arena,
+                            "models/scrfd_500m_gnkps.ncnn.param",
+                            "models/scrfd_500m_gnkps.ncnn.bin"
+                    );
+                }
+            } break;
+            case DETECT_TYPE_PERSON:
+            {
+                if(!model_person.initialized)
+                {
+                    model_person = model_create(arena,
+                            "models/scrfd_person_2.5g.ncnn.param",
+                            "models/scrfd_person_2.5g.ncnn.bin"
+                    );
+                }
+            } break;
+            case DETECT_TYPE_LICENSE_PLATE:
+            {
+                if(!model_license_plate.initialized)
+                {
+                    model_license_plate = model_create(arena,
+                            "models/license_plate.ncnn.param",
+                            "models/license_plate.ncnn.bin"
+                    );
+                }
+            } break;
+            default:
+            break;
+        }
     }
 
     return true;
@@ -86,7 +102,7 @@ void detect(void *args)
     {
         case DETECT_TYPE_FACE:
         {
-            new_boxes = detect_faces(scratch.arena, image, 0.32f, 0.45f);
+            new_boxes = detect_faces(scratch.arena, image, 0.25f, 0.45f);
         } break;
         case DETECT_TYPE_PERSON:
         {

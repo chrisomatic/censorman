@@ -78,6 +78,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_quiet            = string_array_create(scratch.arena, 3, S("quiet"),            S("shh"),    S("q"));
     StringArray ids_debug            = string_array_create(scratch.arena, 3, S("debug"),            S("db") ,    S("g"));
     StringArray ids_verbose          = string_array_create(scratch.arena, 3, S("verbose"),          S("vb") ,    S("v"));
+    StringArray ids_distort_audio    = string_array_create(scratch.arena, 3, S("distort_audio"),    S("distort"),S("a"));
     StringArray ids_detect_types     = string_array_create(scratch.arena, 3, S("detect_types"),     S("detect"), S("d"));
     StringArray ids_filters          = string_array_create(scratch.arena, 3, S("filters"),          S("filter"), S("f"));
     StringArray ids_output_folder    = string_array_create(scratch.arena, 3, S("output_folder"),    S("output"), S("o"));
@@ -106,6 +107,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     String str_block_scale      = cmdline_get_value_first_match(&cmdline, ids_block_scale);
     String str_blur_strength    = cmdline_get_value_first_match(&cmdline, ids_blur_strength);
     String str_bbx_output       = cmdline_get_value_first_match(&cmdline, ids_bbx_output);
+    String str_distort_audio    = cmdline_get_value_first_match(&cmdline, ids_distort_audio);
 
     StringArray strs_assets       = string_split(scratch.arena, str_assets,       S(","));
     StringArray strs_detect_types = string_split(scratch.arena, str_detect_types, S(","));
@@ -120,18 +122,23 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(str_blur_strength.len > 0)    settings.blur_strength        = string_to_f64(str_blur_strength);
     if(str_thread_count.len > 0)     settings.thread_count         = string_to_s64(str_thread_count);
     if(str_buffer_size.len > 0)      settings.buffer_size          = string_to_s64(str_buffer_size);
+    if(str_distort_audio.len > 0)
+    {
+        settings.distort_audio = true;
+        settings.distort_audio_carrier_hz = string_to_f64(str_distort_audio);    
+    }
 
-    b32 f_help      = cmdline_has_any_flags(&cmdline, ids_help);
-    b32 f_no_encode = cmdline_has_any_flags(&cmdline, ids_no_encode);
-    b32 f_debug     = cmdline_has_any_flags(&cmdline, ids_debug);
-    b32 f_verbose   = cmdline_has_any_flags(&cmdline, ids_verbose);
-    b32 f_quiet     = cmdline_has_any_flags(&cmdline, ids_quiet);
+    b32 f_help          = cmdline_has_any_flags(&cmdline, ids_help);
+    b32 f_no_encode     = cmdline_has_any_flags(&cmdline, ids_no_encode);
+    b32 f_debug         = cmdline_has_any_flags(&cmdline, ids_debug);
+    b32 f_verbose       = cmdline_has_any_flags(&cmdline, ids_verbose);
+    b32 f_quiet         = cmdline_has_any_flags(&cmdline, ids_quiet);
 
-    if(f_help)      settings.help      = true;
-    if(f_no_encode) settings.no_encode = true;
-    if(f_debug)     settings.debug     = true;
-    if(f_verbose)   settings.verbose   = true;
-    if(f_quiet)     settings.quiet     = true;
+    if(f_help)          settings.help          = true;
+    if(f_no_encode)     settings.no_encode     = true;
+    if(f_debug)         settings.debug         = true;
+    if(f_verbose)       settings.verbose       = true;
+    if(f_quiet)         settings.quiet         = true;
     
     // create output directory if needed
     char *output_folder_cstr = string_to_cstr(scratch.arena, settings.output_folder);

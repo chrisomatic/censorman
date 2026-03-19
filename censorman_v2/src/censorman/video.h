@@ -3,6 +3,7 @@
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
 #include "libswscale/swscale.h"
+#include "libswresample/swresample.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/display.h"
 #include "libavutil/dict.h"
@@ -41,7 +42,24 @@ typedef struct
     u32        audio_packet_count;
     u32        audio_packet_max;
 
+    // audio distortion
+    AVCodecContext    *audio_dec_ctx;
+    const AVCodec     *audio_dec_codec;
+    AVCodecContext    *audio_enc_ctx;
+    const AVCodec     *audio_enc_codec;
+    AVFrame           *audio_frame;
+    AVPacket          *audio_enc_pkt;
+    SwrContext        *swr_ctx;
+
 } VideoContext;
+
+typedef struct
+{
+    u64 max_buffer_size;
+    f32 distort_audio_carrier_hz;
+    b8  distort_audio;
+    b8  no_encode;
+} VideoSettings;
 
 typedef struct
 {
@@ -62,10 +80,12 @@ typedef struct
 
     VideoContext context;  // Used by FFMPEG
 
+    VideoSettings settings;
+
     Arena *arena;
 } Video;
 
-Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_size, b32 no_encode);
+Video video_begin(Arena *arena, String path, String out_path, VideoSettings *settings);
 void  video_end(Video *vid);
 
 ListArray video_get_detect_frames(Video *vid, f32 smoothing_window);

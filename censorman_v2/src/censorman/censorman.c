@@ -89,7 +89,7 @@ int main(int argc, char **args)
     s_thread_context.count = settings.thread_count;
 
     // initialize models
-    detect_init(arena_perm);
+    detect_init(arena_perm, settings.detect_types, settings.detect_type_count);
 
     // setup threads
     threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
@@ -184,7 +184,16 @@ void *entry_point(void *params)
 
                 arena_reset(arena_chunk);
                 video_complete = false;
-                vid = video_begin(arena_chunk, asset->path, asset->output_path, settings.buffer_size, settings.no_encode);
+
+                VideoSettings vs = 
+                {
+                    .max_buffer_size          = settings.buffer_size,
+                    .distort_audio_carrier_hz = settings.distort_audio_carrier_hz,
+                    .distort_audio            = settings.distort_audio,
+                    .no_encode                = settings.no_encode
+                };
+
+                vid = video_begin(arena_chunk, asset->path, asset->output_path, &vs);
                 video_print(&vid);
             }
 

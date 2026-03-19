@@ -1,14 +1,15 @@
-
 Video video_nil()
 {
     Video vid = {0};
     return vid;
 }
 
-Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_size, b32 no_encode)
+Video video_begin(Arena *arena, String path, String out_path, VideoSettings *settings)
 {
     Video vid = {0};
     vid.arena = arena;
+
+    MemoryCopy(&vid.settings, settings, sizeof(VideoSettings));
 
     VideoContext *ctx = &vid.context;
 
@@ -104,7 +105,7 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
             }
         }
 
-        // Fallback: metadata “rotate” tag
+        // Fallback: metadata "rotate" tag
         AVDictionaryEntry *tag = av_dict_get(stream->metadata, "rotate", NULL, 0);
         if(tag && tag->value)
         {
@@ -153,7 +154,7 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
     s32 height         = ctx->codec_ctx->height;
     u64 rgb_stride     = (u64)width * 3;
     u64 frame_rgb_size = rgb_stride * height;
-    s32 max_frames     = floor(max_buffer_size / (f64)frame_rgb_size);
+    s32 max_frames     = floor(vid.settings.max_buffer_size / (f64)frame_rgb_size);
 
     vid.w                 = width;
     vid.h                 = height;
@@ -186,7 +187,7 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
     //////////////////
     // encoding     
 
-    if(no_encode) return vid;
+    if(vid.settings.no_encode) return vid;
 
     // output format: MP4/H264
     char *out_path_cstr = string_to_cstr(arena, out_path);
@@ -226,7 +227,6 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
     }
 
     // Basic encoding settings
-
     ctx->enc_codec_ctx->codec_id     = ctx->enc_codec->id;
     ctx->enc_codec_ctx->codec_type   = AVMEDIA_TYPE_VIDEO;
     ctx->enc_codec_ctx->width        = vid.w;
@@ -239,13 +239,69 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
     ctx->enc_codec_ctx->thread_count = 0; // auto
     ctx->enc_codec_ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
 
-    ctx->enc_stream->time_base  = ctx->enc_codec_ctx->time_base;
+    ctx->enc_stream->time_base = ctx->enc_codec_ctx->time_base;
 
     if (ctx->enc_fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
         ctx->enc_codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-    av_dict_set(&ctx->enc_opts, "preset", "superfast", 0); // [ultrafast, superfast, fast, medium, slow, placebo]
+    av_dict_set(&ctx->enc_opts, "preset", "superfast", 0);
     av_dict_set(&ctx->enc_opts, "tune", "zerolatency", 0);
+
+    // audio stream setup
+    if(ctx->audio_stream_index >= 0)
+    {
+        ctx->enc_audio_stream = avformat_new_stream(ctx->enc_fmt_ctx, NULL);
+
+        if(vid.settings.distort_audio)
+        {
+            // decode/encode path
+            ctx->audio_dec_codec = avcodec_find_decoder(
+                ctx->fmt_ctx->streams[ctx->audio_stream_index]->codecpar->codec_id);
+            ctx->audio_dec_ctx = avcodec_alloc_context3(ctx->audio_dec_codec);
+            avcodec_parameters_to_context(ctx->audio_dec_ctx,
+                ctx->fmt_ctx->streams[ctx->audio_stream_index]->codecpar);
+            avcodec_open2(ctx->audio_dec_ctx, ctx->audio_dec_codec, NULL);
+
+            ctx->audio_enc_codec = avcodec_find_encoder(AV_CODEC_ID_AAC);
+            ctx->audio_enc_ctx   = avcodec_alloc_context3(ctx->audio_enc_codec);
+            ctx->audio_enc_ctx->sample_rate = ctx->audio_dec_ctx->sample_rate;
+            av_channel_layout_copy(&ctx->audio_enc_ctx->ch_layout, &ctx->audio_dec_ctx->ch_layout);
+            ctx->audio_enc_ctx->sample_fmt  = ctx->audio_enc_codec->sample_fmts[0];
+            ctx->audio_enc_ctx->bit_rate    = 128000;
+            ctx->audio_enc_ctx->time_base   = (AVRational){1, ctx->audio_dec_ctx->sample_rate};
+
+            if(ctx->enc_fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
+                ctx->audio_enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+            avcodec_open2(ctx->audio_enc_ctx, ctx->audio_enc_codec, NULL);
+
+            avcodec_parameters_from_context(ctx->enc_audio_stream->codecpar, ctx->audio_enc_ctx);
+            ctx->enc_audio_stream->time_base = ctx->audio_enc_ctx->time_base;
+
+            ctx->audio_frame   = av_frame_alloc();
+            ctx->audio_enc_pkt = av_packet_alloc();
+
+            // swr: decoded format -> encoder format
+            swr_alloc_set_opts2(&ctx->swr_ctx,
+                &ctx->audio_enc_ctx->ch_layout, ctx->audio_enc_ctx->sample_fmt, ctx->audio_enc_ctx->sample_rate,
+                &ctx->audio_dec_ctx->ch_layout, ctx->audio_dec_ctx->sample_fmt, ctx->audio_dec_ctx->sample_rate,
+                0, NULL);
+            swr_init(ctx->swr_ctx);
+        }
+        else
+        {
+            // passthrough path
+            avcodec_parameters_copy(ctx->enc_audio_stream->codecpar,
+                ctx->fmt_ctx->streams[ctx->audio_stream_index]->codecpar);
+            ctx->enc_audio_stream->codecpar->codec_tag = 0;
+            ctx->enc_audio_stream->time_base =
+                ctx->fmt_ctx->streams[ctx->audio_stream_index]->time_base;
+        }
+
+        ctx->audio_packet_max   = 4096;
+        ctx->audio_packets      = (AVPacket **)malloc(sizeof(AVPacket*) * ctx->audio_packet_max);
+        ctx->audio_packet_count = 0;
+    }
 
     // Open encoder
     s32 open_encoder = avcodec_open2(ctx->enc_codec_ctx, ctx->enc_codec, &ctx->enc_opts);
@@ -282,25 +338,6 @@ Video video_begin(Arena *arena, String path, String out_path, u64 max_buffer_siz
             avformat_free_context(ctx->enc_fmt_ctx);
             return vid;
         }
-    }
-
-    // audio passthrough stream
-    if(ctx->audio_stream_index >= 0)
-    {
-        ctx->enc_audio_stream = avformat_new_stream(ctx->enc_fmt_ctx, NULL);
-        if(ctx->enc_audio_stream)
-        {
-            avcodec_parameters_copy(ctx->enc_audio_stream->codecpar,
-                ctx->fmt_ctx->streams[ctx->audio_stream_index]->codecpar);
-            ctx->enc_audio_stream->codecpar->codec_tag = 0;
-            ctx->enc_audio_stream->time_base =
-                ctx->fmt_ctx->streams[ctx->audio_stream_index]->time_base;
-        }
-
-        // allocate packet store — generous upper bound
-        ctx->audio_packet_max = 8192;
-        ctx->audio_packets = (AVPacket **)malloc(sizeof(AVPacket*) * ctx->audio_packet_max);
-        ctx->audio_packet_count = 0;
     }
 
     // Write header
@@ -362,16 +399,16 @@ b32 video_load_frames(Video *vid)
 
     u32 frame_count = 0;
     s32 ret;
-    b32 eof_reached = false; // track end of file
+    b32 eof_reached = false;
     b32 hit_max_buffer = false;
 
-    AVFrame *frame = ctx->frame;
-    AVPacket *pkt  = ctx->pkt;
+    AVFrame  *frame = ctx->frame;
+    AVPacket *pkt   = ctx->pkt;
 
     while(frame_count < vid->frame_count_max)
     {
         ret = av_read_frame(ctx->fmt_ctx, pkt);
-        if(ret < 0) // EOF or error
+        if(ret < 0)
         {
             eof_reached = true;
             break;
@@ -379,7 +416,7 @@ b32 video_load_frames(Video *vid)
 
         if(pkt->stream_index != ctx->stream_index)
         {
-            // capture audio packets for passthrough
+            // capture audio packets
             if(pkt->stream_index == ctx->audio_stream_index &&
                ctx->audio_packets &&
                ctx->audio_packet_count < ctx->audio_packet_max)
@@ -400,16 +437,16 @@ b32 video_load_frames(Video *vid)
             if(ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             else if(ret < 0) return false;
 
-            // Convert to RGB
             u8 *dp = (u8 *)vid->data + (u64)frame_count * frame_rgb_size;
-            u8 *dest_data[4] = { dp, NULL, NULL, NULL };
+            u8 *dest_data[4]    = { dp, NULL, NULL, NULL };
             s32 dest_linesize[4] = { rgb_stride, 0, 0, 0 };
             sws_scale(ctx->sws_ctx, (const u8 *const*)frame->data, frame->linesize,
                       0, height, dest_data, dest_linesize);
 
             vid->pts_buffer[frame_count] = frame->pts;
             frame_count++;
-            if(frame_count >= vid->frame_count_max) {
+            if(frame_count >= vid->frame_count_max)
+            {
                 hit_max_buffer = true;
                 break;
             }
@@ -423,7 +460,7 @@ b32 video_load_frames(Video *vid)
         while(avcodec_receive_frame(ctx->codec_ctx, frame) == 0 && frame_count < vid->frame_count_max)
         {
             u8 *dp = (u8 *)vid->data + (u64)frame_count * frame_rgb_size;
-            u8 *dest_data[4] = { dp, NULL, NULL, NULL };
+            u8 *dest_data[4]    = { dp, NULL, NULL, NULL };
             s32 dest_linesize[4] = { rgb_stride, 0, 0, 0 };
             sws_scale(ctx->sws_ctx, (const u8 *const*)frame->data, frame->linesize,
                       0, height, dest_data, dest_linesize);
@@ -435,12 +472,10 @@ b32 video_load_frames(Video *vid)
 
     logv("Loaded %d frames", frame_count);
 
-
-    vid->frame_count = frame_count;
+    vid->frame_count   = frame_count;
     vid->load_complete = !hit_max_buffer || eof_reached;
 
     return (frame_count > 0);
-
 }
 
 b32 video_save_frames(Video *vid)
@@ -450,9 +485,9 @@ b32 video_save_frames(Video *vid)
 
     VideoContext *ctx = &vid->context;
 
-    s32 width = vid->w;
-    s32 height = vid->h;
-    s32 rgb_stride = width * 3;
+    s32 width          = vid->w;
+    s32 height         = vid->h;
+    s32 rgb_stride     = width * 3;
     s32 frame_rgb_size = rgb_stride * height;
     s32 ret;
 
@@ -460,11 +495,9 @@ b32 video_save_frames(Video *vid)
     {
         av_frame_make_writable(ctx->enc_frame);
 
-        // Source RGB data
-        ctx->enc_frame_src->data[0] = ((u8 *)vid->data) + ((u64)i * frame_rgb_size);
+        ctx->enc_frame_src->data[0]     = ((u8 *)vid->data) + ((u64)i * frame_rgb_size);
         ctx->enc_frame_src->linesize[0] = rgb_stride;
 
-        // Convert RGB -> YUV420P
         ret = sws_scale_frame(ctx->enc_sws_ctx, ctx->enc_frame, ctx->enc_frame_src);
         if(ret < 0)
         {
@@ -472,11 +505,8 @@ b32 video_save_frames(Video *vid)
             continue;
         }
 
-        // Assign continuous PTS based on chunk index + global frames processed
-        // This avoids using potentially huge input PTS and keeps output framerate consistent
         ctx->enc_frame->pts = vid->frames_processed + i;
 
-        // Send to encoder
         ret = avcodec_send_frame(ctx->enc_codec_ctx, ctx->enc_frame);
         if(ret < 0)
         {
@@ -486,14 +516,10 @@ b32 video_save_frames(Video *vid)
             continue;
         }
 
-        // Receive and write all packets
         while(ret >= 0)
         {
             ret = avcodec_receive_packet(ctx->enc_codec_ctx, ctx->enc_pkt);
-            if(ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-            {
-                break;
-            }
+            if(ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             else if(ret < 0)
             {
                 char err[AV_ERROR_MAX_STRING_SIZE];
@@ -503,51 +529,139 @@ b32 video_save_frames(Video *vid)
             }
 
             ctx->enc_pkt->stream_index = ctx->enc_stream->index;
-
-            // Rescale to output stream timebase
             av_packet_rescale_ts(ctx->enc_pkt, ctx->enc_codec_ctx->time_base,
                                  ctx->enc_stream->time_base);
-
             av_interleaved_write_frame(ctx->enc_fmt_ctx, ctx->enc_pkt);
             av_packet_unref(ctx->enc_pkt);
         }
     }
 
-    // write audio packets for this chunk
-    AVStream *in_audio = ctx->fmt_ctx->streams[ctx->audio_stream_index];
-    for(u32 i = 0; i < ctx->audio_packet_count; ++i)
+    // audio
+    if(ctx->audio_stream_index >= 0 && ctx->enc_audio_stream)
     {
-        AVPacket *apkt = ctx->audio_packets[i];
-        apkt->stream_index = ctx->enc_audio_stream->index;
-        av_packet_rescale_ts(apkt, in_audio->time_base,
-                             ctx->enc_audio_stream->time_base);
-        av_interleaved_write_frame(ctx->enc_fmt_ctx, apkt);
-        av_packet_free(&ctx->audio_packets[i]);
-        ctx->audio_packets[i] = NULL;
-    }
-    ctx->audio_packet_count = 0;
+        AVStream *in_audio = ctx->fmt_ctx->streams[ctx->audio_stream_index];
 
-    // Update global frames processed for next chunk
+        if(vid->settings.distort_audio)
+        {
+            static u64 sample_pos = 0;
+
+            for(u32 i = 0; i < ctx->audio_packet_count; ++i)
+            {
+                AVPacket *apkt = ctx->audio_packets[i];
+
+                ret = avcodec_send_packet(ctx->audio_dec_ctx, apkt);
+                av_packet_free(&ctx->audio_packets[i]);
+                ctx->audio_packets[i] = NULL;
+                if(ret < 0) continue;
+
+                while(avcodec_receive_frame(ctx->audio_dec_ctx, ctx->audio_frame) == 0)
+                {
+                    // convert decoded frame to float planar for ring mod
+                    AVFrame *proc_frame     = av_frame_alloc();
+                    proc_frame->format      = AV_SAMPLE_FMT_FLTP;
+                    proc_frame->sample_rate = ctx->audio_frame->sample_rate;
+                    proc_frame->nb_samples  = ctx->audio_frame->nb_samples;
+                    av_channel_layout_copy(&proc_frame->ch_layout, &ctx->audio_frame->ch_layout);
+                    av_frame_get_buffer(proc_frame, 0);
+
+                    SwrContext *to_float = NULL;
+                    swr_alloc_set_opts2(&to_float,
+                        &proc_frame->ch_layout, AV_SAMPLE_FMT_FLTP, proc_frame->sample_rate,
+                        &ctx->audio_frame->ch_layout, (enum AVSampleFormat)ctx->audio_frame->format,
+                        ctx->audio_frame->sample_rate, 0, NULL);
+                    swr_init(to_float);
+                    swr_convert(to_float,
+                        proc_frame->data, proc_frame->nb_samples,
+                        (const u8**)ctx->audio_frame->data, ctx->audio_frame->nb_samples);
+                    swr_free(&to_float);
+
+                    // ring modulation: multiply each sample by sin(2π * carrier * t)
+                    s32 num_channels = proc_frame->ch_layout.nb_channels;
+                    f32 carrier      = vid->settings.distort_audio_carrier_hz;
+                    f32 sample_rate  = (f32)proc_frame->sample_rate;
+
+                    for(s32 ch = 0; ch < num_channels; ++ch)
+                    {
+                        f32 *samples = (f32 *)proc_frame->data[ch];
+                        for(s32 s = 0; s < proc_frame->nb_samples; ++s)
+                        {
+                            f32 t = (f32)(sample_pos + s) / sample_rate;
+                            samples[s] *= sinf(TAU * carrier * t);
+                        }
+                    }
+                    sample_pos += proc_frame->nb_samples;
+
+                    // convert float planar -> encoder sample format
+                    AVFrame *enc_frame     = av_frame_alloc();
+                    enc_frame->format      = ctx->audio_enc_ctx->sample_fmt;
+                    enc_frame->sample_rate = ctx->audio_enc_ctx->sample_rate;
+                    enc_frame->nb_samples  = proc_frame->nb_samples;
+                    av_channel_layout_copy(&enc_frame->ch_layout, &ctx->audio_enc_ctx->ch_layout);
+                    av_frame_get_buffer(enc_frame, 0);
+
+                    swr_convert(ctx->swr_ctx,
+                        enc_frame->data, enc_frame->nb_samples,
+                        (const u8**)proc_frame->data, proc_frame->nb_samples);
+
+                    av_frame_free(&proc_frame);
+
+                    enc_frame->pts = av_rescale_q(
+                        ctx->audio_frame->pts,
+                        ctx->audio_dec_ctx->time_base,
+                        ctx->audio_enc_ctx->time_base);
+
+                    avcodec_send_frame(ctx->audio_enc_ctx, enc_frame);
+                    av_frame_free(&enc_frame);
+
+                    while(avcodec_receive_packet(ctx->audio_enc_ctx, ctx->audio_enc_pkt) == 0)
+                    {
+                        ctx->audio_enc_pkt->stream_index = ctx->enc_audio_stream->index;
+                        av_packet_rescale_ts(ctx->audio_enc_pkt,
+                            ctx->audio_enc_ctx->time_base,
+                            ctx->enc_audio_stream->time_base);
+                        av_interleaved_write_frame(ctx->enc_fmt_ctx, ctx->audio_enc_pkt);
+                        av_packet_unref(ctx->audio_enc_pkt);
+                    }
+                }
+            }
+        }
+        else
+        {
+            // passthrough
+            for(u32 i = 0; i < ctx->audio_packet_count; ++i)
+            {
+                AVPacket *apkt = ctx->audio_packets[i];
+                apkt->stream_index = ctx->enc_audio_stream->index;
+                av_packet_rescale_ts(apkt, in_audio->time_base,
+                                     ctx->enc_audio_stream->time_base);
+                av_interleaved_write_frame(ctx->enc_fmt_ctx, apkt);
+                av_packet_free(&ctx->audio_packets[i]);
+                ctx->audio_packets[i] = NULL;
+            }
+        }
+
+        ctx->audio_packet_count = 0;
+    }
+
     vid->frames_processed += vid->frame_count;
 
     return true;
-
 }
 
 void video_save_done(Video *vid)
 {
     VideoContext *vid_ctx = &vid->context;
 
-    // Flush encoder: send NULL until encoder returns AVERROR_EOF
+    // flush video encoder
     s32 ret = avcodec_send_frame(vid_ctx->enc_codec_ctx, NULL);
     while(ret >= 0)
     {
         ret = avcodec_receive_packet(vid_ctx->enc_codec_ctx, vid_ctx->enc_pkt);
-        if (ret == AVERROR(EAGAIN))
-            continue;  // keep sending
-        else if (ret == AVERROR_EOF)
-            break;     // encoder fully flushed
-        else if (ret < 0)
+        if(ret == AVERROR(EAGAIN))
+            continue;
+        else if(ret == AVERROR_EOF)
+            break;
+        else if(ret < 0)
         {
             char err[AV_ERROR_MAX_STRING_SIZE];
             av_strerror(ret, err, sizeof(err));
@@ -556,24 +670,32 @@ void video_save_done(Video *vid)
         }
 
         vid_ctx->enc_pkt->stream_index = vid_ctx->enc_stream->index;
-
-        // Rescale packet timestamps to output stream timebase
         av_packet_rescale_ts(vid_ctx->enc_pkt, vid_ctx->enc_codec_ctx->time_base,
                              vid_ctx->enc_stream->time_base);
-
         av_interleaved_write_frame(vid_ctx->enc_fmt_ctx, vid_ctx->enc_pkt);
         av_packet_unref(vid_ctx->enc_pkt);
     }
 
-    
-    // Write trailer
+    // flush audio encoder if distorting
+    if(vid->settings.distort_audio && vid_ctx->audio_enc_ctx)
+    {
+        avcodec_send_frame(vid_ctx->audio_enc_ctx, NULL);
+        while(avcodec_receive_packet(vid_ctx->audio_enc_ctx, vid_ctx->audio_enc_pkt) == 0)
+        {
+            vid_ctx->audio_enc_pkt->stream_index = vid_ctx->enc_audio_stream->index;
+            av_packet_rescale_ts(vid_ctx->audio_enc_pkt,
+                vid_ctx->audio_enc_ctx->time_base,
+                vid_ctx->enc_audio_stream->time_base);
+            av_interleaved_write_frame(vid_ctx->enc_fmt_ctx, vid_ctx->audio_enc_pkt);
+            av_packet_unref(vid_ctx->audio_enc_pkt);
+        }
+    }
+
     av_write_trailer(vid_ctx->enc_fmt_ctx);
 
-    // flush underlying IO
-    if (!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE) && vid_ctx->enc_fmt_ctx->pb)
+    if(!(vid_ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE) && vid_ctx->enc_fmt_ctx->pb)
         avio_flush(vid_ctx->enc_fmt_ctx->pb);
 }
-
 
 ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
 {
@@ -587,7 +709,6 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
     {
         list_add(&detect_frames, (void *)&counter);
 
-         // always want to evaluate final frame
         s32 frame_advance = MIN(skip_frames, vid->frame_count - counter - 1);
         if(frame_advance <= 0)
             break;
@@ -595,65 +716,45 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
         counter += frame_advance;
     }
 
-    // Discontinuities
     Temp scratch = scratch_begin();
 
-    // determine any video discontinuities
-    // ref: https://www-nlpir.nist.gov/projects/tvpubs/tvpapers03/ramonlull.paper.pdf
     logv("Determining video discontinuities...");
 
     u32 prev_histogram[4096] = {0};
     u32 curr_histogram[4096] = {0};
     u64 *diff_histogram = (u64 *)PUSH_ARRAY(scratch.arena, u64, vid->frame_count);
 
-    // get color histogram for each frame of video
-    // and compute a absolute difference in histogram values (summed)
-    // for all video frames
     for(s32 i = 0; i < vid->frame_count; ++i)
     {
-        s32 icurr = (u64)i*vid->w*vid->h;
+        s32 icurr      = (u64)i * vid->w * vid->h;
         RGBColor *bcurr = &vid->data[icurr];
 
         if(i > 0)
         {
-            // copy curr histogram to prev
-            MemoryCopy(prev_histogram, curr_histogram, sizeof(u32)*4096);
-            MemoryZero(curr_histogram, sizeof(u32)*4096);
+            MemoryCopy(prev_histogram, curr_histogram, sizeof(u32) * 4096);
+            MemoryZero(curr_histogram, sizeof(u32) * 4096);
         }
 
-        // go through each pixel and compute a difference image
-        for(s32 j = 0; j < vid->w*vid->h; ++j)
+        for(s32 j = 0; j < vid->w * vid->h; ++j)
         {
-            RGBColor curr = bcurr[j];
-
-            // get upper 4 bits from R,G,B channels and
-            // combine into a 12-bit number (4096 possible values) (stored in u16)
-            // this is the index into the histogram
+            RGBColor curr    = bcurr[j];
             u16 color_bucket = ((u16)(curr.r & 0xF0) << 4) | (u16)(curr.g & 0xF0) | ((u16)(curr.b & 0xF0) >> 4);
             curr_histogram[MIN(color_bucket, 4095)]++;
         }
 
         u64 sum_histogram = 0;
         for(u32 j = 0; j < 4096; ++j)
-        {
             sum_histogram += ABS((s64)curr_histogram[j] - prev_histogram[j]);
-        }
 
         diff_histogram[i] = sum_histogram;
     }
 
-    // 4096 buckets that sum up to vid->w * vid->h
-    // A maximum difference between frames is vid->w * vid->h
-    // perhaps a reasonable change from frame to frame would be 10% changed
-    // to consider it a frame that should be scheduled for detection
-
     u64 threshold = (u64)((vid->w * vid->h) * 0.10);
 
-    for(u32 i = 1; i < vid->frame_count; ++i) // don't consider first frame
+    for(u32 i = 1; i < vid->frame_count; ++i)
     {
         if(diff_histogram[i] >= threshold)
         {
-            // found a frame with substantial pixel color difference from previous frame
             b32 frame_1_in_array = false;
             b32 frame_2_in_array = false;
 
@@ -664,15 +765,12 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
                 if(*frame == i)   frame_2_in_array = true;
             }
 
-            // make sure both the frame with the discontinuity and prior frame are marked
-            // to avoid interoplation across discontinuity
             if(!frame_1_in_array)
             {
                 u32 pi = i-1;
                 logv("Adding discontinuity frame at %d", pi);
                 list_add(&detect_frames, (void *)&pi);
             }
-
             if(!frame_2_in_array)
             {
                 logv("Adding discontinuity frame at %d", i);
@@ -697,11 +795,14 @@ void video_end(Video *vid)
     if(ctx->frame)         av_frame_free(&ctx->frame);
     if(ctx->rgb_frame)     av_frame_free(&ctx->rgb_frame);
     if(ctx->pkt)           av_packet_free(&ctx->pkt);
+    if(ctx->sws_ctx)       sws_freeContext(ctx->sws_ctx);
     if(ctx->enc_sws_ctx)   sws_freeContext(ctx->enc_sws_ctx);
     if(ctx->enc_frame)     av_frame_free(&ctx->enc_frame);
+    if(ctx->enc_frame_src) av_frame_free(&ctx->enc_frame_src);
     if(ctx->enc_pkt)       av_packet_free(&ctx->enc_pkt);
     if(ctx->enc_codec_ctx) avcodec_free_context(&ctx->enc_codec_ctx);
 
+    // audio cleanup
     if(ctx->audio_packets)
     {
         for(u32 i = 0; i < ctx->audio_packet_count; ++i)
@@ -710,21 +811,23 @@ void video_end(Video *vid)
         ctx->audio_packets = NULL;
     }
 
+    if(ctx->audio_dec_ctx)  avcodec_free_context(&ctx->audio_dec_ctx);
+    if(ctx->audio_enc_ctx)  avcodec_free_context(&ctx->audio_enc_ctx);
+    if(ctx->audio_frame)    av_frame_free(&ctx->audio_frame);
+    if(ctx->audio_enc_pkt)  av_packet_free(&ctx->audio_enc_pkt);
+    if(ctx->swr_ctx)        swr_free(&ctx->swr_ctx);
+
     if(ctx->fmt_ctx)
     {
         if(ctx->fmt_ctx->oformat && !(ctx->fmt_ctx->oformat->flags & AVFMT_NOFILE) && ctx->fmt_ctx->pb)
-        {
             avio_close(ctx->fmt_ctx->pb);
-        }
         avformat_free_context(ctx->fmt_ctx);
     }
 
     if(ctx->enc_fmt_ctx)
     {
         if(!(ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE) && ctx->enc_fmt_ctx->pb)
-        {
             avio_close(ctx->enc_fmt_ctx->pb);
-        }
         avformat_free_context(ctx->enc_fmt_ctx);
     }
 }

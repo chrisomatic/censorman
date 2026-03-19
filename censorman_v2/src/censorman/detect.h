@@ -65,7 +65,7 @@ List detect_faces(Arena *arena, Image *image, f32 conf_threshold, f32 nms_thresh
 List detect_persons(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold);
 List detect_license_plates(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold);
 
-b32 detect_init(Arena *arena);
+b32 detect_init(Arena *arena, DetectType *types, s64 type_count);
 void detect(void *args);
 
 Box box_unscale(Box box, Image *image);

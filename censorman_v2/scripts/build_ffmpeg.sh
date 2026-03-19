@@ -112,12 +112,23 @@ if [ "$1" = "win32" ]; then
     --enable-decoder=h264 \
     --enable-decoder=hevc \
     --enable-decoder=vp9 \
+    --enable-decoder=aac \
+    --enable-decoder=aac_latm \
+    --enable-decoder=mp3 \
+    --enable-decoder=opus \
+    --enable-decoder=vorbis \
     --enable-parser=h264 \
     --enable-parser=hevc \
+    --enable-parser=aac \
+    --enable-parser=aac_latm \
+    --enable-parser=mp3 \
+    --enable-parser=opus \
     --enable-muxer=mp4 \
+    --enable-demuxer=aac \
     --enable-encoder=libx264 \
     --enable-encoder=mpeg4 \
     --enable-encoder=libvpx_vp9 \
+    --enable-encoder=aac \
     --enable-gpl \
     --enable-libx264 \
     --enable-libvpx \
@@ -153,12 +164,23 @@ else
     --enable-decoder=h264 \
     --enable-decoder=hevc \
     --enable-decoder=vp9 \
+    --enable-decoder=aac \
+    --enable-decoder=aac_latm \
+    --enable-decoder=mp3 \
+    --enable-decoder=opus \
+    --enable-decoder=vorbis \
     --enable-parser=h264 \
     --enable-parser=hevc \
+    --enable-parser=aac \
+    --enable-parser=aac_latm \
+    --enable-parser=mp3 \
+    --enable-parser=opus \
     --enable-muxer=mp4 \
+    --enable-demuxer=aac \
     --enable-encoder=libx264 \
     --enable-encoder=mpeg4 \
     --enable-encoder=libvpx_vp9 \
+    --enable-encoder=aac \
     --enable-gpl \
     --enable-libx264 \
     --enable-libvpx \
