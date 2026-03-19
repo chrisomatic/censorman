@@ -587,6 +587,7 @@ b32 video_save_frames(Video *vid)
                         {
                             f32 t = (f32)(sample_pos + s) / sample_rate;
                             samples[s] *= sinf(TAU * carrier * t);
+                            samples[s] = tanhf(samples[s] * 3.0f);
                         }
                     }
                     sample_pos += proc_frame->nb_samples;

@@ -35,7 +35,7 @@ else
         -D NCNN_OPENMP=OFF \
         -D NCNN_BUILD_TESTS=OFF \
         -D NCNN_BUILD_EXAMPLES=OFF \
-        -D NCNN_BUILD_TOOLS=OFF \
+        -D NCNN_BUILD_TOOLS=ON \
         -D NCNN_SHARED_LIB=OFF \
         .
 fi
@@ -46,7 +46,7 @@ cmake --build . --config Release --target install
 popd
 
 if [ "$1" = "win32" ]; then
-  NCNN_DEST="src/third_party/ncnn_win"
+  NCNN_DEST="src/third_party/ncnn/win"
 else
   NCNN_DEST="src/third_party/ncnn"
 fi

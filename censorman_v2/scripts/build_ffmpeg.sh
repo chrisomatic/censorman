@@ -198,8 +198,8 @@ rm -rf $BUILD_DIR/libvpx
 rm -rf $BUILD_DIR/ffmpeg_build/share
 
 if [ "$1" = "win32" ]; then
-  rm -rf $PWD/src/third_party/ffmpeg_win
-  mv $BUILD_DIR/ffmpeg_build src/third_party/ffmpeg_win
+  rm -rf $PWD/src/third_party/ffmpeg/win
+  mv $BUILD_DIR/ffmpeg_build src/third_party/ffmpeg/win
 else
   rm -rf $PWD/src/third_party/ffmpeg
   mv $BUILD_DIR/ffmpeg_build src/third_party/ffmpeg

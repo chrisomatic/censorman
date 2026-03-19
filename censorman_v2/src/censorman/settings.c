@@ -316,16 +316,17 @@ void settings_print(Settings *settings)
     String filters_str = string_list_collapse(&sl);
     logi("%-22s " STR_FMT, "Filters", STR_ARG(filters_str));
 
-    logi("%-22s %u",    "Thread Count",         settings->thread_count);
-    logi("%-22s %f",    "Confidence Threshold", settings->confidence_threshold);
-    logi("%-22s %lu B", "Buffer Size",          settings->buffer_size);
-    logi("%-22s %f",    "Box Padding",          settings->box_padding);
-    logi("%-22s %f",    "Smoothing Window",     settings->smoothing_window);
-    logi("%-22s %s",    "No Encoding",          STR_BOOL(settings->no_encode));
-    logi("%-22s %s",    "No Rotate",            STR_BOOL(settings->no_rotate));
-    logi("%-22s %s",    "Debug",                settings->debug ? "ON" : "OFF");
-    logi("%-22s %s",    "Verbose",              settings->verbose ? "ON" : "OFF");
-    logi("%-22s " STR_FMT, "Bounding Box Output", STR_ARG(settings->bbx_output));
+    logi("%-22s %u",            "Thread Count",         settings->thread_count);
+    logi("%-22s %f",            "Confidence Threshold", settings->confidence_threshold);
+    logi("%-22s %lu B",         "Buffer Size",          settings->buffer_size);
+    logi("%-22s %f",            "Box Padding",          settings->box_padding);
+    logi("%-22s %f",            "Smoothing Window",     settings->smoothing_window);
+    logi("%-22s %s (%0.2f Hz)", "Distort Audio",        STR_BOOL(settings->distort_audio), settings->distort_audio_carrier_hz);
+    logi("%-22s %s",            "No Encoding",          STR_BOOL(settings->no_encode));
+    logi("%-22s %s",            "No Rotate",            STR_BOOL(settings->no_rotate));
+    logi("%-22s %s",            "Debug",                settings->debug ? "ON" : "OFF");
+    logi("%-22s %s",            "Verbose",              settings->verbose ? "ON" : "OFF");
+    logi("%-22s " STR_FMT,      "Bounding Box Output", STR_ARG(settings->bbx_output));
     logi("=======================================");
 
     scratch_end(scratch);
