@@ -89,7 +89,7 @@ int main(int argc, char **args)
     s_thread_context.count = settings.thread_count;
 
     // initialize models
-    detect_init(arena_perm, settings.detect_types, settings.detect_type_count);
+    detect_init(arena_perm, settings.detect_configs, settings.detect_config_count);
 
     // setup threads
     threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
@@ -132,23 +132,19 @@ void *entry_point(void *params)
 
                 Image img_src = image_load(arena_frame, asset->path, &sw);
 
-                Image img = img_src;
-                img = image_scale(img, 640, 640);
-                img = image_rotate(img, 0, CW);
-
                 List box_list = list_create(arena_frame, sizeof(Box));
 
                 // [detections]
-                for(u32 j = 0; j < settings.detect_type_count; ++j)
+                for(u32 j = 0; j < settings.detect_config_count; ++j)
                 {
-                    DetectArgs detect_args =
-                    {
-                        .type  = settings.detect_types[j],
-                        .image = &img,
-                        .boxes = &box_list
-                    };
+                    DetectConfig *cfg = &settings.detect_configs[j];
+                    Model model = detect_get_model_by_type(cfg->type);
 
-                    detect(&detect_args);
+                    Image img = img_src;
+                    img = image_scale(img, model.net_w, model.net_h);
+                    img = image_rotate(img, 0, CW);
+
+                    detect(cfg, &img, &box_list);
                 }
 
                 BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 1);
@@ -252,24 +248,19 @@ void *entry_point(void *params)
 
                     MemoryCopy(&img_src.props_orig, &img_src.props, sizeof(ImageProps));
 
-                    Image img = img_src;
-
-                    img = image_scale(img, 640, 640);
-                    img = image_rotate(img, vid.rotation, CCW);
-
                     List box_list = list_create(arena_frame, sizeof(Box));
 
                     // [detections]
-                    for(u32 j = 0; j < settings.detect_type_count; ++j)
+                    for(u32 j = 0; j < settings.detect_config_count; ++j)
                     {
-                        DetectArgs detect_args =
-                        {
-                            .type  = settings.detect_types[j],
-                            .image = &img,
-                            .boxes = &box_list
-                        };
+                        DetectConfig *cfg = &settings.detect_configs[j];
+                        Model model = detect_get_model_by_type(cfg->type);
 
-                        detect(&detect_args);
+                        Image img = img_src;
+                        img = image_scale(img, model.net_w, model.net_h);
+                        img = image_rotate(img, vid.rotation, CCW);
+
+                        detect(cfg, &img, &box_list);
                     }
 
                     mutex_lock(&arena_chunk_mutex);

@@ -1,19 +1,53 @@
 // #include "models/scrfd_face_bin.h"
 
+// NudeNet class indices
+typedef enum
+{
+    NUDITY_FEMALE_GENITALIA_COVERED = 0,
+    NUDITY_FACE_FEMALE              = 1,
+    NUDITY_BUTTOCKS_EXPOSED         = 2,
+    NUDITY_FEMALE_BREAST_EXPOSED    = 3,
+    NUDITY_FEMALE_GENITALIA_EXPOSED = 4,
+    NUDITY_MALE_BREAST_EXPOSED      = 5,
+    NUDITY_ANUS_EXPOSED             = 6,
+    NUDITY_FEET_EXPOSED             = 7,
+    NUDITY_BELLY_COVERED            = 8,
+    NUDITY_FEET_COVERED             = 9,
+    NUDITY_ARMPITS_COVERED          = 10,
+    NUDITY_ARMPITS_EXPOSED          = 11,
+    NUDITY_FACE_MALE                = 12,
+    NUDITY_BELLY_EXPOSED            = 13,
+    NUDITY_MALE_GENITALIA_EXPOSED   = 14,
+    NUDITY_ANUS_COVERED             = 15,
+    NUDITY_FEMALE_BREAST_COVERED    = 16,
+    NUDITY_BUTTOCKS_COVERED         = 17,
+} NudityClass;
+
+// classes to censor
+static const s32 nudity_censor_classes[] = {
+    NUDITY_BUTTOCKS_EXPOSED,
+    NUDITY_FEMALE_BREAST_EXPOSED,
+    NUDITY_FEMALE_GENITALIA_EXPOSED,
+    NUDITY_ANUS_EXPOSED,
+    NUDITY_MALE_GENITALIA_EXPOSED,
+};
+static const s32 nudity_censor_class_count = 5;
+
 static Model model_face   = {0};
 static Model model_person = {0};
 static Model model_license_plate = {0};
+static Model model_nudity = {0};
 
 extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
 extern void ncnn_extractor_clear(ncnn_extractor_t ex);
 extern void ncnn_net_set_workspace_allocator(ncnn_net_t net);
 
-static Model model_create(Arena *arena, const char *path_param, const char *path_bin)
+static Model model_create(Arena *arena, s32 net_w, s32 net_h, const char *path_param, const char *path_bin)
 {
     Model model = {0};
 
-    model.net_w = 640;
-    model.net_h = 640;
+    model.net_w = net_w;
+    model.net_h = net_h;
 
     s64 thread_count = s_thread_context.count;
 
@@ -38,12 +72,12 @@ static Model model_create(Arena *arena, const char *path_param, const char *path
     return model;
 }
 
-static Model model_create_mem(Arena *arena, const u8 *param_bin, const u8 *model_bin)
+static Model model_create_mem(Arena *arena, s32 net_w, s32 net_h, const u8 *param_bin, const u8 *model_bin)
 {
     Model model = {0};
 
-    model.net_w = 640;
-    model.net_h = 640;
+    model.net_w = net_w;
+    model.net_h = net_h;
 
     s64 thread_count = s_thread_context.count;
 
@@ -68,11 +102,11 @@ static Model model_create_mem(Arena *arena, const u8 *param_bin, const u8 *model
     return model;
 }
 
-b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
+b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
 {
-    for(s64 i = 0; i < type_count; ++i)
+    for(s64 i = 0; i < config_count; ++i)
     {
-        DetectType type = types[i];
+        DetectType type = detect_cfgs[i].type;
 
         switch(type)
         {
@@ -80,10 +114,11 @@ b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
             {
                 if(!model_face.initialized)
                 {
-                    model_face = model_create(arena,
+                    model_face = model_create(arena, 640, 640,
                             "models/scrfd_500m_gnkps.ncnn.param",
                             "models/scrfd_500m_gnkps.ncnn.bin"
                     );
+
                     /*
                     model_face = model_create_mem(arena,
                             scrfd_500m_gnkps_ncnn_param_bin,
@@ -96,7 +131,7 @@ b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
             {
                 if(!model_person.initialized)
                 {
-                    model_person = model_create(arena,
+                    model_person = model_create(arena, 640, 640,
                             "models/scrfd_person_2.5g.ncnn.param",
                             "models/scrfd_person_2.5g.ncnn.bin"
                     );
@@ -106,9 +141,19 @@ b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
             {
                 if(!model_license_plate.initialized)
                 {
-                    model_license_plate = model_create(arena,
+                    model_license_plate = model_create(arena, 640, 640,
                             "models/license_plate.ncnn.param",
                             "models/license_plate.ncnn.bin"
+                    );
+                }
+            } break;
+            case DETECT_TYPE_NUDITY:
+            {
+                if(!model_nudity.initialized)
+                {
+                    model_nudity = model_create(arena, 320, 320,
+                        "models/nudity.ncnn.param",
+                        "models/nudity.ncnn.bin"
                     );
                 }
             } break;
@@ -120,40 +165,38 @@ b32 detect_init(Arena *arena, DetectType *types, s64 type_count)
     return true;
 }
 
-void detect(void *args)
+void detect(DetectConfig *cfg, Image *image, List *total_boxes)
 {
-    DetectArgs *detect_args = (DetectArgs *)args;
-
-    Image *image       = detect_args->image;
-    List  *total_boxes = detect_args->boxes;
-
     stopwatch_begin(image->stopwatch, S("detect"));
 
-    DetectType type = detect_args->type;
+    f32 threshold_confidence = cfg->threshold_confidence;
+    f32 threshold_nms        = cfg->threshold_nms;
+    f32 box_padding_percent  = cfg->box_padding_percent;
 
     List new_boxes  = {0};
 
     Temp scratch = scratch_begin();
 
-    switch(type)
+    switch(cfg->type)
     {
         case DETECT_TYPE_FACE:
         {
-            new_boxes = detect_faces(scratch.arena, image, 0.25f, 0.45f);
+            new_boxes = detect_faces(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
         } break;
         case DETECT_TYPE_PERSON:
         {
-            new_boxes = detect_persons(scratch.arena, image, 0.50f, 0.50f);
+            new_boxes = detect_persons(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
         } break;
         case DETECT_TYPE_LICENSE_PLATE:
         {
-            new_boxes = detect_license_plates(scratch.arena, image, 0.50f, 0.45f);
+            new_boxes = detect_license_plates(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
         } break;
-        case DETECT_TYPE_DOCUMENT:
+        case DETECT_TYPE_NUDITY:
         {
-            logd("TODO: Document Model");
+            new_boxes = detect_nudity(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
         } break;
         default:
+            logw("Unknown detect kind: %d", cfg->type);
             break;
     }
 
@@ -388,6 +431,22 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
     }
 }
 
+Model detect_get_model_by_type(DetectType type)
+{
+    switch(type)
+    {
+        case DETECT_TYPE_FACE:          return model_face;
+        case DETECT_TYPE_PERSON:        return model_person;
+        case DETECT_TYPE_LICENSE_PLATE: return model_license_plate;
+        case DETECT_TYPE_NUDITY:        return model_nudity;
+        case DETECT_TYPE_NONE:
+        default:
+    }
+
+    Model model = {0};
+    return model;
+}
+
 s32 box_compare(void *a, void *b)
 {
     Box *box_a = (Box *)a;
@@ -456,7 +515,7 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
     return boxes_curated;
 }
 
-List detect_faces(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold)
+List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -526,7 +585,7 @@ List detect_faces(Arena *arena, Image *image, f32 conf_threshold, f32 nms_thresh
                     s32 idx = (i*cols+j)*2+a;
 
                     f32 prob = score ? score[idx] : 0.0f;
-                    if (prob < conf_threshold)
+                    if (prob < threshold_confidence)
                         continue;
 
                     // anchor center
@@ -576,12 +635,18 @@ List detect_faces(Arena *arena, Image *image, f32 conf_threshold, f32 nms_thresh
     ncnn_extractor_destroy(ex);
     ncnn_mat_destroy(input);
 
-    boxes = non_maximum_suppression(boxes, nms_threshold);
+    boxes = non_maximum_suppression(boxes, threshold_nms);
+
+    for(s64 i = 0; i < boxes.count; ++i)
+    {
+        Box *box = (Box *)list_get(&boxes, i);
+        *box = box_pad(*box, &image->props_orig, padding_percent);
+    }
 
     return boxes;
 }
 
-List detect_persons(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold)
+List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -641,7 +706,7 @@ List detect_persons(Arena *arena, Image *image, f32 conf_threshold, f32 nms_thre
                 s32 idx = i*cols + j;
 
                 f32 prob = score ? score[idx] : 0.0f;
-                if(prob < conf_threshold)
+                if(prob < threshold_confidence)
                     continue;
 
                 f32 cx = j * stride;
@@ -686,12 +751,18 @@ List detect_persons(Arena *arena, Image *image, f32 conf_threshold, f32 nms_thre
     ncnn_extractor_destroy(ex);
     ncnn_mat_destroy(input);
 
-    boxes = non_maximum_suppression(boxes, nms_threshold);
+    boxes = non_maximum_suppression(boxes, threshold_nms);
 
+    for(s64 i = 0; i < boxes.count; ++i)
+    {
+        Box *box = (Box *)list_get(&boxes, i);
+        *box = box_pad(*box, &image->props_orig, padding_percent);
+    }
+ 
     return boxes;
 }
 
-List detect_license_plates(Arena *arena, Image *image, f32 conf_threshold, f32 nms_threshold)
+List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -730,7 +801,7 @@ List detect_license_plates(Arena *arena, Image *image, f32 conf_threshold, f32 n
             if(s > max_score) max_score = s;
         }
 
-        if(max_score < conf_threshold)
+        if(max_score < threshold_confidence)
             continue;
 
         f32 cx = cx_data[i];
@@ -756,7 +827,93 @@ List detect_license_plates(Arena *arena, Image *image, f32 conf_threshold, f32 n
     ncnn_extractor_destroy(ex);
     ncnn_mat_destroy(input);
 
-    boxes = non_maximum_suppression(boxes, nms_threshold);
+    boxes = non_maximum_suppression(boxes, threshold_nms);
+
+    for(s64 i = 0; i < boxes.count; ++i)
+    {
+        Box *box = (Box *)list_get(&boxes, i);
+        *box = box_pad(*box, &image->props_orig, padding_percent);
+    }
+
+    return boxes;
+}
+
+List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
+{
+    List boxes = list_create(arena, sizeof(Box));
+
+    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->props.w, image->props.h, image->props.w*3, 0);
+
+    const f32 mean[] = {0.0f, 0.0f, 0.0f};
+    const f32 norm[] = {1.0f/255.0f, 1.0f/255.0f, 1.0f/255.0f};
+    ncnn_mat_substract_mean_normalize(input, mean, norm);
+
+    ncnn_net_t net = model_nudity.nets[s_thread_context.index];
+    ncnn_extractor_t ex = ncnn_extractor_create(net);
+
+    ncnn_extractor_input(ex, "in0", input);
+
+    ncnn_mat_t out0;
+    ncnn_extractor_extract(ex, "out0", &out0);
+
+    const f32 *data      = (const f32 *)ncnn_mat_get_data(out0);
+    s32 num_anchors      = ncnn_mat_get_w(out0); // 2100
+    s32 num_channels     = ncnn_mat_get_h(out0); // 18 = 4 bbox + 14 classes
+
+    const f32 *cx_data = data + 0 * num_anchors;
+    const f32 *cy_data = data + 1 * num_anchors;
+    const f32 *w_data  = data + 2 * num_anchors;
+    const f32 *h_data  = data + 3 * num_anchors;
+
+    for(s32 i = 0; i < num_anchors; ++i)
+    {
+        f32 max_score   = 0.0f;
+        s32 best_class  = -1;
+
+        for(s32 c = 0; c < nudity_censor_class_count; ++c)
+        {
+            s32 class_idx = nudity_censor_classes[c];
+            f32 s = data[(4 + class_idx) * num_anchors + i];
+            if(s > max_score)
+            {
+                max_score  = s;
+                best_class = class_idx;
+            }
+        }
+
+        if(max_score < threshold_confidence || best_class < 0)
+            continue;
+
+        f32 cx = cx_data[i];
+        f32 cy = cy_data[i];
+        f32 w  = w_data[i];
+        f32 h  = h_data[i];
+
+        Box box      = {0};
+        box.x        = (s32)(cx - w * 0.5f);
+        box.y        = (s32)(cy - h * 0.5f);
+        box.w        = (s32)w;
+        box.h        = (s32)h;
+        box.confidence = (u16)(max_score * 100);
+        box.type     = DETECT_TYPE_NUDITY;
+
+        box = box_unscale(box, image);
+        box = box_rotate(box, image, image->props_orig.rotation, CW);
+
+        list_add(&boxes, &box);
+    }
+
+    ncnn_mat_destroy(out0);
+    ncnn_extractor_destroy(ex);
+    ncnn_mat_destroy(input);
+
+    boxes = non_maximum_suppression(boxes, threshold_nms);
+
+    for(s64 i = 0; i < boxes.count; ++i)
+    {
+        Box *box = (Box *)list_get(&boxes, i);
+        *box = box_pad(*box, &image->props_orig, padding_percent);
+    }
 
     return boxes;
 }
@@ -868,6 +1025,27 @@ Box box_rotate(Box box, Image *image, Rotation rotation, ClockDir dir)
     return box;
 }
 
+Box box_pad(Box box, ImageProps *props, f32 padding_percent)
+{
+    Box padded = box;
+
+    s32 pad_x = (s32)(box.w * padding_percent);
+    s32 pad_y = (s32)(box.h * padding_percent);
+
+    padded.x = box.x - pad_x;
+    padded.y = box.y - pad_y;
+    padded.w = box.w + 2*pad_x;
+    padded.h = box.h + 2*pad_y;
+
+    padded.x = CLAMP(padded.x, 0, (s32)(props->w - 1));
+    padded.y = CLAMP(padded.y, 0, (s32)(props->h - 1));
+    padded.w = CLAMP(padded.w, 1, (s32)(props->w - padded.x - 1));
+    padded.h = CLAMP(padded.h, 1, (s32)(props->h - padded.y - 1));
+
+    return padded;
+}
+
+
 void box_print(Box *b)
 {
     if(!b) return;
@@ -890,7 +1068,7 @@ String detect_type_to_string(DetectType type)
         case DETECT_TYPE_FACE:          return S("face");
         case DETECT_TYPE_PERSON:        return S("person");
         case DETECT_TYPE_LICENSE_PLATE: return S("license_plate");
-        case DETECT_TYPE_DOCUMENT:      return S("document");
+        case DETECT_TYPE_NUDITY:        return S("nudity");
         case DETECT_TYPE_NONE:
         default:
     }
@@ -909,8 +1087,8 @@ DetectType detect_type_from_string(String str)
     if(string_equal(str, S("license_plate")))
         return DETECT_TYPE_LICENSE_PLATE;
 
-    if(string_equal(str, S("document")))
-        return DETECT_TYPE_DOCUMENT;
+    if(string_equal(str, S("nudity")))
+        return DETECT_TYPE_NUDITY;
 
     return DETECT_TYPE_NONE;
 }

@@ -11,8 +11,8 @@
 
 // helpful functions
 #define ABS(x)   ((x) < 0 ? -(x) : (x))
-#define MIN(x,y) ((x)  < (y) ? (x) : (y))
-#define MAX(x,y) ((x) >= (y) ? (x) : (y))
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+#define MAX(x,y) ((x) > (y) ? (x) : (y))
 #define CLAMP(x, lo, hi) MAX(MIN((x), (hi)),(lo))
 #define BETWEEN(x,min,max) ((x) >= (min) && (x) <= (max))
 #define SQUARE(x)    ((x)*(x))

@@ -37,23 +37,26 @@ Settings settings_default()
 {
     Settings settings = {0};
 
-    settings.detect_types[0] = DETECT_TYPE_FACE;
-    settings.detect_type_count = 1;
-
     settings.filters[0].type = FILTER_TYPE_BLUR_BOX;
-    settings.filters[0].blur_strength = 0.6;
+    settings.filters[0].blur_strength = 0.60f;
     settings.filter_count = 1;
 
     settings.output_folder = S("output");
 
     settings.thread_count         = os_system_info.logical_processor_count;
     settings.buffer_size          = MB(512);
-    settings.nms_threshold        = 0.45;
-    settings.confidence_threshold = 0.25;
-    settings.box_padding          = 0.15;
-    settings.blur_strength        = 0.60;
-    settings.block_scale          = 0.12;
-    settings.smoothing_window     = 0.200; // 200ms
+    settings.nms_threshold        = 0.45f;
+    settings.confidence_threshold = 0.25f;
+    settings.box_padding          = 0.15f;
+    settings.blur_strength        = 0.60f;
+    settings.block_scale          = 0.12f;
+    settings.smoothing_window     = 0.200f; // 200ms
+
+    settings.detect_configs[0].type = DETECT_TYPE_FACE;
+    settings.detect_configs[0].threshold_confidence = 0.25f;
+    settings.detect_configs[0].threshold_nms        = 0.45f;
+    settings.detect_configs[0].box_padding_percent  = settings.box_padding;
+    settings.detect_config_count = 1;
 
     settings.no_encode = false;
     settings.no_rotate = false;
@@ -127,6 +130,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         settings.distort_audio = true;
         settings.distort_audio_carrier_hz = string_to_f64(str_distort_audio);    
     }
+
 
     b32 f_help          = cmdline_has_any_flags(&cmdline, ids_help);
     b32 f_no_encode     = cmdline_has_any_flags(&cmdline, ids_no_encode);
@@ -207,15 +211,53 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
     if(strs_detect_types.count > 0)
     {
-        settings.detect_type_count = 0;
+        settings.detect_config_count = 0;
         for(u32 i = 0; i < strs_detect_types.count; ++i)
         {
             String detect_type_str = string_trim(strs_detect_types.items[i]);
             DetectType type = detect_type_from_string(detect_type_str);
             if(type == DETECT_TYPE_NONE) continue;
 
-            settings.detect_types[settings.detect_type_count++] = type;
+            DetectConfig *cfg = &settings.detect_configs[settings.detect_config_count++];
+
+            cfg->type = type;
+
+            switch(type)
+            {
+                case DETECT_TYPE_FACE:
+                    cfg->threshold_confidence = 0.25f;
+                    cfg->threshold_nms        = 0.45f;
+                    cfg->box_padding_percent  = settings.box_padding;
+                    break;
+                case DETECT_TYPE_PERSON:
+                    cfg->threshold_confidence = 0.50f;
+                    cfg->threshold_nms        = 0.50f;
+                    cfg->box_padding_percent  = settings.box_padding;
+                    break;
+                case DETECT_TYPE_LICENSE_PLATE:
+                    cfg->threshold_confidence = 0.50f;
+                    cfg->threshold_nms        = 0.45f;
+                    cfg->box_padding_percent  = settings.box_padding;
+                    break;
+                case DETECT_TYPE_NUDITY:
+                    cfg->threshold_confidence = 0.25f;
+                    cfg->threshold_nms        = 0.45f;
+                    cfg->box_padding_percent  = settings.box_padding;
+                    break;
+                default:
+                    cfg->threshold_confidence = 0.25f;
+                    cfg->threshold_nms        = 0.45f;
+                    cfg->box_padding_percent  = settings.box_padding;
+                    break;
+            }
         }
+    }
+
+    // max sure all detect configs have the latest box padding
+    for(u32 i = 0; i < settings.detect_config_count; ++i)
+    {
+        DetectConfig *cfg = &settings.detect_configs[i];
+        cfg->box_padding_percent = settings.box_padding;
     }
 
     // Filters
@@ -271,11 +313,11 @@ void settings_print(Settings *settings)
 
     StringList sl = string_list_create(scratch.arena);
     string_list_add(&sl, S("["));
-    for(int i = 0 ; i < settings->detect_type_count; ++i)
+    for(int i = 0 ; i < settings->detect_config_count; ++i)
     {
-        DetectType detect_type = settings->detect_types[i];
-        string_list_add(&sl, detect_type_to_string(detect_type));
-        if(i < settings->detect_type_count - 1)
+        DetectConfig *cfg = &settings->detect_configs[i];
+        string_list_add(&sl, detect_type_to_string(cfg->type));
+        if(i < settings->detect_config_count - 1)
             string_list_add(&sl, S(", "));
     }
     string_list_add(&sl, S("]"));

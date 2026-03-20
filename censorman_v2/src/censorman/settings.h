@@ -22,8 +22,8 @@ typedef struct
     Asset assets[ASSET_MAX];
     u64 asset_count;
 
-    DetectType detect_types[DETECT_TYPE_MAX];
-    u32 detect_type_count;
+    DetectConfig detect_configs[DETECT_TYPE_MAX];
+    u32 detect_config_count;
 
     Filter filters[FILTER_TYPE_MAX];
     u32 filter_count;

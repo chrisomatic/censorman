@@ -6,7 +6,7 @@
 
 static void     blend_color_in_image(Image *img, s64 x, s64 y, RGBColor color, f32 factor);
 static void     draw_vline(Image* image, s64 x, s64 y1, s64 y2, RGBColor color, f32 opacity);
-static void     draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 border_thickness, f32 opacity);
+static void     draw_box(Image *image, Box *box, RGBColor color, b32 filled, f32 opacity);
 static void     draw_circle(Image *image, u32 x, u32 y, u32 radius, RGBColor color, b32 filled, f32 opacity);
 static void     convolve(Image *src, Image *dst, Box *roi, f32 *kernel, s32 k_size, bool horizontal);
 static void     draw_string(Image* image, s64 x, s64 y, RGBColor color, String str);
@@ -21,6 +21,9 @@ static RGBColor blend_color(RGBColor base, RGBColor color, f32 factor);
 
 void filter_apply(Filter filter, Image *image, Box *box)
 {
+    if(image->props.w == 0 || image->props.h == 0)
+        return;
+
     stopwatch_begin(image->stopwatch, S(__func__));
     switch(filter.type)
     {
@@ -52,7 +55,7 @@ void filter_apply(Filter filter, Image *image, Box *box)
 void filter_blackout(Image *image, Box *box)
 {
     RGBColor black = (RGBColor){0,0,0};
-    draw_box(image, box, black, true, 1, 1.0);
+    draw_box(image, box, black, true, 1.0);
 }
 
 void filter_pixelate(Image* image, Box *box, f32 block_scale)
@@ -392,7 +395,7 @@ void filter_draw_debug_info(Image *image, BoxFrame *box_frame)
         RGBColor color      = blend_color(color_bad, color_good, box->confidence / 100.0);
 
         // draw outline
-        draw_box(image, box, color, false, 1, 1.0);
+        draw_box(image, box, color, false, 1.0);
 
         // draw confidence string
         draw_string(image, box->x+2, box->y+2, color, string_format(image->arena, "%u", box->confidence));
@@ -525,30 +528,33 @@ static void blend_color_in_image(Image *img, s64 x, s64 y, RGBColor color, f32 f
     *pixel = blend_color(*pixel, color, factor);
 }
 
-static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 border_thickness, f32 opacity)
+static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, f32 opacity)
 {
-    RGBColor *start = &image->data[box->y*image->props.w + box->x];
+    Box box_clamped = {0};
+    MemoryCopy(&box_clamped, box, sizeof(Box));
+
+    // clamp box ahead of time
+    box_clamped.x = CLAMP(box_clamped.x, 0, image->props.w - 1);
+    box_clamped.y = CLAMP(box_clamped.y, 0, image->props.h - 1);
+    box_clamped.w = CLAMP(box_clamped.w, 1, image->props.w - box_clamped.x - 1);
+    box_clamped.h = CLAMP(box_clamped.h, 1, image->props.h - box_clamped.y - 1);
+
+    RGBColor *start = &image->data[box_clamped.y*image->props.w + box_clamped.x];
     RGBColor *curr  = start;
 
     // draw first line
-    for(u32 j = 0; j < border_thickness; ++j)
+    for(s32 i = 0; i <= box_clamped.w; ++i)
     {
-        for(s32 i = 0; i <= box->w; ++i)
-        {
-            RGBColor *r = &curr[i];
-            *r = blend_color(*r, color, opacity);
-        }
-        if(j < border_thickness - 1)
-            curr += image->props.w;
+        RGBColor *r = &curr[i];
+        *r = blend_color(*r, color, opacity);
     }
-
     curr += image->props.w;
 
     if(filled)
     {
-        for(s32 j = 0; j < box->h-1; ++j)
+        for(s32 j = 0; j < box_clamped.h-1; ++j)
         {
-            for(s32 i = 0; i < box->w; ++i)
+            for(s32 i = 0; i <= box_clamped.w; ++i)
             {
                 RGBColor *r = &curr[i];
                 *r = blend_color(*r, color, opacity);
@@ -558,33 +564,22 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, u32 bor
     }
     else
     {
-        for(s32 i = 0; i < box->h-1; ++i)
+        for(s32 i = 0; i < box_clamped.h-1; ++i)
         {
-            for(u32 j = 0; j < border_thickness; ++j)
-            {
-                RGBColor *cl = &curr[0 + j];
-                RGBColor *cr = &curr[MAX(box->w - j,0)];
+            RGBColor *cl = &curr[0];
+            RGBColor *cr = &curr[MAX(box_clamped.w-1,0)];
 
-                *cl = blend_color(*cl, color, opacity);
-                *cr = blend_color(*cr, color, opacity);
-            }
+            *cl = blend_color(*cl, color, opacity);
+            *cr = blend_color(*cr, color, opacity);
 
             curr += image->props.w;
         }
     }
 
-    curr -= (image->props.w*MAX(0,(border_thickness-1)));
-
-    for(u32 j = 0; j < border_thickness; ++j)
+    for(s32 i = 0; i <= box_clamped.w; ++i)
     {
-        for(s32 i = 0; i <= box->w; ++i)
-        {
-            RGBColor *r = &curr[i];
-            *r = blend_color(*r, color, opacity);
-        }
-
-        if(j < border_thickness - 1)
-            curr += image->props.w;
+        RGBColor *r = &curr[i];
+        *r = blend_color(*r, color, opacity);
     }
 }
 
