@@ -8,7 +8,7 @@ typedef struct
     u64 sum;
 } SumTest;
 
-static void *sum_func(void *arg)
+static s64 sum_func(void *arg)
 {
     SumTest *test = (SumTest *)arg;
 
@@ -17,7 +17,7 @@ static void *sum_func(void *arg)
         test->sum += i;
     }
 
-    return NULL;
+    return 0;
 }
 
 static s32 vec3_compare_y(void *a, void *b)

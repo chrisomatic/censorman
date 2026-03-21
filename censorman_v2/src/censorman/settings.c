@@ -117,6 +117,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray strs_filters      = string_split(scratch.arena, str_filters,      S(","));
 
     if(str_output_folder.len > 0)    settings.output_folder        = str_output_folder;
+    if(str_bbx_output.len > 0)       settings.bbx_output           = str_bbx_output;
     if(str_confidence.len > 0)       settings.confidence_threshold = string_to_f64(str_confidence);
     if(str_nms_threshold.len > 0)    settings.nms_threshold        = string_to_f64(str_nms_threshold);
     if(str_box_padding.len > 0)      settings.box_padding          = string_to_f64(str_box_padding);
@@ -130,7 +131,6 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         settings.distort_audio = true;
         settings.distort_audio_carrier_hz = string_to_f64(str_distort_audio);    
     }
-
 
     b32 f_help          = cmdline_has_any_flags(&cmdline, ids_help);
     b32 f_no_encode     = cmdline_has_any_flags(&cmdline, ids_no_encode);
@@ -222,6 +222,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
             cfg->type = type;
 
+            // set default configurations
             switch(type)
             {
                 case DETECT_TYPE_FACE:

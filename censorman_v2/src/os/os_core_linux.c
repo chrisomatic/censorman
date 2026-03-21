@@ -490,10 +490,23 @@ int os_print_raw(const char* msg, s32 msg_len)
 // Threads
 ///////////////////////////////////////
 
+static void *thread_bootstrap(void *raw)
+{
+    ThreadWrapper *wrapper = (ThreadWrapper *)raw;
+    s32 result = wrapper->func(wrapper->arg);
+    free(wrapper);
+    return (void *)(s64 *)result;
+}
+
 Thread thread_launch(ThreadFunc func, void *arg)
 {
     Thread thread = {0};
-    pthread_create(&thread.handle, NULL, func, arg);
+
+    ThreadWrapper *wrapper = malloc(sizeof(ThreadWrapper));
+    wrapper->func = func;
+    wrapper->arg = arg;
+
+    pthread_create(&thread.handle, NULL, thread_bootstrap, wrapper);
     return thread;
 }
 

@@ -56,7 +56,7 @@ ListArray frames         = {0};
 BoxFrame  *box_frames    = NULL;
 b32       video_complete = false;
 
-void *entry_point(void *params);
+s64 entry_point(void *params);
 
 int main(int argc, char **args)
 {
@@ -108,7 +108,7 @@ int main(int argc, char **args)
     return CM_SUCCESS;
 }
 
-void *entry_point(void *params)
+s64 entry_point(void *params)
 {
     s64 thread_index = (s64)params;
 
@@ -341,5 +341,5 @@ void *entry_point(void *params)
 
     NARROW stopwatch_print(&sw);
 
-    return NULL;
+    return 0;
 }

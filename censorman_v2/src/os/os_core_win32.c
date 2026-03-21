@@ -504,10 +504,23 @@ int os_print_raw(const char* msg, s32 msg_len)
 // Threads
 ///////////////////////////////////////
 
+static DWORD WINAPI thread_bootstrap(void *raw)
+{
+    ThreadWrapper *wrapper = (ThreadWrapper *)raw;
+    s32 result = wrapper->func(wrapper->arg);
+    free(wrapper);
+    return (DWORD)result;
+}
+
 Thread thread_launch(ThreadFunc func, void *arg)
 {
     Thread thread = {0};
-    thread.handle = CreateThread(NULL, 0, func, arg, 0, &thread.id);
+
+    ThreadWrapper *wrapper = malloc(sizeof(ThreadWrapper));
+    wrapper->func = func;
+    wrapper->arg = arg;
+
+    thread.handle = CreateThread(NULL, 0, thread_bootstrap, wrapper, 0, &thread.id);
 
     return thread;
 }

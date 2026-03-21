@@ -265,6 +265,8 @@ s32  os_print_raw(const char* msg, s32 msg_len);
 typedef struct Thread Thread;
 typedef struct Barrier Barrier;
 
+typedef s64 (*ThreadFunc)(void *);
+
 #if OS == OS_WINDOWS
 
 #if defined(_MSC_VER)
@@ -287,7 +289,6 @@ typedef struct
     CRITICAL_SECTION handle;
 } Mutex;
 
-typedef long unsigned int (*ThreadFunc)(void *);
 #else
 #define THREAD_LOCAL __thread
 struct Thread
@@ -303,8 +304,13 @@ typedef struct
     pthread_mutex_t handle;
 } Mutex;
 
-typedef void* (*ThreadFunc)(void *);
 #endif
+
+typedef struct
+{
+    ThreadFunc func;
+    void *arg;
+} ThreadWrapper;
 
 typedef struct
 {

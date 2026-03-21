@@ -1,0 +1,14 @@
+prefix=/C/git/censorman/censorman_v2/build/ffmpeg_build
+exec_prefix=${prefix}
+libdir=/C/git/censorman/censorman_v2/build/ffmpeg_build/lib
+includedir=/C/git/censorman/censorman_v2/build/ffmpeg_build/include
+
+Name: libavformat
+Description: FFmpeg container format library
+Version: 62.3.100
+Requires: libavcodec >= 62.11.100, libswresample >= 6.1.100, libavutil >= 60.8.100
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavformat -lm -latomic -LC:/msys64/mingw64/bin/../lib -lz
+Libs.private: 
+Cflags: -I${includedir}

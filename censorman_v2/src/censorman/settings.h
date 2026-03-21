@@ -34,12 +34,12 @@ typedef struct
     u32 thread_count;
     u64 buffer_size;
 
-    f32 nms_threshold;
-    f32 confidence_threshold;
-    f32 box_padding;
-    f32 smoothing_window; // [0.0 - 1.0]
-    f32 blur_strength;    // [0.0 - 1.0]
-    f32 block_scale;      // [0.0 - 1.0]
+    f32 nms_threshold;        // [0.0 - 1.0]
+    f32 confidence_threshold; // [0.0 - 1.0]
+    f32 box_padding;          // [0.0 - 1.0]
+    f32 smoothing_window;     // [0.0 - 1.0]
+    f32 blur_strength;        // [0.0 - 1.0]
+    f32 block_scale;          // [0.0 - 1.0]
     f32 distort_audio_carrier_hz;
 
     // flags
