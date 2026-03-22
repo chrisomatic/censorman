@@ -76,25 +76,25 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
     CmdLine cmdline = cmdline_parse(scratch.arena, argc, args);
 
-    StringArray ids_help             = string_array_create(scratch.arena, 3, S("help"),             S("?"),      S("h"));
-    StringArray ids_no_encode        = string_array_create(scratch.arena, 3, S("no_encode"),        S("ne"),     S("z"));
-    StringArray ids_quiet            = string_array_create(scratch.arena, 3, S("quiet"),            S("shh"),    S("q"));
-    StringArray ids_debug            = string_array_create(scratch.arena, 3, S("debug"),            S("db") ,    S("g"));
-    StringArray ids_verbose          = string_array_create(scratch.arena, 3, S("verbose"),          S("vb") ,    S("v"));
-    StringArray ids_distort_audio    = string_array_create(scratch.arena, 3, S("distort_audio"),    S("distort"),S("a"));
-    StringArray ids_detect_types     = string_array_create(scratch.arena, 3, S("detect_types"),     S("detect"), S("d"));
-    StringArray ids_filters          = string_array_create(scratch.arena, 3, S("filters"),          S("filter"), S("f"));
-    StringArray ids_output_folder    = string_array_create(scratch.arena, 3, S("output_folder"),    S("output"), S("o"));
-    StringArray ids_confidence       = string_array_create(scratch.arena, 3, S("confidence"),       S("conf"),   S("c"));
-    StringArray ids_thread_count     = string_array_create(scratch.arena, 3, S("thread_count"),     S("tc"),     S("j"));
-    StringArray ids_buffer_size      = string_array_create(scratch.arena, 3, S("buffer_size"),      S("bs"),     S("b"));
-    StringArray ids_nms_threshold    = string_array_create(scratch.arena, 3, S("nms_threshold"),    S("nms"),    S("n"));
-    StringArray ids_box_padding      = string_array_create(scratch.arena, 3, S("box_padding"),      S("bp"),     S("p"));
-    StringArray ids_smoothing_window = string_array_create(scratch.arena, 3, S("smoothing_window"), S("sw"),     S("s"));
-    StringArray ids_texture_path     = string_array_create(scratch.arena, 3, S("texture_path"),     S("tp"),     S("t"));
-    StringArray ids_block_scale      = string_array_create(scratch.arena, 3, S("block_scale"),      S("bsca"),   S("u"));
-    StringArray ids_blur_strength    = string_array_create(scratch.arena, 3, S("blur_strength"),    S("bstr"),   S("w"));
-    StringArray ids_bbx_output       = string_array_create(scratch.arena, 3, S("bbx_output"),       S("bbx"),    S("x"));
+    StringArray ids_help             = string_array_create(scratch.arena, 2, S("help"),             S("h"));
+    StringArray ids_no_encode        = string_array_create(scratch.arena, 2, S("no_encode"),        S("ne"));
+    StringArray ids_quiet            = string_array_create(scratch.arena, 2, S("quiet"),            S("q"));
+    StringArray ids_debug            = string_array_create(scratch.arena, 2, S("debug"),            S("db"));
+    StringArray ids_verbose          = string_array_create(scratch.arena, 2, S("verbose"),          S("vb"));
+    StringArray ids_distort_audio    = string_array_create(scratch.arena, 2, S("distort_audio"),    S("da"));
+    StringArray ids_detect_types     = string_array_create(scratch.arena, 2, S("detect_types"),     S("d"));
+    StringArray ids_filters          = string_array_create(scratch.arena, 2, S("filters"),          S("f"));
+    StringArray ids_output_folder    = string_array_create(scratch.arena, 2, S("output_folder"),    S("o"));
+    StringArray ids_confidence       = string_array_create(scratch.arena, 2, S("confidence"),       S("c"));
+    StringArray ids_thread_count     = string_array_create(scratch.arena, 2, S("thread_count"),     S("j"));
+    StringArray ids_buffer_size      = string_array_create(scratch.arena, 2, S("buffer_size"),      S("bs"));
+    StringArray ids_nms_threshold    = string_array_create(scratch.arena, 2, S("nms_threshold"),    S("nms"));
+    StringArray ids_box_padding      = string_array_create(scratch.arena, 2, S("box_padding"),      S("bp"));
+    StringArray ids_smoothing_window = string_array_create(scratch.arena, 2, S("smoothing_window"), S("sw"));
+    StringArray ids_texture_path     = string_array_create(scratch.arena, 2, S("texture_path"),     S("tp"));
+    StringArray ids_block_scale      = string_array_create(scratch.arena, 2, S("block_scale"),      S("sca"));
+    StringArray ids_blur_strength    = string_array_create(scratch.arena, 2, S("blur_strength"),    S("str"));
+    StringArray ids_bbx_output       = string_array_create(scratch.arena, 2, S("bbx_output"),       S("bbx"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
     String str_detect_types     = cmdline_get_value_first_match(&cmdline, ids_detect_types);
@@ -132,17 +132,17 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         settings.distort_audio_carrier_hz = string_to_f64(str_distort_audio);    
     }
 
-    b32 f_help          = cmdline_has_any_flags(&cmdline, ids_help);
-    b32 f_no_encode     = cmdline_has_any_flags(&cmdline, ids_no_encode);
-    b32 f_debug         = cmdline_has_any_flags(&cmdline, ids_debug);
-    b32 f_verbose       = cmdline_has_any_flags(&cmdline, ids_verbose);
-    b32 f_quiet         = cmdline_has_any_flags(&cmdline, ids_quiet);
+    b32 f_help      = cmdline_has_any_flags(&cmdline, ids_help);
+    b32 f_no_encode = cmdline_has_any_flags(&cmdline, ids_no_encode);
+    b32 f_debug     = cmdline_has_any_flags(&cmdline, ids_debug);
+    b32 f_verbose   = cmdline_has_any_flags(&cmdline, ids_verbose);
+    b32 f_quiet     = cmdline_has_any_flags(&cmdline, ids_quiet);
 
-    if(f_help)          settings.help          = true;
-    if(f_no_encode)     settings.no_encode     = true;
-    if(f_debug)         settings.debug         = true;
-    if(f_verbose)       settings.verbose       = true;
-    if(f_quiet)         settings.quiet         = true;
+    if(f_help)      settings.help      = true;
+    if(f_no_encode) settings.no_encode = true;
+    if(f_debug)     settings.debug     = true;
+    if(f_verbose)   settings.verbose   = true;
+    if(f_quiet)     settings.quiet     = true;
     
     // create output directory if needed
     char *output_folder_cstr = string_to_cstr(scratch.arena, settings.output_folder);
@@ -155,7 +155,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
     // handle input assets
     
-    StringArray exts_image = string_array_create(scratch.arena, 3, S("png"), S("jpg"), S("jpeg"));
+    StringArray exts_image = string_array_create(scratch.arena, 4, S("png"), S("jpg"), S("jpeg"), S("gif"));
     StringArray exts_video = string_array_create(scratch.arena, 2, S("mp4"), S("mov"));
     
     for(int i = 0; i < strs_assets.count; ++i)

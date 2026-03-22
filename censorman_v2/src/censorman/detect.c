@@ -1,4 +1,8 @@
-// #include "models/scrfd_face_bin.h"
+
+#include "model_data/scrfd_face_bin.h"
+#include "model_data/scrfd_person_bin.h"
+#include "model_data/license_plate_bin.h"
+#include "model_data/nudity_bin.h"
 
 // NudeNet class indices
 typedef enum
@@ -42,36 +46,6 @@ extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
 extern void ncnn_extractor_clear(ncnn_extractor_t ex);
 extern void ncnn_net_set_workspace_allocator(ncnn_net_t net);
 
-static Model model_create(Arena *arena, s32 net_w, s32 net_h, const char *path_param, const char *path_bin)
-{
-    Model model = {0};
-
-    model.net_w = net_w;
-    model.net_h = net_h;
-
-    s64 thread_count = s_thread_context.count;
-
-    model.nets = PUSH_ARRAY(arena, ncnn_net_t, thread_count);
-    for(s64 i = 0; i < thread_count; ++i)
-    {
-        model.nets[i] = ncnn_net_create();
-
-        //ncnn_net_set_workspace_allocator(model.nets[i]);
-        ncnn_net_set_lightmode(model.nets[i], 1);
-        ncnn_option_t opt = ncnn_net_get_option(model.nets[i]);
-        ncnn_option_set_num_threads(opt, 1); // @LOOKAT
-        ncnn_option_set_use_packing_layout(opt, 1); // faster SIMD on x86
-        ncnn_net_set_option(model.nets[i], opt);
-
-        int param_ret = ncnn_net_load_param(model.nets[i], path_param);
-        int model_ret = ncnn_net_load_model(model.nets[i], path_bin);
-
-        model.initialized |= (param_ret == 0 && model_ret == 0);
-    }
-
-    return model;
-}
-
 static Model model_create_mem(Arena *arena, s32 net_w, s32 net_h, const u8 *param_bin, const u8 *model_bin)
 {
     Model model = {0};
@@ -93,10 +67,10 @@ static Model model_create_mem(Arena *arena, s32 net_w, s32 net_h, const u8 *para
         ncnn_option_set_use_packing_layout(opt, 1); // faster SIMD on x86
         ncnn_net_set_option(model.nets[i], opt);
 
-        int param_ret = ncnn_net_load_param_memory(model.nets[i], param_bin);
-        int model_ret = ncnn_net_load_model_memory(model.nets[i], model_bin);
+        size_t param_ret = ncnn_net_load_param_bin_memory(model.nets[i], param_bin);
+        size_t model_ret = ncnn_net_load_model_memory(model.nets[i], model_bin);
 
-        model.initialized |= (param_ret == 0 && model_ret == 0);
+        model.initialized = (param_ret > 0 && model_ret > 0);
     }
 
     return model;
@@ -114,26 +88,19 @@ b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_face.initialized)
                 {
-                    model_face = model_create(arena, 640, 640,
-                            "models/scrfd_500m_gnkps.ncnn.param",
-                            "models/scrfd_500m_gnkps.ncnn.bin"
-                    );
-
-                    /*
-                    model_face = model_create_mem(arena,
+                    model_face = model_create_mem(arena, 640, 640,
                             scrfd_500m_gnkps_ncnn_param_bin,
                             scrfd_500m_gnkps_ncnn_bin
                     );
-                    */
                 }
             } break;
             case DETECT_TYPE_PERSON:
             {
                 if(!model_person.initialized)
                 {
-                    model_person = model_create(arena, 640, 640,
-                            "models/scrfd_person_2.5g.ncnn.param",
-                            "models/scrfd_person_2.5g.ncnn.bin"
+                    model_person = model_create_mem(arena, 640, 640,
+                            scrfd_person_2_5g_ncnn_param_bin,
+                            scrfd_person_2_5g_ncnn_bin
                     );
                 }
             } break;
@@ -141,9 +108,9 @@ b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_license_plate.initialized)
                 {
-                    model_license_plate = model_create(arena, 640, 640,
-                            "models/license_plate.ncnn.param",
-                            "models/license_plate.ncnn.bin"
+                    model_license_plate = model_create_mem(arena, 640, 640,
+                            license_plate_ncnn_param_bin,
+                            license_plate_ncnn_bin
                     );
                 }
             } break;
@@ -151,9 +118,9 @@ b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_nudity.initialized)
                 {
-                    model_nudity = model_create(arena, 320, 320,
-                        "models/nudity.ncnn.param",
-                        "models/nudity.ncnn.bin"
+                    model_nudity = model_create_mem(arena, 320, 320,
+                        nudity_ncnn_param_bin,
+                        nudity_ncnn_bin
                     );
                 }
             } break;
@@ -530,7 +497,7 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_net_t net = model_face.nets[s_thread_context.index];
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
-    ncnn_extractor_input(ex, "in0", input);
+    ncnn_extractor_input_index(ex, SCRFD_FACE_IN0, input);
 
     ncnn_mat_t score_8;
     ncnn_mat_t score_16;
@@ -542,15 +509,15 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_mat_t kps_16;
     ncnn_mat_t kps_32;
 
-    ncnn_extractor_extract(ex, "out0", &score_8);
-    ncnn_extractor_extract(ex, "out1", &score_16);
-    ncnn_extractor_extract(ex, "out2", &score_32);
-    ncnn_extractor_extract(ex, "out3", &bbox_8);
-    ncnn_extractor_extract(ex, "out4", &bbox_16);
-    ncnn_extractor_extract(ex, "out5", &bbox_32);
-    ncnn_extractor_extract(ex, "out6", &kps_8);
-    ncnn_extractor_extract(ex, "out7", &kps_16);
-    ncnn_extractor_extract(ex, "out8", &kps_32);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT0, &score_8);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT1, &score_16);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT2, &score_32);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT3, &bbox_8);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT4, &bbox_16);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT5, &bbox_32);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT6, &kps_8);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT7, &kps_16);
+    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT8, &kps_32);
 
     const ncnn_mat_t scoreMats[] = {score_8, score_16, score_32};
     const ncnn_mat_t bboxMats[]  = {bbox_8, bbox_16, bbox_32};
@@ -659,27 +626,27 @@ List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 th
     ncnn_net_t net = model_person.nets[s_thread_context.index];
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
-    ncnn_extractor_input(ex, "in0", input);
+    ncnn_extractor_input_index(ex, SCRFD_PERSON_IN0, input);
 
     ncnn_mat_t score_8, score_16, score_32, score_64, score_128;
     ncnn_mat_t bbox_8,  bbox_16,  bbox_32,  bbox_64,  bbox_128;
     ncnn_mat_t kps_8,   kps_16,   kps_32,   kps_64,   kps_128;
 
-    ncnn_extractor_extract(ex, "out0",  &score_8);
-    ncnn_extractor_extract(ex, "out1",  &score_16);
-    ncnn_extractor_extract(ex, "out2",  &score_32);
-    ncnn_extractor_extract(ex, "out3",  &score_64);
-    ncnn_extractor_extract(ex, "out4",  &score_128);
-    ncnn_extractor_extract(ex, "out5",  &bbox_8);
-    ncnn_extractor_extract(ex, "out6",  &bbox_16);
-    ncnn_extractor_extract(ex, "out7",  &bbox_32);
-    ncnn_extractor_extract(ex, "out8",  &bbox_64);
-    ncnn_extractor_extract(ex, "out9",  &bbox_128);
-    ncnn_extractor_extract(ex, "out10", &kps_8);
-    ncnn_extractor_extract(ex, "out11", &kps_16);
-    ncnn_extractor_extract(ex, "out12", &kps_32);
-    ncnn_extractor_extract(ex, "out13", &kps_64);
-    ncnn_extractor_extract(ex, "out14", &kps_128);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT0, &score_8);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT1, &score_16);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT2, &score_32);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT3, &score_64);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT4, &score_128);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT5, &bbox_8);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT6, &bbox_16);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT7, &bbox_32);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT8, &bbox_64);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT9, &bbox_128);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT10, &kps_8);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT11, &kps_16);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT12, &kps_32);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT13, &kps_64);
+    ncnn_extractor_extract_index(ex, SCRFD_PERSON_OUT14, &kps_128);
 
     const ncnn_mat_t scoreMats[] = {score_8,  score_16,  score_32,  score_64,  score_128};
     const ncnn_mat_t bboxMats[]  = {bbox_8,   bbox_16,   bbox_32,   bbox_64,   bbox_128};
@@ -775,10 +742,10 @@ List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence,
     ncnn_net_t net = model_license_plate.nets[s_thread_context.index];
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
-    ncnn_extractor_input(ex, "in0", input);
+    ncnn_extractor_input_index(ex, LICENSE_PLATE_IN0, input);
 
     ncnn_mat_t out0;
-    ncnn_extractor_extract(ex, "out0", &out0);
+    ncnn_extractor_extract_index(ex, LICENSE_PLATE_OUT0, &out0);
 
     // out0 layout: [8400, 84] — cx, cy, w, h, score
     const f32 *data = (const f32 *)ncnn_mat_get_data(out0);
@@ -851,10 +818,10 @@ List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 thr
     ncnn_net_t net = model_nudity.nets[s_thread_context.index];
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
-    ncnn_extractor_input(ex, "in0", input);
+    ncnn_extractor_input_index(ex, NUDITY_IN0, input);
 
     ncnn_mat_t out0;
-    ncnn_extractor_extract(ex, "out0", &out0);
+    ncnn_extractor_extract_index(ex, NUDITY_OUT0, &out0);
 
     const f32 *data      = (const f32 *)ncnn_mat_get_data(out0);
     s32 num_anchors      = ncnn_mat_get_w(out0); // 2100
