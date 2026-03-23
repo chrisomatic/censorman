@@ -12,6 +12,7 @@
 #include "censorman/detect.h"
 #include "censorman/filter.h"
 #include "censorman/settings.h"
+#include "censorman/bbx_file.h"
 
 #include "base/base.c"
 #include "os/os.c"
@@ -21,6 +22,7 @@
 #include "censorman/detect.c"
 #include "censorman/filter.c"
 #include "censorman/settings.c"
+#include "censorman/bbx_file.c"
 
 #define CENSORMAN_VERSION 2
 #define RUN_TESTS 0
