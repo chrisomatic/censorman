@@ -394,20 +394,40 @@ void filter_draw_debug_info(Image *image, BoxFrame *box_frame)
         RGBColor color_good = (RGBColor){0,255,0};
         RGBColor color      = blend_color(color_bad, color_good, box->confidence / 100.0);
 
+        const f32 box_transparency = 0.75f;
+
         // draw outline
-        draw_box(image, box, color, false, 1.0);
+        draw_box(image, box, color, false, box_transparency);
 
         // draw confidence string
         draw_string(image, box->x+2, box->y+2, color, string_format(image->arena, "%u", box->confidence));
 
-        // draw detect type
-        // draw_string(image, box->x+1, MAX(box->y+1, box->y+box->h-17), (RGBColor){0,0,0}, detect_type_to_string(box->type));
+        Box label_box = {0};
+
+        if(box->y > FONT_HEIGHT + 1)
+        {
+            label_box.x = box->x;
+            label_box.y = box->y - FONT_HEIGHT - 1;
+            label_box.w = box->w;
+            label_box.h = FONT_HEIGHT + 1;
+        }
+        else if(box->y + box->w < image->props.h - FONT_HEIGHT - 2)
+        {
+            label_box.x = box->x;
+            label_box.y = box->y + box->h;
+            label_box.w = box->w;
+            label_box.h = FONT_HEIGHT + 1;
+        }
+
+        // draw label
+        draw_box(image, &label_box, color, true, box_transparency);
+        draw_string(image, label_box.x + 1, label_box.y + 1, (RGBColor){32,32,32}, detect_type_to_string(box->type));
 
         u32 radius = MAX(1, box->h * 0.015);
         for(s64 i = 0; i < LANDMARK_COUNT; ++i)
         {
             Point p = box->landmarks[i];
-            draw_circle(image, p.x, p.y, radius, color_list[i], true, 1.0);
+            draw_circle(image, p.x, p.y, radius, color_list[i], true, box_transparency);
         }
     }
 }
@@ -434,10 +454,10 @@ FilterType filter_from_string(String str)
     if(string_equal(str, S("blackout")))
         return FILTER_TYPE_BLACKOUT;
     
-    if(string_equal(str, S("box_blur")))
+    if(string_equal(str, S("blur")) || string_equal(str, S("box_blur")))
         return FILTER_TYPE_BLUR_BOX;
 
-    if(string_equal(str, S("blur")) || string_equal(str, S("gaussian_blur")))
+    if(string_equal(str, S("gaussian_blur")))
         return FILTER_TYPE_BLUR_GAUSSIAN;
 
     if(string_equal(str, S("pixelate")))
@@ -543,7 +563,7 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, f32 opa
     RGBColor *curr  = start;
 
     // draw first line
-    for(s32 i = 0; i <= box_clamped.w; ++i)
+    for(s32 i = 0; i < box_clamped.w; ++i)
     {
         RGBColor *r = &curr[i];
         *r = blend_color(*r, color, opacity);
@@ -554,7 +574,7 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, f32 opa
     {
         for(s32 j = 0; j < box_clamped.h-1; ++j)
         {
-            for(s32 i = 0; i <= box_clamped.w; ++i)
+            for(s32 i = 0; i < box_clamped.w; ++i)
             {
                 RGBColor *r = &curr[i];
                 *r = blend_color(*r, color, opacity);
@@ -576,7 +596,7 @@ static void draw_box(Image *image, Box *box, RGBColor color, b32 filled, f32 opa
         }
     }
 
-    for(s32 i = 0; i <= box_clamped.w; ++i)
+    for(s32 i = 0; i < box_clamped.w; ++i)
     {
         RGBColor *r = &curr[i];
         *r = blend_color(*r, color, opacity);

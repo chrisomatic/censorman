@@ -12,7 +12,7 @@ ASSET_PATH
 OPTIONS
 
     --filters [-f] <filters>
-        a comma-separated list of filters [blur_gaussian, blur, pixelate, scramble, blackout]
+        a comma-separated list of filters [blur, gaussian_blur, pixelate, scramble, blackout]
         default: blur
 
     --detect [-d] <detect-types>
