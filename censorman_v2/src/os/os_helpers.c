@@ -8,7 +8,7 @@
 
 #define DELAY(s) os_time_delay_us((s)*1000*1000)
 
-LogLevel      _system_log_level = LOG_LEVEL_DEBUG;
+LogLevel      s_log_level = LOG_LEVEL_DEBUG;
 THREAD_LOCAL ThreadContext s_thread_context = {0};
 
 ///////////////////////////////////////
@@ -125,12 +125,12 @@ OS_File os_file_nil()
 
 inline LogLevel os_get_log_level(void)
 {
-    return _system_log_level;
+    return s_log_level;
 }
 
 void os_set_log_level(LogLevel level)
 {
-    _system_log_level = level;
+    s_log_level = level;
 }
 
 OS_File os_file_open_readonly(char *file_path)
@@ -201,11 +201,105 @@ StringArray os_file_read_lines(Arena *arena, OS_File file)
     return sa;
 }
 
+u64 os_file_get_remaining_size(OS_File file)
+{
+    s64 size = os_file_get_size(file);
+    s64 bytes_left = (size - os_file_get_pos(file));
+    bytes_left = MAX(0, bytes_left);
+    return (u64)bytes_left;
+}
+
+u8 os_file_read_u8(Arena *arena, OS_File file)
+{
+    u8 ret = 0;
+
+    ByteArray ba = os_file_read(arena, file, sizeof(u8));
+    if(ba.len >= sizeof(u8))
+        ret = *((u8 *)ba.data);
+
+    return ret;
+}
+
+u16 os_file_read_u16(Arena *arena, OS_File file)
+{
+    u16 ret = 0;
+
+    ByteArray ba = os_file_read(arena, file, sizeof(u16));
+    if(ba.len >= sizeof(u16))
+        ret = *((u16 *)ba.data);
+
+    return ret;
+}
+
+u32 os_file_read_u32(Arena *arena, OS_File file)
+{
+    u32 ret = 0;
+
+    ByteArray ba = os_file_read(arena, file, sizeof(u32));
+    if(ba.len >= sizeof(u32))
+        ret = *((u32 *)ba.data);
+
+    return ret;
+}
+
+u64 os_file_read_u64(Arena *arena, OS_File file)
+{
+    u64 ret = 0;
+
+    ByteArray ba = os_file_read(arena, file, sizeof(u64));
+    if(ba.len >= sizeof(u64))
+        ret = *((u64 *)ba.data);
+
+    return ret;
+}
+
+f32 os_file_read_f32(Arena *arena, OS_File file)
+{
+    f32 ret = 0;
+
+    ByteArray ba = os_file_read(arena, file, sizeof(f32));
+    if(ba.len >= sizeof(f32))
+        ret = *((f32 *)ba.data);
+
+    return ret;
+}
+
+f64 os_file_read_f64(Arena *arena, OS_File file)
+{
+    f64 ret = 0;
+
+    ByteArray ba = os_file_read(arena, file, sizeof(f64));
+    if(ba.len >= sizeof(f64))
+        ret = *((f64 *)ba.data);
+
+    return ret;
+}
+
+String os_file_read_str(Arena *arena, OS_File file)
+{
+    String str = {0};
+
+    u64 str_len = os_file_read_u64(arena, file);
+    ByteArray ba = os_file_read(arena, file, str_len);
+
+    str.len = str_len;
+    str.data = ba.data;
+
+    return str;
+}
+
 inline s32 os_file_write_u8(OS_File file, u8 x)   { return os_file_write(file, &x, sizeof(u8)); }
 inline s32 os_file_write_u16(OS_File file, u16 x) { return os_file_write(file, &x, sizeof(u16)); }
 inline s32 os_file_write_u32(OS_File file, u32 x) { return os_file_write(file, &x, sizeof(u32)); }
+inline s32 os_file_write_u64(OS_File file, u64 x) { return os_file_write(file, &x, sizeof(u64)); }
 inline s32 os_file_write_f32(OS_File file, f32 x) { return os_file_write(file, &x, sizeof(f32)); }
-inline s32 os_file_write_str(OS_File file, String str) { return os_file_write(file, str.data, str.len); }
+inline s32 os_file_write_f64(OS_File file, f64 x) { return os_file_write(file, &x, sizeof(f64)); }
+inline s32 os_file_write_str(OS_File file, String str) 
+{
+    s32 size_count = os_file_write(file, &str.len, sizeof(u64));
+    s32 data_count = os_file_write(file, str.data, str.len);
+    return size_count + data_count;
+}
 inline s32 os_file_write_u32_at_index(OS_File file, u32 x, u32 index)
 {
     s64 pos = os_file_get_pos(file);

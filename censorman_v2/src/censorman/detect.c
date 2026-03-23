@@ -173,7 +173,7 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
         for(s64 i = 0; i < new_boxes.count; ++i)
         {
             Box *box = (Box *)list_get(&new_boxes, i);
-            box_print(box);
+            if(s_log_level == LOG_LEVEL_VERBOSE) box_print(box);
         }
     }
 
@@ -281,7 +281,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
                     BoxFrame *frame = &box_frames[i+f];
                     frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
                     frame->box_count = f0->box_count;
-                    frame->frame_number = i+f;
+                    frame->frame_number = vid->frames_processed + i + f;
                     MemoryCopy(frame->boxes, f0->boxes, f0->box_count*sizeof(Box));
                 }
             }
@@ -301,7 +301,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
                 // no previous frame, copy f1 backward
                 frame->box_count = f1->box_count;
                 frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
-                frame->frame_number = i+f;
+                frame->frame_number = vid->frames_processed + i + f;
                 frame->interpolated = true;
                 MemoryCopy(frame->boxes, f1->boxes, f1->box_count * sizeof(Box));
                 continue;
@@ -313,7 +313,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
 
             frame->box_count = a->box_count;
             frame->boxes = PUSH_ARRAY(vid->arena, Box, frame->box_count);
-            frame->frame_number = i+f;
+            frame->frame_number = vid->frames_processed + i + f;
             frame->interpolated = true;
 
             // Match boxes and smooth position exponentially
@@ -825,7 +825,6 @@ List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 thr
 
     const f32 *data      = (const f32 *)ncnn_mat_get_data(out0);
     s32 num_anchors      = ncnn_mat_get_w(out0); // 2100
-    s32 num_channels     = ncnn_mat_get_h(out0); // 18 = 4 bbox + 14 classes
 
     const f32 *cx_data = data + 0 * num_anchors;
     const f32 *cy_data = data + 1 * num_anchors;
@@ -1017,7 +1016,7 @@ void box_print(Box *b)
 {
     if(!b) return;
 
-    logv("Box: (" STR_FMT ") [%-4d %-4d %-4d %-4d], Confidence: %2u, Landmarks: [(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d)]",
+    logi("Box: (" STR_FMT ") [%-4d %-4d %-4d %-4d], Confidence: %2u, Landmarks: [(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d)]",
             STR_ARG(detect_type_to_string(b->type)),
             b->x, b->y, b->w, b->h, b->confidence,
             b->landmarks[0].x, b->landmarks[0].y,

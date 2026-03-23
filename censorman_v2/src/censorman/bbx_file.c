@@ -1,56 +1,147 @@
 
 OS_File bbx_file_create(String file_path)
 {
+    OS_File file = {0};
+
     Temp scratch = scratch_begin();
     char *file_path_cstr = string_to_cstr(scratch.arena, file_path);
-    OS_File file = os_file_create_and_open(file_path_cstr, OS_WRITABLE);
+    file = os_file_create_and_open(file_path_cstr, OS_WRITABLE);
     scratch_end(scratch);
 
     return file;
 }
 
-void bbx_file_write_header(OS_File file, s32 w, s32 h, u32 total_frame_count)
+void bbx_file_write_preamble(OS_File file, u32 asset_count)
 {
-    os_file_write_str(file, S("BBX"));
-    os_file_write_u8(file,  BBX_VERSION);
-    os_file_write_u16(file, (u16)w);
-    os_file_write_u16(file, (u16)h);
-    os_file_write_f32(file, 0.0);
-    os_file_write_u32(file, total_frame_count);
+    if(file.is_valid)
+    {
+        os_file_write_u8(file, 'B');
+        os_file_write_u8(file, 'B');
+        os_file_write_u8(file, 'X');
+        os_file_write_u8(file,  BBX_VERSION);
+        os_file_write_u32(file, asset_count);
+    }
 }
 
-void bbx_file_write_total_frame_count(OS_File file, u32 total_frame_count)
+void bbx_file_write_asset_header(OS_File file, u32 asset_index, Asset *asset, s32 w, s32 h, f32 fps, u32 total_frame_count)
 {
-    os_file_write_u32_at_index(file, total_frame_count, BBX_FRAME_COUNT_OFFSET);
+    if(file.is_valid)
+    {
+        os_file_write_u32(file, asset_index);
+        os_file_write_u8(file, asset->type);
+        os_file_write_str(file, asset->path);
+        os_file_write_u16(file, (u16)w);
+        os_file_write_u16(file, (u16)h);
+        os_file_write_f32(file, fps);
+        os_file_write_u32(file, total_frame_count);
+    }
 }
 
 void bbx_file_write_box_frame(OS_File file, BoxFrame *frame)
 {
-    os_file_write_u32(file, frame->frame_number);
-    os_file_write_u32(file, frame->box_count);
-    os_file_write_u8(file,  frame->interpolated ? 0x01 : 0x00);
-
-    for(s32 i = 0; i < frame->box_count; ++i)
+    if(file.is_valid)
     {
-        Box *box = &frame->boxes[i];
+        os_file_write_u32(file, frame->frame_number);
+        os_file_write_u32(file, frame->box_count);
+        os_file_write_u8(file,  frame->interpolated ? 0x01 : 0x00);
 
-        os_file_write_u8(file, box->type);
-
-        os_file_write_u16(file, box->x);
-        os_file_write_u16(file, box->y);
-        os_file_write_u16(file, box->w);
-        os_file_write_u16(file, box->h);
-        os_file_write_u16(file, box->confidence);
-
-        for(s32 i = 0; i < LANDMARK_COUNT; ++i)
+        for(s32 i = 0; i < frame->box_count; ++i)
         {
-            os_file_write_u16(file, box->landmarks[i].x);
-            os_file_write_u16(file, box->landmarks[i].y);
+            Box *box = &frame->boxes[i];
+
+            os_file_write_u8(file, box->type);
+
+            os_file_write_u16(file, box->x);
+            os_file_write_u16(file, box->y);
+            os_file_write_u16(file, box->w);
+            os_file_write_u16(file, box->h);
+            os_file_write_u16(file, box->confidence);
+
+            for(s32 i = 0; i < LANDMARK_COUNT; ++i)
+            {
+                os_file_write_u16(file, box->landmarks[i].x);
+                os_file_write_u16(file, box->landmarks[i].y);
+            }
         }
     }
 }
 
 void bbx_file_close(OS_File file)
 {
-    os_file_close(file);
+    if(file.is_valid)
+    {
+        os_file_close(file);
+    }
+}
+
+void bbx_file_parse_and_print(String bbx_file_path)
+{
+    Temp scratch = scratch_begin();
+
+    char *cstr = string_to_cstr(scratch.arena, bbx_file_path);
+    OS_File file = os_file_open_readonly(cstr);
+
+    if(file.is_valid)
+    {
+
+        // parse out bbx file
+        logi("BBX File '%s':", cstr);
+
+        // preamble
+        ByteArray bbx_magic = os_file_read(scratch.arena, file, 3);
+        u8 version          = os_file_read_u8(scratch.arena, file);
+        u32 asset_count     = os_file_read_u32(scratch.arena, file);
+
+        logi("  bbx_magic:   %.*s", bbx_magic.len, bbx_magic.data);
+        logi("  version:     %u", version);
+        logi("  asset count: %u", asset_count);
+
+        for(s64 i = 0; i < asset_count; ++i)
+        {
+            u32    asset_index = os_file_read_u32(scratch.arena, file);
+            u8     asset_type  = os_file_read_u8(scratch.arena, file);
+            String asset_path  = os_file_read_str(scratch.arena, file);
+            u16    w           = os_file_read_u16(scratch.arena, file);
+            u16    h           = os_file_read_u16(scratch.arena, file);
+            f32    fps         = os_file_read_f32(scratch.arena, file);
+            u32    frame_count = os_file_read_u32(scratch.arena, file);
+
+            logi("  [%u] (" STR_FMT "): " STR_FMT, asset_index, STR_ARG(asset_type_to_string(asset_type)), STR_ARG(asset_path));
+            logi("    w: %u, h: %u", w, h);
+            logi("    fps: %f", fps);
+            logi("    frame count: %u", frame_count);
+
+            for(s64 j = 0; j < frame_count; ++j)
+            {
+                u32 frame_number = os_file_read_u32(scratch.arena, file);
+                u32 box_count = os_file_read_u32(scratch.arena, file);
+                u8 interpolated = os_file_read_u8(scratch.arena, file);
+
+                logi("    frame %u (box count: %u) interpolated: %s", frame_number, box_count, interpolated == 0x00 ? "No" : "Yes");
+
+                for(s64 k = 0; k < box_count; ++k)
+                {
+                    Box box = {0};
+
+                    box.type = os_file_read_u8(scratch.arena, file);
+
+                    box.x = os_file_read_u16(scratch.arena, file);
+                    box.y = os_file_read_u16(scratch.arena, file);
+                    box.w = os_file_read_u16(scratch.arena, file);
+                    box.h = os_file_read_u16(scratch.arena, file);
+                    box.confidence = os_file_read_u16(scratch.arena, file);
+
+                    for(s32 l = 0; l < LANDMARK_COUNT; ++l)
+                    {
+                        box.landmarks[l].x = os_file_read_u16(scratch.arena, file);
+                        box.landmarks[l].y = os_file_read_u16(scratch.arena, file);
+                    }
+
+                    box_print(&box);
+                }
+            }
+        }
+    }
+
+    scratch_end(scratch);
 }

@@ -375,7 +375,7 @@ void settings_print(Settings *settings)
     scratch_end(scratch);
 }
 
-AssetType asset_from_string(String str)
+AssetType asset_type_from_string(String str)
 {
     if(string_equal(str, S("image")))
         return TYPE_IMAGE;
@@ -386,7 +386,7 @@ AssetType asset_from_string(String str)
     return TYPE_UNSUPPORTED;
 }
 
-String asset_to_string(AssetType type)
+String asset_type_to_string(AssetType type)
 {
     switch(type)
     {

@@ -46,6 +46,12 @@ typedef struct
     u32 err_code;
 } FuncResult;
 
+typedef struct
+{
+    u64 len;
+    u8 *data;
+} ByteArray;
+
 //===================================
 // Utility Helpers
 //===================================

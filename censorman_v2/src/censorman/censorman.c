@@ -53,6 +53,7 @@ Barrier   barrier        = {0};
 Thread    *threads       = NULL;
 Stopwatch stopwatch      = {0};
 Settings  settings       = {0};
+OS_File   bbx_file       = {0};
 Video     vid            = {0};
 ListArray frames         = {0};
 BoxFrame  *box_frames    = NULL;
@@ -97,11 +98,19 @@ int main(int argc, char **args)
     threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
     barrier = barrier_create(settings.thread_count);
 
+    // create BBX file if specified
+    if(settings.bbx_output.len > 0)
+    {
+        bbx_file = bbx_file_create(settings.bbx_output);
+    }
+
+    // launch threads
     for(s64 thread_index = 0; thread_index < settings.thread_count; ++thread_index)
     {
         threads[thread_index] = thread_launch(entry_point, (void *)thread_index);
     }
 
+    // join threads
     for(s64 thread_index = 0; thread_index < settings.thread_count; ++thread_index)
     {
         thread_join(threads[thread_index]);
@@ -120,11 +129,13 @@ s64 entry_point(void *params)
     Stopwatch sw = stopwatch_create();
     Arena *arena_frame = arena_create(MB(8));
 
+    NARROW bbx_file_write_preamble(bbx_file, settings.asset_count);
+
     for(u32 i = 0; i < settings.asset_count; ++i)
     {
         Asset *asset = &settings.assets[i];
 
-        NARROW logi("Processing " STR_FMT " [%03d/%03d]: " STR_FMT, STR_ARG(asset_to_string(asset->type)), i+1, settings.asset_count, STR_ARG(asset->path));
+        NARROW logi("Processing " STR_FMT " [%03d/%03d]: " STR_FMT, STR_ARG(asset_type_to_string(asset->type)), i+1, settings.asset_count, STR_ARG(asset->path));
 
         if(asset->type == TYPE_IMAGE)
         {
@@ -133,6 +144,8 @@ s64 entry_point(void *params)
                 arena_reset(arena_frame);
 
                 Image img_src = image_load(arena_frame, asset->path, &sw);
+
+                bbx_file_write_asset_header(bbx_file, i, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
 
                 List box_list = list_create(arena_frame, sizeof(Box));
 
@@ -149,7 +162,9 @@ s64 entry_point(void *params)
                     detect(cfg, &img, &box_list);
                 }
 
-                BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 1);
+                BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 0);
+
+                bbx_file_write_box_frame(bbx_file, &box_frame);
 
                 if(!settings.no_encode)
                 {
@@ -173,13 +188,13 @@ s64 entry_point(void *params)
                     // [output]
                     image_save(&img_src, asset->output_path);
                 }
+
             }
         }
         else if(asset->type == TYPE_VIDEO)
         {
             NARROW
             {
-
                 arena_reset(arena_chunk);
                 video_complete = false;
 
@@ -193,6 +208,8 @@ s64 entry_point(void *params)
 
                 vid = video_begin(arena_chunk, asset->path, asset->output_path, &vs);
                 video_print(&vid);
+
+                bbx_file_write_asset_header(bbx_file, i, asset, vid.w, vid.h, vid.fps, vid.frame_count_total);
             }
 
             for(;;)
@@ -266,7 +283,7 @@ s64 entry_point(void *params)
                     }
 
                     mutex_lock(&arena_chunk_mutex);
-                    box_frames[frame] = convert_list_to_box_frame(arena_chunk, box_list, frame);
+                    box_frames[frame] = convert_list_to_box_frame(arena_chunk, box_list, vid.frames_processed + frame);
                     mutex_unlock(&arena_chunk_mutex);
                 }
 
@@ -280,6 +297,17 @@ s64 entry_point(void *params)
                     detect_interpolate_boxes(&vid, box_frames);
 
                     stopwatch_end(&sw, S("interpolate"));
+
+                    stopwatch_begin(&sw, S("write bbx"));
+
+                    // write bbx box frames
+                    for(s64 i = 0; i < vid.frame_count; ++i)
+                    {
+                        bbx_file_write_box_frame(bbx_file, &box_frames[i]);
+                    }
+
+                    stopwatch_end(&sw, S("write bbx"));
+
                 }
 
                 barrier_sync(&barrier);
@@ -341,7 +369,12 @@ s64 entry_point(void *params)
         }
     }
 
-    NARROW stopwatch_print(&sw);
+    NARROW 
+    {
+        bbx_file_close(bbx_file);
+        bbx_file_parse_and_print(settings.bbx_output); // @TEMP
+        stopwatch_print(&sw);
+    }
 
     return 0;
 }

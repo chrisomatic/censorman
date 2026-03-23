@@ -5,16 +5,16 @@
 typedef enum
 {
     TYPE_UNSUPPORTED = 0,
-    TYPE_IMAGE,
-    TYPE_VIDEO,
+    TYPE_IMAGE = 1,
+    TYPE_VIDEO = 2,
 } AssetType;
 
 typedef struct
 {
     AssetType type;
 
-    String    path;
-    String    output_path;
+    String path;
+    String output_path;
 } Asset;
 
 typedef struct
@@ -53,8 +53,8 @@ typedef struct
 
 } Settings;
 
-AssetType asset_from_string(String str);
-String asset_to_string(AssetType type);
+AssetType asset_type_from_string(String str);
+String asset_type_to_string(AssetType type);
 
 void     settings_print_help();
 Settings settings_default();

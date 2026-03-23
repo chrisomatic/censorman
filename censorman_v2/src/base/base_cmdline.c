@@ -28,11 +28,13 @@ CmdLine cmdline_parse(Arena *arena, int argc, char *args[])
             arg_str = string_advance(arg_str, 1);
             arg.is_flag = true;
         }
+#if OS == OS_WINDOWS
         else if(string_starts_with(arg_str, S("/")))
         {
             arg_str = string_advance(arg_str, 1);
             arg.is_flag = true;
         }
+#endif
 
         arg.hash = hash_string(arg_str, 0);
 
@@ -44,7 +46,11 @@ CmdLine cmdline_parse(Arena *arena, int argc, char *args[])
             if(i < argc - 1)
             {
                 String next_arg = STR(args[i+1]);
+#if OS == OS_WINDOWS
                 if(!string_starts_with(next_arg,S("-")) && !string_starts_with(next_arg, S("/")))
+#else
+                if(!string_starts_with(next_arg,S("-")))
+#endif
                 {
                     // assocate next arg as value with this one
                     arg.value = next_arg;

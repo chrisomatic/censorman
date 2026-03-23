@@ -260,7 +260,9 @@ OS_File os_file_open(char *file_path, OS_FileProps props)
 OS_File os_file_create_and_open(char *file_path, OS_FileProps props)
 {
     s32 access = _map_props_to_access(props);
-    if(access == -1) access = O_CREAT | O_TRUNC;
+
+    if(access == -1) access = 0;
+    access |= (O_CREAT | O_TRUNC);
 
     s32 fd = open(file_path, access, 0644);
 
@@ -270,6 +272,11 @@ OS_File os_file_create_and_open(char *file_path, OS_FileProps props)
     };
 
     file.is_valid = (fd > -1);
+    if(!file.is_valid)
+    {
+        loge("Error opening file %s: %s", file_path, strerror(errno));
+    }
+
     return file;
 }
 
@@ -335,6 +342,20 @@ void os_file_set_pos(OS_File file, s64 pos)
 {
     lseek(file.handle, pos, SEEK_SET);
     return;
+}
+
+ByteArray os_file_read(Arena *arena, OS_File file, u64 len)
+{
+    u64 bytes_left = os_file_get_remaining_size(file);
+    s64 bytes_to_read = MIN(len, bytes_left);
+
+    ByteArray ba = {0};
+    ba.data = PUSH_ARRAY(arena, u8, bytes_to_read);
+    ba.len = bytes_to_read;
+
+    read(file.handle, ba.data, bytes_to_read * sizeof(u8));
+
+    return ba;
 }
 
 s32 os_file_read_char(OS_File file)
@@ -494,7 +515,7 @@ int os_print_raw(const char* msg, s32 msg_len)
 static void *thread_bootstrap(void *raw)
 {
     ThreadWrapper *wrapper = (ThreadWrapper *)raw;
-    s32 result = wrapper->func(wrapper->arg);
+    s64 result = wrapper->func(wrapper->arg);
     free(wrapper);
     return (void *)(s64 *)result;
 }

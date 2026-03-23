@@ -196,9 +196,18 @@ b32         os_file_is_valid(OS_File file);
 s64         os_file_get_size(OS_File file);
 s64         os_file_get_length_to_char(OS_File file, char c);
 
+ByteArray   os_file_read(Arena *arena, OS_File file, u64 len);
 String      os_file_read_to_string(Arena *arena, OS_File file);
 String      os_file_read_line(Arena *arena, OS_File file);
 StringArray os_file_read_lines(Arena *arena, OS_File file);
+
+u8     os_file_read_u8(Arena *arena, OS_File file);
+u16    os_file_read_u16(Arena *arena, OS_File file);
+u32    os_file_read_u32(Arena *arena, OS_File file);
+u64    os_file_read_u64(Arena *arena, OS_File file);
+f32    os_file_read_f32(Arena *arena, OS_File file);
+f64    os_file_read_f64(Arena *arena, OS_File file);
+String os_file_read_str(Arena *arena, OS_File file);
 
 inline s32  os_file_write(OS_File file, void *data, s32 size);
 inline s32  os_file_write_u8(OS_File file, u8 x);
@@ -209,6 +218,7 @@ inline s32  os_file_write_str(OS_File file, String str);
 inline s32  os_file_write_u32_at_index(OS_File file, u32 x, u32 index);
 
 s64  os_file_get_pos(OS_File file);
+u64 os_file_get_remaining_size(OS_File file);
 void os_file_set_pos(OS_File file, s64 pos);
 void os_file_reset_pos(OS_File file);
 
