@@ -35,7 +35,6 @@ typedef struct
     u64 buffer_size;
 
     f32 nms_threshold;        // [0.0 - 1.0]
-    f32 confidence_threshold; // [0.0 - 1.0]
     f32 box_padding;          // [0.0 - 1.0]
     f32 smoothing_window;     // [0.0 - 1.0]
     f32 blur_strength;        // [0.0 - 1.0]
@@ -56,7 +55,7 @@ typedef struct
 AssetType asset_type_from_string(String str);
 String asset_type_to_string(AssetType type);
 
-void     settings_print_help();
 Settings settings_default();
 Settings settings_parse(Arena *arena, int argc, char **args);
 void     settings_print(Settings *settings);
+void     settings_print_help();

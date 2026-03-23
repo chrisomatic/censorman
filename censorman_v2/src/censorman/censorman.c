@@ -74,21 +74,25 @@ int main(int argc, char **args)
 
     randgen_seed_with_entropy();
 
-    censorman_version();
+    // parse command line
+    settings = settings_parse(arena_perm, argc, args);
+
+    if(!settings.quiet)
+    {
+        censorman_version();
+        if(settings.help)
+        {
+            settings_print_help();   
+            return CM_SUCCESS;
+        }
+    }
+
+    settings_print(&settings);
 
 #if RUN_TESTS
     tests_run();
 #endif
 
-    // parse command line
-    settings = settings_parse(arena_perm, argc, args);
-    if(settings.help)
-    {
-        settings_print_help();   
-        return CM_SUCCESS;
-    }
-
-    settings_print(&settings);
     s_thread_context.count = settings.thread_count;
 
     // initialize models

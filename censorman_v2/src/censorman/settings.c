@@ -1,38 +1,4 @@
 
-/*
- 
-USAGE
-
-    censorman <asset_path> [options]
-
-ASSET_PATH
-
-    Accespt 
-
-OPTIONS
-
-    --filters [-f] <filters>
-        a comma-separated list of filters [blur, gaussian_blur, pixelate, scramble, blackout]
-        default: blur
-
-    --detect [-d] <detect-types>
-        default: face
-    
-EXAMPLES
-
-    # Detect faces in test1.jpg and pixelate with a block scale of 0.12
-    censorman assets/images/test1.jpg -d face -f pixelate:0.12
-   
-    censorman assets/videos/vid1.mp4 -d face -f blur --debug
-
-*/
-
-void settings_print_help()
-{
-    // @TODO
-    fprintf(stdout, "Help!\n");
-}
-
 Settings settings_default()
 {
     Settings settings = {0};
@@ -45,8 +11,6 @@ Settings settings_default()
 
     settings.thread_count         = os_system_info.logical_processor_count;
     settings.buffer_size          = MB(512);
-    settings.nms_threshold        = 0.45f;
-    settings.confidence_threshold = 0.25f;
     settings.box_padding          = 0.15f;
     settings.blur_strength        = 0.60f;
     settings.block_scale          = 0.12f;
@@ -85,30 +49,22 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_detect_types     = string_array_create(scratch.arena, 2, S("detect"),           S("d"));
     StringArray ids_filters          = string_array_create(scratch.arena, 2, S("filter"),           S("f"));
     StringArray ids_output_folder    = string_array_create(scratch.arena, 2, S("output_folder"),    S("o"));
-    StringArray ids_confidence       = string_array_create(scratch.arena, 2, S("confidence"),       S("c"));
     StringArray ids_thread_count     = string_array_create(scratch.arena, 2, S("thread_count"),     S("j"));
     StringArray ids_buffer_size      = string_array_create(scratch.arena, 2, S("buffer_size"),      S("bs"));
-    StringArray ids_nms_threshold    = string_array_create(scratch.arena, 2, S("nms_threshold"),    S("nms"));
     StringArray ids_box_padding      = string_array_create(scratch.arena, 2, S("box_padding"),      S("bp"));
     StringArray ids_smoothing_window = string_array_create(scratch.arena, 2, S("smoothing_window"), S("sw"));
     StringArray ids_texture_path     = string_array_create(scratch.arena, 2, S("texture_path"),     S("tp"));
-    StringArray ids_block_scale      = string_array_create(scratch.arena, 2, S("block_scale"),      S("sca"));
-    StringArray ids_blur_strength    = string_array_create(scratch.arena, 2, S("blur_strength"),    S("str"));
-    StringArray ids_bbx_output       = string_array_create(scratch.arena, 2, S("bbx_output"),       S("bbx"));
+    StringArray ids_bbx_output       = string_array_create(scratch.arena, 2, S("bbx_file"),         S("bbx"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
     String str_detect_types     = cmdline_get_value_first_match(&cmdline, ids_detect_types);
     String str_filters          = cmdline_get_value_first_match(&cmdline, ids_filters);
     String str_output_folder    = cmdline_get_value_first_match(&cmdline, ids_output_folder);
-    String str_confidence       = cmdline_get_value_first_match(&cmdline, ids_confidence);
     String str_thread_count     = cmdline_get_value_first_match(&cmdline, ids_thread_count);
     String str_buffer_size      = cmdline_get_value_first_match(&cmdline, ids_buffer_size);
-    String str_nms_threshold    = cmdline_get_value_first_match(&cmdline, ids_nms_threshold);
     String str_box_padding      = cmdline_get_value_first_match(&cmdline, ids_box_padding);
     String str_smoothing_window = cmdline_get_value_first_match(&cmdline, ids_smoothing_window);
     String str_texture_path     = cmdline_get_value_first_match(&cmdline, ids_texture_path);
-    String str_block_scale      = cmdline_get_value_first_match(&cmdline, ids_block_scale);
-    String str_blur_strength    = cmdline_get_value_first_match(&cmdline, ids_blur_strength);
     String str_bbx_output       = cmdline_get_value_first_match(&cmdline, ids_bbx_output);
     String str_distort_audio    = cmdline_get_value_first_match(&cmdline, ids_distort_audio);
 
@@ -118,12 +74,8 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
     if(str_output_folder.len > 0)    settings.output_folder        = str_output_folder;
     if(str_bbx_output.len > 0)       settings.bbx_output           = str_bbx_output;
-    if(str_confidence.len > 0)       settings.confidence_threshold = string_to_f64(str_confidence);
-    if(str_nms_threshold.len > 0)    settings.nms_threshold        = string_to_f64(str_nms_threshold);
     if(str_box_padding.len > 0)      settings.box_padding          = string_to_f64(str_box_padding);
     if(str_smoothing_window.len > 0) settings.smoothing_window     = string_to_f64(str_smoothing_window);
-    if(str_block_scale.len > 0)      settings.block_scale          = string_to_f64(str_block_scale);
-    if(str_blur_strength.len > 0)    settings.blur_strength        = string_to_f64(str_blur_strength);
     if(str_thread_count.len > 0)     settings.thread_count         = string_to_s64(str_thread_count);
     if(str_buffer_size.len > 0)      settings.buffer_size          = string_to_s64(str_buffer_size);
     if(str_distort_audio.len > 0)
@@ -132,7 +84,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         settings.distort_audio_carrier_hz = string_to_f64(str_distort_audio);    
     }
 
-    b32 f_help      = cmdline_has_any_flags(&cmdline, ids_help);
+    b32 f_help      = cmdline_has_any_flags(&cmdline, ids_help) | (cmdline.args.count == 0);
     b32 f_no_encode = cmdline_has_any_flags(&cmdline, ids_no_encode);
     b32 f_debug     = cmdline_has_any_flags(&cmdline, ids_debug);
     b32 f_verbose   = cmdline_has_any_flags(&cmdline, ids_verbose);
@@ -215,6 +167,24 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         for(u32 i = 0; i < strs_detect_types.count; ++i)
         {
             String detect_type_str = string_trim(strs_detect_types.items[i]);
+
+            // check for :<param1>:<param2>
+            StringArray detect_type_params = string_split(scratch.arena, detect_type_str, S(":"));
+            detect_type_str = detect_type_params.items[0];
+            f64 param1 = 0.0;
+            if(detect_type_params.count > 1)
+            {
+                param1 = string_to_f64(detect_type_params.items[1]);
+                param1 = CLAMP(param1, 0.0, 1.0);
+            }
+
+            f64 param2 = 0.0;
+            if(detect_type_params.count > 2)
+            {
+                param2 = string_to_f64(detect_type_params.items[2]);
+                param2 = CLAMP(param2, 0.0, 1.0);
+            }
+
             DetectType type = detect_type_from_string(detect_type_str);
             if(type == DETECT_TYPE_NONE) continue;
 
@@ -251,6 +221,16 @@ Settings settings_parse(Arena *arena, int argc, char **args)
                     cfg->box_padding_percent  = settings.box_padding;
                     break;
             }
+
+            if(param1 > 0.0)
+            {
+                cfg->threshold_confidence = param1;
+            }
+
+            if(param2 > 0.0)
+            {
+                cfg->threshold_nms = param2;
+            }
         }
     }
 
@@ -269,6 +249,17 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         for(u32 i = 0; i < strs_filters.count; ++i)
         {
             String filter_str = string_trim(strs_filters.items[i]);
+
+            // check for :<parameter>
+            StringArray filter_params = string_split(scratch.arena, filter_str, S(":"));
+            filter_str = filter_params.items[0];
+            f64 param = 0.0;
+            if(filter_params.count > 1)
+            {
+                param = string_to_f64(filter_params.items[1]);
+                param = CLAMP(param, 0.0, 1.0);
+            }
+
             FilterType type = filter_from_string(filter_str);
             if(type == FILTER_TYPE_NONE) continue;
 
@@ -277,11 +268,11 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
             if(type == FILTER_TYPE_BLUR_BOX || type == FILTER_TYPE_BLUR_GAUSSIAN)
             {
-                filter->blur_strength = settings.blur_strength;
+                filter->blur_strength = param == 0.0 ? settings.blur_strength : param;
             }
             else if(type == FILTER_TYPE_PIXELATE)
             {
-                filter->block_scale = settings.block_scale;
+                filter->block_scale = param == 0.0 ? settings.block_scale : param;
             }
 
             settings.filter_count++;
@@ -318,6 +309,7 @@ void settings_print(Settings *settings)
     {
         DetectConfig *cfg = &settings->detect_configs[i];
         string_list_add(&sl, detect_type_to_string(cfg->type));
+        string_list_addf(&sl, "(%0.2f,%0.2f)", cfg->threshold_confidence, cfg->threshold_nms);
         if(i < settings->detect_config_count - 1)
             string_list_add(&sl, S(", "));
     }
@@ -360,7 +352,6 @@ void settings_print(Settings *settings)
     logi("%-22s " STR_FMT, "Filters", STR_ARG(filters_str));
 
     logi("%-22s %u",            "Thread Count",         settings->thread_count);
-    logi("%-22s %f",            "Confidence Threshold", settings->confidence_threshold);
     logi("%-22s %lu B",         "Buffer Size",          settings->buffer_size);
     logi("%-22s %f",            "Box Padding",          settings->box_padding);
     logi("%-22s %f",            "Smoothing Window",     settings->smoothing_window);
@@ -398,3 +389,123 @@ String asset_type_to_string(AssetType type)
 
     return S("unsupported");
 }
+
+void settings_print_help()
+{
+    printf("\n");
+    printf("USAGE\n");
+    printf("\n");
+    printf("    censorman <asset_path> [options]\n");
+    printf("\n");
+    printf("ASSET_PATH\n");
+    printf("\n");
+    printf("    Accepts comma-separated list of image and video file paths, or a folder path.\n");
+    printf("\n");
+    printf("    * Supported image formats: [ PNG, JPG, GIF ]\n");
+    printf("    * Supported video formats: [ MP4, MOV ]\n");
+    printf("\n");
+    printf("OPTIONS\n");
+    printf("\n");
+    printf("    --filter [-f] <filters>\n");
+    printf("\n");
+    printf("        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout]\n");
+    printf("        default: blur\n");
+    printf("\n");
+    printf("        Each filter can specify an optional parameter with ':' (e.g blur:0.20)\n");
+    printf("        This parameter indicates 'blur_strength' for blur and gaussian_blur, or\n");
+    printf("        'block_scale' with pixelate\n");
+    printf("\n");
+    printf("    --detect [-d] <detect-types>\n");
+    printf("\n");
+    printf("        a comma-separated list of detect types [face,person,license_plate,nudity]\n");
+    printf("        default: face\n");
+    printf("\n");
+    printf("        Each detect type can specify up to two optional parameters with ':' between them\n");
+    printf("        The first parameter is confidence threshold\n");
+    printf("        The second parameter is NMS IOU threshold\n");
+    printf("        Most of the models have 0.25 confidence threshold, and 0.45 NMS IOU threshold\n");
+    printf("\n");
+    printf("    --output_folder [-o] <output_folder_path>\n");
+    printf("\n");
+    printf("        Specify the output folder of processed assets (images/videos).\n");
+    printf("        If the folder doesn't exist, it will be created\n");
+    printf("        Default: output\n");
+    printf("\n");
+    printf("    --distort_audio [-da] <distortion_hz>\n");
+    printf("\n");
+    printf("        Apply a ring modulation to the audio stream of a video file.\n");
+    printf("        A typical range for distortion is 150 Hz to 300 Hz\n");
+    printf("\n");
+    printf("    --thread_count [-j] <thread_count>\n");
+    printf("\n");
+    printf("        Specify thread count. Used for video processing. Images are processed single-threaded.\n");
+    printf("        Default: Number of logical cores\n");
+    printf("\n");
+    printf("    --buffer_size [-bs] <buffer_size_bytes>\n");
+    printf("\n");
+    printf("        Set the maximum buffer size for video frames. Video frames are loaded in chunks, so\n");
+    printf("        larger chunks allow more frames of a video to be decoded at a time.\n");
+    printf("        Default: 536870912 (512 MB)\n");
+    printf("\n");
+    printf("    --box_padding [-bp] <box_padding_percent>\n");
+    printf("\n");
+    printf("        Specify the box padding percentage. Padding is added at the end of the detection.\n");
+    printf("        Default: 0.15 (15 %%)\n");
+    printf("\n");
+    printf("    --smoothing_window [-sw] <smoothing_window_seconds>\n");
+    printf("\n");
+    printf("        Used for video interpolation of detection boxes. Interpolation is an exponentional smooth.\n");
+    printf("        There is also an implicit first stage to find discontinuities and fast motion\n");
+    printf("        and schedule those frames for detection\n");
+    printf("        Default: 0.200 (200 ms)\n");
+    printf("\n");
+    printf("    --texture_path [-tp]\n");
+    printf("\n");
+    printf("        (Unimplemented)\n");
+    printf("\n");
+    printf("    --bbx_file [-bbx] <bbx_file_path>\n");
+    printf("\n");
+    printf("        Bounding-box output file. If specified, the detect box data will be written to a file\n");
+    printf("\n");
+    printf("    --bbx_file_format\n");
+    printf("\n");
+    printf("        Print information about the file format for BBX files\n");
+    printf("\n");
+    printf("    --no_encode [-ne]\n");
+    printf("\n");
+    printf("        Disable the writing of the processed output file(s)\n");
+    printf("\n");
+    printf("    --debug [-db]\n");
+    printf("\n");
+    printf("        Enable debug info markout on output. This will draw the boxes on the output images/videos along with\n");
+    printf("        confidence numbers and labels\n");
+    printf("\n");
+    printf("    --verbose [-vb]\n");
+    printf("\n");
+    printf("        Turn on verbose console prints\n");
+    printf("\n");
+    printf("    --quiet [-q]\n");
+    printf("\n");
+    printf("        Disable all console prints\n");
+    printf("\n");
+    printf("    --help [-h]\n");
+    printf("\n");
+    printf("        Display this help output\n");
+    printf("\n");
+    printf("EXAMPLES\n");
+
+    printf("\n");
+    printf("    1.  Just run default settings on test1.png (detect faces and apply box blur)\n");
+    printf("\n");
+    printf("        censorman assets/images/test1.png\n");
+    printf("\n");
+    printf("    2.  Detect persons on all supported files in assets/images and pixelate boxes with a block scale of 0.12\n");
+    printf("\n");
+    printf("        censorman assets/images -d person -f pixelate:0.12\n");
+    printf("\n");
+    printf("    3.  Apply box blur to faces and license plates in vid1.mp4 with debug markup\n");
+    printf("\n");
+    printf("        censorman assets/videos/vid1.mp4 -d face,license_plate -f blur --debug\n");
+    printf("\n");
+}
+
