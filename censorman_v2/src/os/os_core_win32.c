@@ -192,6 +192,7 @@ b32 os_entropy(u8 *data, u64 len)
 ///////////////////////////////////////
 
 #define OS_PATH_SLASH '\\'
+#define OS_PATH_SLASH_STR S("\\")
 
 struct OS_File
 {
@@ -374,7 +375,7 @@ StringArray os_get_files_in_directory(Arena *arena, String directory)
         b32 is_file = !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
         if(is_file)
         {
-            String file_name = STR(find_data.cFileName);
+            String file_name = string_copy_raw(arena, find_data.cFileName, cstring_strlen(find_data.cFileName));
             string_list_add(&sl, file_name);
         }
 

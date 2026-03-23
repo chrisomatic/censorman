@@ -275,6 +275,22 @@ b32 tests_run()
         stopwatch_end(&stopwatch, S("cmdline"));
     }
 
+    // Files
+
+    {
+        Temp scratch = scratch_begin();
+
+        StringArray sa = os_get_files_in_directory(scratch.arena, S("."));
+
+        logi("File Count: %d", sa.count);
+        for(s64 i = 0; i < sa.count; ++i)
+        {
+            logi("file [%02d]: " STR_FMT, i, STR_ARG(sa.items[i]));
+        }
+
+        scratch_end(scratch);
+    }
+
     // Random Generator
     {
         randgen_seed_with_entropy();
@@ -310,6 +326,9 @@ b32 tests_run()
         for(s64 i = 0; i < thread_count; ++i)
         {
             SumTest *test = &tests[i];
+
+            s_thread_context.index = i;
+            s_thread_context.count = thread_count;
 
             test->range = thread_range(max_num);
             threads[i] = thread_launch(sum_func, (void *)test);

@@ -82,8 +82,8 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_debug            = string_array_create(scratch.arena, 2, S("debug"),            S("db"));
     StringArray ids_verbose          = string_array_create(scratch.arena, 2, S("verbose"),          S("vb"));
     StringArray ids_distort_audio    = string_array_create(scratch.arena, 2, S("distort_audio"),    S("da"));
-    StringArray ids_detect_types     = string_array_create(scratch.arena, 2, S("detect_types"),     S("d"));
-    StringArray ids_filters          = string_array_create(scratch.arena, 2, S("filters"),          S("f"));
+    StringArray ids_detect_types     = string_array_create(scratch.arena, 2, S("detect"),           S("d"));
+    StringArray ids_filters          = string_array_create(scratch.arena, 2, S("filter"),           S("f"));
     StringArray ids_output_folder    = string_array_create(scratch.arena, 2, S("output_folder"),    S("o"));
     StringArray ids_confidence       = string_array_create(scratch.arena, 2, S("confidence"),       S("c"));
     StringArray ids_thread_count     = string_array_create(scratch.arena, 2, S("thread_count"),     S("j"));
@@ -189,14 +189,14 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             if(string_in_array(ext, exts_image))
             {
                 asset->type = TYPE_IMAGE;
-                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, S("/"), file_str));
-                asset->output_path = string_concat(arena, 3, settings.output_folder, S("/"), file_str);
+                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, OS_PATH_SLASH_STR, file_str));
+                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, file_str);
             }
             else if(string_in_array(ext, exts_video))
             {
                 asset->type = TYPE_VIDEO;
-                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, S("/"), file_str));
-                asset->output_path = string_concat(arena, 3, settings.output_folder, S("/"), file_str);
+                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, OS_PATH_SLASH_STR, file_str));
+                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, file_str);
             }
             else
             {

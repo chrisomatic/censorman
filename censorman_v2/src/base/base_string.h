@@ -62,7 +62,8 @@ b32 string_starts_with(String str, String start);
 b32 string_ends_with(String str, String end);
 
 String string_nil();
-String string_copy(Arena *arena,String str);
+String string_copy(Arena *arena, String str);
+String string_copy_raw(Arena *arena, u8 *data, u64 len);
 
 String string_substring(String s, u64 start, u64 len);
 s64 string_get_first_index(String s, const char *find, b32 from_end);

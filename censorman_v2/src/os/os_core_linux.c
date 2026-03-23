@@ -216,6 +216,7 @@ b32 os_entropy(u8 *data, u64 len)
 ///////////////////////////////////////
 
 #define OS_PATH_SLASH '/'
+#define OS_PATH_SLASH_STR S("/")
 
 struct OS_File
 {

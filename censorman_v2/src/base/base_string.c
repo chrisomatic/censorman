@@ -169,15 +169,21 @@ String string_nil()
     return str;
 }
 
-String string_copy(Arena *arena,String str)
+String string_copy_raw(Arena *arena, u8 *data, u64 len)
 {
     String ret = {0};
-    ret.len = str.len;
-    ret.data = PUSH_ARRAY(arena, u8, str.len);
-    MemoryCopy(ret.data, str.data, str.len);
+    ret.len = len;
+    ret.data = PUSH_ARRAY(arena, u8, len);
+    MemoryCopy(ret.data, data, len);
 
     return ret;
 }
+
+String string_copy(Arena *arena,String str)
+{
+    return string_copy_raw(arena, str.data, str.len);
+}
+
 
 String string_concat(Arena *arena, u64 count, ...)
 {
