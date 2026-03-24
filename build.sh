@@ -1,42 +1,28 @@
 #!/bin/sh
 
+BUILD_DIR=bin
+SOURCE_DIR=src
+APP_NAME=censorman
+
 pushd .
 
-echo "Removing old build files"
-rm -rf bin
+rm -rf $BUILD_DIR
+mkdir $BUILD_DIR
 
-echo "Creating new bin directory"
-mkdir bin
+cd $SOURCE_DIR
 
-if [ "$1" = "win32" ]; then
+OPTS_PROD="-march=x86-64 -Ofast"
+OPTS_DEBUG="-march=x86-64 -Ofast -Wall -pedantic"
+#OPTS_DEBUG="-march=x86-64 -Ofast -Wall -pedantic -fsanitize=address -fno-omit-frame-pointer"
 
-srcs="src/main.cpp"
-opts="-static -static-libgcc -static-libstdc++ -march=x86-64 -Ofast"
-includes="-Isrc -Ithird_party -Ithird_party/ffmpeg/include"
-#libs="-lgomp -Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lz -lx264 -liconv -lbcrypt"
-libs="-Lthird_party/ncnn/lib -lncnn -lgomp -Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lz -lx264 -liconv -lbcrypt"
+OPTS=$OPTS_DEBUG
 
+SRCS="censorman/censorman.c"
+INCLUDES="-I. -Ithird_party/include"
+LIBS="-Lthird_party/lib/linux -lncnn -lncnn_shim -lgomp -lavformat -lavcodec -lswscale -lswresample -lavutil -lexif -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11 -lx264 -lvpx -lpthread -lstdc++ "
 
-output="./bin/censorman.exe"
-
-cmd="g++ ${srcs} ${includes} ${libs} ${opts} -o ${output}"
-echo "${cmd}"
-exec $cmd
-
-else
-
-srcs="src/main.cpp"
-opts="-march=x86-64 -Ofast"
-#-fsanitize=address -fno-omit-frame-pointer"
-#-mavx2
-includes="-Isrc -Ithird_party -Ithird_party/ffmpeg/include -Ithird_party/ncnn/include"
-#libs="-lgomp -Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11 -lx264 -lpthread"
-libs="-Lthird_party/ncnn/lib -lncnn -lgomp -Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lavutil -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11 -lx264 -lpthread"
-
-cmd="g++ ${srcs} ${includes} ${libs} ${opts} -o ./bin/censorman"
-echo "${cmd}"
-exec $cmd
-
-fi
+CMD="gcc $OPTS $SRCS $INCLUDES $LIBS -o ../$BUILD_DIR/$APP_NAME"
+echo "${CMD}"
+exec $CMD
 
 popd
