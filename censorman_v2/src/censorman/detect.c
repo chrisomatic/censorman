@@ -138,7 +138,6 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
 
     f32 threshold_confidence = cfg->threshold_confidence;
     f32 threshold_nms        = cfg->threshold_nms;
-    f32 box_padding_percent  = cfg->box_padding_percent;
 
     List new_boxes  = {0};
 
@@ -148,19 +147,19 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
     {
         case DETECT_TYPE_FACE:
         {
-            new_boxes = detect_faces(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
+            new_boxes = detect_faces(scratch.arena, image, threshold_confidence, threshold_nms);
         } break;
         case DETECT_TYPE_PERSON:
         {
-            new_boxes = detect_persons(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
+            new_boxes = detect_persons(scratch.arena, image, threshold_confidence, threshold_nms);
         } break;
         case DETECT_TYPE_LICENSE_PLATE:
         {
-            new_boxes = detect_license_plates(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
+            new_boxes = detect_license_plates(scratch.arena, image, threshold_confidence, threshold_nms);
         } break;
         case DETECT_TYPE_NUDITY:
         {
-            new_boxes = detect_nudity(scratch.arena, image, threshold_confidence, threshold_nms, box_padding_percent);
+            new_boxes = detect_nudity(scratch.arena, image, threshold_confidence, threshold_nms);
         } break;
         default:
             logw("Unknown detect kind: %d", cfg->type);
@@ -173,7 +172,7 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
         for(s64 i = 0; i < new_boxes.count; ++i)
         {
             Box *box = (Box *)list_get(&new_boxes, i);
-            if(s_log_level == LOG_LEVEL_VERBOSE) box_print(box);
+            box_print(box, s_log_level);
         }
     }
 
@@ -185,7 +184,7 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
     stopwatch_end(image->stopwatch, S("detect"));
 }
 
-BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number)
+BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number)
 {
     BoxFrame bf = {0};
 
@@ -216,6 +215,145 @@ BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number
     }
 
     return bf;
+}
+
+BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 filter_features)
+{
+    BoxFrame output = input;
+
+    if(filter_features == FILTER_FEATURE_NONE)
+        return output;
+
+    b8 feature_eyes  = BIT_CHECK(filter_features, FILTER_FEATURE_EYES);
+    b8 feature_nose  = BIT_CHECK(filter_features, FILTER_FEATURE_NOSE);
+    b8 feature_mouth = BIT_CHECK(filter_features, FILTER_FEATURE_MOUTH);
+
+    // pre-gather how many face boxes there are
+    // and allocate the new number of facial boxes
+
+    s64 box_count_new = 0;
+    for(s64 i = 0; i < input.box_count; ++i)
+    {
+        Box *box = &input.boxes[i];
+        if(box->type == DETECT_TYPE_FACE)
+        {
+            box_count_new += (2*feature_eyes); // there are two eyes <o>_<o>
+            box_count_new += feature_nose;
+            box_count_new += feature_mouth;
+        }
+        else
+        {
+            // not a face, just keep the same box
+            box_count_new += 1;
+        }
+    }
+
+    output.boxes = PUSH_ARRAY(arena, Box, box_count_new);
+    output.box_count = 0;
+
+    // Deconstruct a face box into 5 small boxes for each facial feature
+    // for all face boxes in a box frame
+    //
+    // [ left_eye, right_eye, nose, left_mouth, right_mouth ]
+    //      |          |        |       |            |
+    //      0          1        2       3            4      
+
+    for(s64 i = 0; i < input.box_count; ++i)
+    {
+        Box *input_box = &input.boxes[i];
+
+        if(input_box->type != DETECT_TYPE_FACE)
+        {
+            output.boxes[output.box_count++] = *input_box;
+            continue;
+        }
+
+        Point eye_left    = input_box->landmarks[0];
+        Point eye_right   = input_box->landmarks[1];
+        Point nose        = input_box->landmarks[2];
+        Point mouth_left  = input_box->landmarks[3];
+        Point mouth_right = input_box->landmarks[4];
+
+        if(feature_eyes)
+        {
+            Box box_eye_left  = {0};
+            Box box_eye_right = {0};
+
+            box_eye_left.w = 0.32f * input_box->w;
+            box_eye_left.h = 0.18f * input_box->h;
+            box_eye_left.x = eye_left.x - (0.50f*box_eye_left.w);
+            box_eye_left.y = eye_left.y - (0.50f*box_eye_left.h);
+            box_eye_left.confidence = input_box->confidence;
+            box_eye_left.landmarks[0] = input_box->landmarks[0];
+            box_eye_left.type = DETECT_TYPE_EYE;
+
+            box_eye_right.w = 0.32f * input_box->w;
+            box_eye_right.h = 0.18f * input_box->h;
+            box_eye_right.x = eye_right.x - (0.50f*box_eye_left.w);
+            box_eye_right.y = eye_right.y - (0.50f*box_eye_left.h);
+            box_eye_right.confidence = input_box->confidence;
+            box_eye_right.landmarks[0] = input_box->landmarks[1];
+            box_eye_right.type = DETECT_TYPE_EYE;
+
+            output.boxes[output.box_count++] = box_eye_left;    
+            output.boxes[output.box_count++] = box_eye_right;
+        }
+
+        if(feature_nose)
+        {
+            Box box_nose = {0};
+
+            f32 nose_ratio_x = ABS(nose.x - input_box->x) / (f32)input_box->w;
+
+            box_nose.w = 0.30f * input_box->w;
+            box_nose.h = 0.20f * input_box->h;
+            box_nose.x = nose.x - nose_ratio_x * box_nose.w;
+            box_nose.y = nose.y - 0.75f * box_nose.h;
+
+            box_nose.confidence = input_box->confidence;
+            box_nose.landmarks[0] = input_box->landmarks[2];
+            box_nose.type = DETECT_TYPE_NOSE;
+
+            output.boxes[output.box_count++] = box_nose;
+        }
+
+        if(feature_mouth)
+        {
+            Box box_mouth = {0};
+
+            s32 mouth_dist_x = ABS(mouth_right.x - mouth_left.x);
+            s32 mouth_dist_y = ABS(mouth_right.y - mouth_left.y);
+
+            Point mouth_middle =
+            {
+                .x = MIN(mouth_left.x, mouth_right.x) + 0.50f*mouth_dist_x,
+                .y = MIN(mouth_left.y, mouth_right.y) + 0.50f*mouth_dist_y
+            };
+
+            box_mouth.w = ABS(mouth_right.x - mouth_left.x) + 0.2f*input_box->w;
+            box_mouth.h = ABS(mouth_right.y - mouth_left.y) + 0.2f*input_box->h;
+            box_mouth.x = mouth_middle.x - 0.50f*box_mouth.w;
+            box_mouth.y = mouth_middle.y - 0.35f*box_mouth.h;
+
+            box_mouth.confidence = input_box->confidence;
+            box_mouth.landmarks[0] = input_box->landmarks[3];
+            box_mouth.landmarks[1] = input_box->landmarks[4];
+            box_mouth.type = DETECT_TYPE_MOUTH;
+
+            output.boxes[output.box_count++] = box_mouth;
+        }
+    }
+
+    return output;
+}
+
+void box_frame_apply_padding(BoxFrame input, ImageProps *props, f32 padding_percent)
+{
+    for(s64 i = 0; i < input.box_count; ++i)
+    {
+        Box *box = &input.boxes[i];
+        *box = box_pad(*box, props, padding_percent);
+    }
 }
 
 void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
@@ -379,7 +517,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
                     box_interpolated->confidence = (s32)interp_exp_smooth((f32)ra->confidence, (f32)rb->confidence, alpha, f);
                     box_interpolated->type = ra->type;
 
-                    for(s32 j2 = 0; j2 < 5; ++j2)
+                    for(s32 j2 = 0; j2 < LANDMARK_COUNT; ++j2)
                     {
                         box_interpolated->landmarks[j2].x = (s32)interp_exp_smooth((f32)ra->landmarks[j2].x, (f32)rb->landmarks[j2].x, alpha, f);
                         box_interpolated->landmarks[j2].y = (s32)interp_exp_smooth((f32)ra->landmarks[j2].y, (f32)rb->landmarks[j2].y, alpha, f);
@@ -406,6 +544,9 @@ Model detect_get_model_by_type(DetectType type)
         case DETECT_TYPE_PERSON:        return model_person;
         case DETECT_TYPE_LICENSE_PLATE: return model_license_plate;
         case DETECT_TYPE_NUDITY:        return model_nudity;
+        case DETECT_TYPE_EYE:           return model_face;
+        case DETECT_TYPE_NOSE:          return model_face;
+        case DETECT_TYPE_MOUTH:         return model_face;
         case DETECT_TYPE_NONE:
         default:
     }
@@ -482,7 +623,7 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
     return boxes_curated;
 }
 
-List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
+List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -604,16 +745,10 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
 
     boxes = non_maximum_suppression(boxes, threshold_nms);
 
-    for(s64 i = 0; i < boxes.count; ++i)
-    {
-        Box *box = (Box *)list_get(&boxes, i);
-        *box = box_pad(*box, &image->props_orig, padding_percent);
-    }
-
     return boxes;
 }
 
-List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
+List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -719,17 +854,11 @@ List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 th
     ncnn_mat_destroy(input);
 
     boxes = non_maximum_suppression(boxes, threshold_nms);
-
-    for(s64 i = 0; i < boxes.count; ++i)
-    {
-        Box *box = (Box *)list_get(&boxes, i);
-        *box = box_pad(*box, &image->props_orig, padding_percent);
-    }
  
     return boxes;
 }
 
-List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
+List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -796,16 +925,10 @@ List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence,
 
     boxes = non_maximum_suppression(boxes, threshold_nms);
 
-    for(s64 i = 0; i < boxes.count; ++i)
-    {
-        Box *box = (Box *)list_get(&boxes, i);
-        *box = box_pad(*box, &image->props_orig, padding_percent);
-    }
-
     return boxes;
 }
 
-List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent)
+List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
 {
     List boxes = list_create(arena, sizeof(Box));
 
@@ -874,12 +997,6 @@ List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 thr
     ncnn_mat_destroy(input);
 
     boxes = non_maximum_suppression(boxes, threshold_nms);
-
-    for(s64 i = 0; i < boxes.count; ++i)
-    {
-        Box *box = (Box *)list_get(&boxes, i);
-        *box = box_pad(*box, &image->props_orig, padding_percent);
-    }
 
     return boxes;
 }
@@ -1012,11 +1129,11 @@ Box box_pad(Box box, ImageProps *props, f32 padding_percent)
 }
 
 
-void box_print(Box *b)
+void box_print(Box *b, LogLevel ll)
 {
     if(!b) return;
 
-    logi("Box: (" STR_FMT ") [%-4d %-4d %-4d %-4d], Confidence: %2u, Landmarks: [(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d)]",
+    os_log(ll, __FILE__, __LINE__, "Box: (" STR_FMT ") [%-4d %-4d %-4d %-4d], Confidence: %2u, Landmarks: [(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d),(%-4d,%-4d)]",
             STR_ARG(detect_type_to_string(b->type)),
             b->x, b->y, b->w, b->h, b->confidence,
             b->landmarks[0].x, b->landmarks[0].y,
@@ -1035,6 +1152,9 @@ String detect_type_to_string(DetectType type)
         case DETECT_TYPE_PERSON:        return S("person");
         case DETECT_TYPE_LICENSE_PLATE: return S("license_plate");
         case DETECT_TYPE_NUDITY:        return S("nudity");
+        case DETECT_TYPE_EYE:           return S("eye");
+        case DETECT_TYPE_NOSE:          return S("nose");
+        case DETECT_TYPE_MOUTH:         return S("mouth");
         case DETECT_TYPE_NONE:
         default:
     }
@@ -1055,6 +1175,15 @@ DetectType detect_type_from_string(String str)
 
     if(string_equal(str, S("nudity")))
         return DETECT_TYPE_NUDITY;
+
+    if(string_equal(str, S("eye")))
+        return DETECT_TYPE_EYE;
+
+    if(string_equal(str, S("nose")))
+        return DETECT_TYPE_NOSE;
+    
+    if(string_equal(str, S("mouth")))
+        return DETECT_TYPE_MOUTH;
 
     return DETECT_TYPE_NONE;
 }

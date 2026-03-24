@@ -323,9 +323,24 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
         return vid;
     }
     
-    // write rotation to encoder stream
-    char *rotate_str = cstring_from_s64(arena, vid.rotation);
-    av_dict_set(&ctx->enc_stream->metadata, "rotate", rotate_str, 0);
+    // write rotation as display matrix side data
+    if(vid.rotation != 0)
+    {
+        AVPacketSideData *sd = av_packet_side_data_new(
+            &ctx->enc_stream->codecpar->coded_side_data,
+            &ctx->enc_stream->codecpar->nb_coded_side_data,
+            AV_PKT_DATA_DISPLAYMATRIX,
+            sizeof(s32) * 9,
+            0);
+
+        if(sd)
+        {
+            // FFmpeg expects the rotation as a counter-clockwise angle
+            // but av_display_rotation_set takes clockwise degrees
+            // so negate to convert
+            av_display_rotation_set((s32 *)sd->data, -(f64)vid.rotation);
+        }
+    }
     
     // Open output file
     if(!(ctx->enc_fmt_ctx->oformat->flags & AVFMT_NOFILE))

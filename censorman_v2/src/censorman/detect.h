@@ -11,6 +11,11 @@ typedef enum
     DETECT_TYPE_PERSON,
     DETECT_TYPE_LICENSE_PLATE,
     DETECT_TYPE_NUDITY,
+
+    // subtypes used for labels
+    DETECT_TYPE_EYE,
+    DETECT_TYPE_NOSE,
+    DETECT_TYPE_MOUTH,
     DETECT_TYPE_MAX,
 } DetectType;
 
@@ -46,7 +51,6 @@ typedef struct
 
     f32 threshold_confidence;
     f32 threshold_nms;
-    f32 box_padding_percent;
 
 } DetectConfig;
 
@@ -61,22 +65,24 @@ typedef struct
 String detect_type_to_string(DetectType type);
 DetectType detect_type_from_string(String str);
 
-BoxFrame convert_list_to_box_frame(Arena *arena, List box_list, u32 frame_number);
 void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames);
 Model detect_get_model_by_type(DetectType type);
 
-List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent);
-List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent);
-List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent);
-List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms, f32 padding_percent);
+List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
+List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
+List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
+List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
 
 b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count);
 void detect(DetectConfig *cfg, Image *image, List *total_boxes);
 
+BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number);
+BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 filter_features);
+void     box_frame_apply_padding(BoxFrame input, ImageProps *props, f32 padding_percent);
 
 Box box_unscale(Box box, Image *image);
 Box box_rotate(Box box, Image *image, Rotation rotation, ClockDir dir);
 Box box_pad(Box box, ImageProps *props, f32 padding_percent);
 
-void box_print(Box *b);
+void box_print(Box *b, LogLevel ll);
 

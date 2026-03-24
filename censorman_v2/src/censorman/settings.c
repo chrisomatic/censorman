@@ -19,7 +19,6 @@ Settings settings_default()
     settings.detect_configs[0].type = DETECT_TYPE_FACE;
     settings.detect_configs[0].threshold_confidence = 0.25f;
     settings.detect_configs[0].threshold_nms        = 0.45f;
-    settings.detect_configs[0].box_padding_percent  = settings.box_padding;
     settings.detect_config_count = 1;
 
     settings.no_encode = false;
@@ -201,27 +200,22 @@ Settings settings_parse(Arena *arena, int argc, char **args)
                 case DETECT_TYPE_FACE:
                     cfg->threshold_confidence = 0.25f;
                     cfg->threshold_nms        = 0.45f;
-                    cfg->box_padding_percent  = settings.box_padding;
                     break;
                 case DETECT_TYPE_PERSON:
                     cfg->threshold_confidence = 0.50f;
                     cfg->threshold_nms        = 0.50f;
-                    cfg->box_padding_percent  = settings.box_padding;
                     break;
                 case DETECT_TYPE_LICENSE_PLATE:
                     cfg->threshold_confidence = 0.50f;
                     cfg->threshold_nms        = 0.45f;
-                    cfg->box_padding_percent  = settings.box_padding;
                     break;
                 case DETECT_TYPE_NUDITY:
                     cfg->threshold_confidence = 0.25f;
                     cfg->threshold_nms        = 0.45f;
-                    cfg->box_padding_percent  = settings.box_padding;
                     break;
                 default:
                     cfg->threshold_confidence = 0.25f;
                     cfg->threshold_nms        = 0.45f;
-                    cfg->box_padding_percent  = settings.box_padding;
                     break;
             }
 
@@ -235,13 +229,6 @@ Settings settings_parse(Arena *arena, int argc, char **args)
                 cfg->threshold_nms = param2;
             }
         }
-    }
-
-    // max sure all detect configs have the latest box padding
-    for(u32 i = 0; i < settings.detect_config_count; ++i)
-    {
-        DetectConfig *cfg = &settings.detect_configs[i];
-        cfg->box_padding_percent = settings.box_padding;
     }
 
     // Filters
@@ -367,8 +354,9 @@ void settings_print(Settings *settings)
 
     string_list_add(&sl, S("]"));
     String filters_str = string_list_collapse(&sl);
-    logi("%-22s " STR_FMT, "Filters", STR_ARG(filters_str));
 
+    logi("%-22s " STR_FMT,     "Filters",               STR_ARG(filters_str));
+    logi("%-22s 0x%02X",        "Filter Features",      settings->filter_features);
     logi("%-22s %u",            "Thread Count",         settings->thread_count);
     logi("%-22s %lu B",         "Buffer Size",          settings->buffer_size);
     logi("%-22s %f",            "Box Padding",          settings->box_padding);
@@ -378,7 +366,7 @@ void settings_print(Settings *settings)
     logi("%-22s %s",            "No Rotate",            STR_BOOL(settings->no_rotate));
     logi("%-22s %s",            "Debug",                settings->debug ? "ON" : "OFF");
     logi("%-22s %s",            "Verbose",              settings->verbose ? "ON" : "OFF");
-    logi("%-22s " STR_FMT,      "Bounding Box Output", STR_ARG(settings->bbx_output));
+    logi("%-22s " STR_FMT,      "Bounding Box Output",  STR_ARG(settings->bbx_output));
     logi("=======================================");
 
     scratch_end(scratch);

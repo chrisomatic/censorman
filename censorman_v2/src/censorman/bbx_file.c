@@ -137,7 +137,7 @@ void bbx_file_parse_and_print(String bbx_file_path)
                         box.landmarks[l].y = os_file_read_u16(scratch.arena, file);
                     }
 
-                    box_print(&box);
+                    box_print(&box, LOG_LEVEL_INFO);
                 }
             }
         }

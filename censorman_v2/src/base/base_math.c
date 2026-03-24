@@ -18,6 +18,18 @@ f32 Q_rsqrt(f32 number)
 ///////////////////////////////////////////
 // 2D
 
+f32 vec2_distance(Vec2 a, Vec2 b)
+{
+    return sqrt(vec2_distance_squared(a,b));
+}
+
+f32 vec2_distance_squared(Vec2 a, Vec2 b)
+{
+    Vec2 s = vec2_subtract(b, a);
+    f32 l = vec2_length(s);
+    return l;
+}
+
 f32 vec2_length(Vec2 v)
 {
     return sqrt(v.x*v.x + v.y*v.y);

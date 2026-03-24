@@ -90,6 +90,8 @@ f32 Q_rsqrt(f32 number);
 /////////////////////////////////
 // 2D
 
+f32 vec2_distance(Vec2 a, Vec2 b);
+f32 vec2_distance_squared(Vec2 a, Vec2 b);
 f32 vec2_length(Vec2 v);
 f32 vec2_dot(Vec2 a, Vec2 b);
 

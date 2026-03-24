@@ -90,13 +90,6 @@ int main(int argc, char **args)
 
     settings_print(&settings);
 
-    //@TEMP
-    logd("Filter feature: %02X", settings.filter_features);
-
-    logd("Filter Feature Eyes:  %d", BIT_CHECK(settings.filter_features, FILTER_FEATURE_EYES));
-    logd("Filter Feature Nose:  %d", BIT_CHECK(settings.filter_features, FILTER_FEATURE_NOSE));
-    logd("Filter Feature MOUTH: %d", BIT_CHECK(settings.filter_features, FILTER_FEATURE_MOUTH));
-
 #if RUN_TESTS
     tests_run();
 #endif
@@ -174,7 +167,10 @@ s64 entry_point(void *params)
                     detect(cfg, &img, &box_list);
                 }
 
-                BoxFrame box_frame = convert_list_to_box_frame(arena_frame, box_list, 0);
+                BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
+
+                box_frame = box_frame_divide_into_features(arena_frame, box_frame, settings.filter_features);
+                box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
 
                 bbx_file_write_box_frame(bbx_file, &box_frame);
 
@@ -295,7 +291,11 @@ s64 entry_point(void *params)
                     }
 
                     mutex_lock(&arena_chunk_mutex);
-                    box_frames[frame] = convert_list_to_box_frame(arena_chunk, box_list, vid.frames_processed + frame);
+
+                    BoxFrame *box_frame = &box_frames[frame];
+                    *box_frame = box_frame_from_list(arena_chunk, box_list, vid.frames_processed + frame);
+                    *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, settings.filter_features);
+                    box_frame_apply_padding(*box_frame, &img_src.props, settings.box_padding);
                     mutex_unlock(&arena_chunk_mutex);
                 }
 
@@ -384,8 +384,10 @@ s64 entry_point(void *params)
     NARROW 
     {
         bbx_file_close(bbx_file);
-        // bbx_file_parse_and_print(settings.bbx_output); // TEST
-        stopwatch_print(&sw);
+        // bbx_file_parse_and_print(settings.bbx_output); // @TEMP
+        if(settings.verbose) stopwatch_print(&sw);
+
+        logi("Complete! Processed files in folder: '" STR_FMT "'", STR_ARG(settings.output_folder));
     }
 
     return 0;
