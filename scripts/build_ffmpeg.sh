@@ -198,11 +198,13 @@ rm -rf $BUILD_DIR/libvpx
 rm -rf $BUILD_DIR/ffmpeg_build/share
 
 if [ "$1" = "win32" ]; then
-  rm -rf $PWD/src/third_party/ffmpeg/win
-  mv $BUILD_DIR/ffmpeg_build src/third_party/ffmpeg/win
+  FFMPEG_DEST="src/third_party/lib/win"
+elif [ "$1" = "macos" ]; then
+  FFMPEG_DEST="src/third_party/lib/macos"
 else
-  rm -rf $PWD/src/third_party/ffmpeg
-  mv $BUILD_DIR/ffmpeg_build src/third_party/ffmpeg
+  FFMPEG_DEST="src/third_party/lib/linux"
 fi
+
+mv $BUILD_DIR/ffmpeg_build/lib/*.a $FFMPEG_DEST
 
 rm -rf $BUILD_DIR

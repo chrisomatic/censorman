@@ -46,13 +46,14 @@ cmake --build . --config Release --target install
 popd
 
 if [ "$1" = "win32" ]; then
-  NCNN_DEST="src/third_party/ncnn/win"
+  NCNN_DEST="src/third_party/lib/win"
+elif [ "$1" = "macos" ]; then
+  NCNN_DEST="src/third_party/lib/macos"
 else
-  NCNN_DEST="src/third_party/ncnn"
+  NCNN_DEST="src/third_party/lib/linux"
 fi
 
-rm -rf $PWD/$NCNN_DEST
-mv $BUILD_DIR/ncnn_build $NCNN_DEST
+mv $BUILD_DIR/ncnn_build/*.a $NCNN_DEST
 
 # Build NCNN shim lib
 if [ "$1" = "win32" ]; then
@@ -66,7 +67,7 @@ else
       -o ncnn_shim.o
 fi
 
-ar rcs $NCNN_DEST/lib/libncnn_shim.a ncnn_shim.o
+ar rcs $NCNN_DEST/libncnn_shim.a ncnn_shim.o
 
 # Cleanup
 rm ncnn_shim.o

@@ -37,11 +37,13 @@ make install
 popd
 
 if [ "$1" = "win32" ]; then
-  rm -rf $PWD/src/third_party/libexif/win
-  mv $BUILD_DIR/exif_build src/third_party/libexif/win
+  EXIF_DEST="src/third_party/lib/win"
+elif [ "$1" = "macos" ]; then
+  EXIF_DEST="src/third_party/lib/macos"
 else
-  rm -rf $PWD/src/third_party/libexif
-  mv $BUILD_DIR/exif_build src/third_party/libexif
+  EXIF_DEST="src/third_party/lib/linux"
 fi
+
+mv $BUILD_DIR/exif_build/lib/*.a $EXIF_DEST
 
 rm -rf $BUILD_DIR
