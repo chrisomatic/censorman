@@ -18,8 +18,8 @@ OPTS_DEBUG="-march=x86-64 -Ofast -Wall -pedantic"
 OPTS=$OPTS_DEBUG
 
 SRCS="censorman/censorman.c"
-INCLUDES="-I. -Ithird_party -Ithird_party/stb -Ithird_party/ffmpeg/include -Ithird_party/ncnn/include -Ithird_party/libexif/include"
-LIBS="-Lthird_party/ncnn/lib -lncnn -lncnn_shim -lgomp -Lthird_party/ffmpeg/lib -lavformat -lavcodec -lswscale -lswresample -lavutil -Lthird_party/libexif/lib -lexif -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11 -lx264 -lvpx -lpthread -lstdc++ "
+INCLUDES="-I. -Ithird_party/include"
+LIBS="-Lthird_party/lib/linux -lncnn -lncnn_shim -lgomp -lavformat -lavcodec -lswscale -lswresample -lavutil -lexif -lm -lz -lva -lva-drm -lvdpau -lX11 -lva-x11 -lx264 -lvpx -lpthread -lstdc++ "
 
 CMD="gcc $OPTS $SRCS $INCLUDES $LIBS -o ../$BUILD_DIR/$APP_NAME"
 echo "${CMD}"
