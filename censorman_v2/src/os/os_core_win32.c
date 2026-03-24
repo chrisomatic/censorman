@@ -321,6 +321,20 @@ void os_file_set_pos(OS_File file, s64 pos)
     return;
 }
 
+ByteArray os_file_read(Arena *arena, OS_File file, u64 len)
+{
+    u64 bytes_left = os_file_get_remaining_size(file);
+    s64 bytes_to_read = MIN(len, bytes_left);
+
+    ByteArray ba = {0};
+    ba.data = PUSH_ARRAY(arena, u8, bytes_to_read);
+    ba.len = bytes_to_read;
+
+    ReadFile(file.handle, ba.data, bytes_to_read * sizeof(u8), NULL, NULL);
+
+    return ba;
+}
+
 s32 os_file_read_char(OS_File file)
 {
     s32 c = 0;
@@ -521,7 +535,7 @@ Thread thread_launch(ThreadFunc func, void *arg)
     wrapper->func = func;
     wrapper->arg = arg;
 
-    thread.handle = CreateThread(NULL, 0, thread_bootstrap, wrapper, 0, &thread.id);
+    thread.handle = CreateThread(NULL, MB(8), thread_bootstrap, wrapper, 0, &thread.id);
 
     return thread;
 }

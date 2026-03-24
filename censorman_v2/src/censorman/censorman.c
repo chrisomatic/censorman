@@ -80,6 +80,7 @@ int main(int argc, char **args)
     if(!settings.quiet)
     {
         censorman_version();
+
         if(settings.help)
         {
             settings_print_help();   
@@ -88,6 +89,13 @@ int main(int argc, char **args)
     }
 
     settings_print(&settings);
+
+    //@TEMP
+    logd("Filter feature: %02X", settings.filter_features);
+
+    logd("Filter Feature Eyes:  %d", BIT_CHECK(settings.filter_features, FILTER_FEATURE_EYES));
+    logd("Filter Feature Nose:  %d", BIT_CHECK(settings.filter_features, FILTER_FEATURE_NOSE));
+    logd("Filter Feature MOUTH: %d", BIT_CHECK(settings.filter_features, FILTER_FEATURE_MOUTH));
 
 #if RUN_TESTS
     tests_run();
@@ -376,7 +384,7 @@ s64 entry_point(void *params)
     NARROW 
     {
         bbx_file_close(bbx_file);
-        bbx_file_parse_and_print(settings.bbx_output); // @TEMP
+        // bbx_file_parse_and_print(settings.bbx_output); // TEST
         stopwatch_print(&sw);
     }
 

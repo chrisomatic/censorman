@@ -721,9 +721,9 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
 
     logv("Determining video discontinuities...");
 
-    u32 prev_histogram[4096] = {0};
-    u32 curr_histogram[4096] = {0};
-    u64 *diff_histogram = (u64 *)PUSH_ARRAY(scratch.arena, u64, vid->frame_count);
+    u32 *prev_histogram = PUSH_ARRAY(scratch.arena, u32, 4096);
+    u32 *curr_histogram = PUSH_ARRAY(scratch.arena, u32, 4096);
+    u64 *diff_histogram = PUSH_ARRAY(scratch.arena, u64, vid->frame_count);
 
     for(s32 i = 0; i < vid->frame_count; ++i)
     {

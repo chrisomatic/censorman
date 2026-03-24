@@ -11,6 +11,8 @@ static THREAD_LOCAL Arena *_scratch_arena = {0};
 Arena *arena_create(u64 capacity)
 {
     u8 *memory = malloc(capacity);
+    MemoryZero(memory,capacity);
+
     Arena *a = (Arena *)memory;
 
     a->memory = memory;

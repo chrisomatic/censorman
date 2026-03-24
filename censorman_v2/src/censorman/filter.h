@@ -11,12 +11,20 @@ typedef enum
     FILTER_TYPE_MAX,
 } FilterType;
 
+typedef enum
+{
+    FILTER_FEATURE_NONE  = 0,
+    FILTER_FEATURE_EYES  = (1<<0),
+    FILTER_FEATURE_NOSE  = (1<<1),
+    FILTER_FEATURE_MOUTH = (1<<2),
+} FilterFeature;
+
 typedef struct
 {
     FilterType type;
 
     f32 block_scale;   // (Pixelate) [0.0 - 1.0]
-    f32 blur_strength; // (Blur) [0.0 - 1.0]
+    f32 blur_strength; // (Blur)     [0.0 - 1.0]
 
     String texture_path;
 

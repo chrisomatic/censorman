@@ -55,6 +55,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_smoothing_window = string_array_create(scratch.arena, 2, S("smoothing_window"), S("sw"));
     StringArray ids_texture_path     = string_array_create(scratch.arena, 2, S("texture_path"),     S("tp"));
     StringArray ids_bbx_output       = string_array_create(scratch.arena, 2, S("bbx_file"),         S("bbx"));
+    StringArray ids_filter_features  = string_array_create(scratch.arena, 2, S("filter_features"),  S("ff"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
     String str_detect_types     = cmdline_get_value_first_match(&cmdline, ids_detect_types);
@@ -67,10 +68,12 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     String str_texture_path     = cmdline_get_value_first_match(&cmdline, ids_texture_path);
     String str_bbx_output       = cmdline_get_value_first_match(&cmdline, ids_bbx_output);
     String str_distort_audio    = cmdline_get_value_first_match(&cmdline, ids_distort_audio);
+    String str_filter_features  = cmdline_get_value_first_match(&cmdline, ids_filter_features);
 
-    StringArray strs_assets       = string_split(scratch.arena, str_assets,       S(","));
-    StringArray strs_detect_types = string_split(scratch.arena, str_detect_types, S(","));
-    StringArray strs_filters      = string_split(scratch.arena, str_filters,      S(","));
+    StringArray strs_assets          = string_split(scratch.arena, str_assets,          S(","));
+    StringArray strs_detect_types    = string_split(scratch.arena, str_detect_types,    S(","));
+    StringArray strs_filters         = string_split(scratch.arena, str_filters,         S(","));
+    StringArray strs_filter_features = string_split(scratch.arena, str_filter_features, S(","));
 
     if(str_output_folder.len > 0)    settings.output_folder        = str_output_folder;
     if(str_bbx_output.len > 0)       settings.bbx_output           = str_bbx_output;
@@ -276,6 +279,21 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             }
 
             settings.filter_count++;
+        }
+    }
+    
+    // Filter Features
+
+    if(strs_filter_features.count > 0)
+    {
+        settings.filter_features = 0x0;
+
+        for(s64 i = 0; i < strs_filter_features.count; ++i)
+        {
+            String filter_feature = string_trim(strs_filter_features.items[i]);
+            FilterFeature ff = filter_feature_from_string(filter_feature);
+
+            settings.filter_features |= ff;
         }
     }
 

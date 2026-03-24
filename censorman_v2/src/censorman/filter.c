@@ -472,6 +472,20 @@ FilterType filter_from_string(String str)
     return FILTER_TYPE_NONE;
 }
 
+FilterFeature filter_feature_from_string(String str)
+{
+    if(string_equal(str, S("eyes")))
+        return FILTER_FEATURE_EYES;
+
+    if(string_equal(str, S("nose")))
+        return FILTER_FEATURE_NOSE;
+
+    if(string_equal(str, S("mouth")))
+        return FILTER_FEATURE_MOUTH;
+
+    return FILTER_FEATURE_NONE;
+}
+
 //===================================
 // Static functions
 //===================================
