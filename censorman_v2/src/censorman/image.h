@@ -55,4 +55,6 @@ b32 image_save(Image *image, String path);
 Image image_rotate(Image source, u32 degrees, ClockDir direction);
 Image image_scale(Image source, u32 target_w, u32 target_h);
 
+Rotation image_get_rotation_from_file(char *file_path);
+
 void image_print(Image *image);

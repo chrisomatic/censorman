@@ -1,0 +1,14 @@
+# Copyright (C) 2001-2009 Lutz Mueller <lutz.s.mueller@gmail.com>, et. al.
+# SPDX-License-Identifier: LGPL-2.0-or-later
+prefix=/home/chris/git/censorman/censorman_v2/build/exif_build
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: libexif
+Description: Library for easy access to EXIF data
+Requires:
+Version: 0.6.25
+Libs: -L${libdir} -lexif
+Libs.private: -lm
+Cflags: -I${includedir}

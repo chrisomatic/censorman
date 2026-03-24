@@ -149,9 +149,8 @@ s64 entry_point(void *params)
                 arena_reset(arena_frame);
 
                 Image img_src = image_load(arena_frame, asset->path, &sw);
-
+                
                 bbx_file_write_asset_header(bbx_file, i, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
-
                 List box_list = list_create(arena_frame, sizeof(Box));
 
                 // [detections]
@@ -162,7 +161,7 @@ s64 entry_point(void *params)
 
                     Image img = img_src;
                     img = image_scale(img, model.net_w, model.net_h);
-                    img = image_rotate(img, 0, CW);
+                    img = image_rotate(img, img.props.rotation, CCW);
 
                     detect(cfg, &img, &box_list);
                 }

@@ -109,7 +109,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
     // handle input assets
     
-    StringArray exts_image = string_array_create(scratch.arena, 4, S("png"), S("jpg"), S("jpeg"), S("gif"));
+    StringArray exts_image = string_array_create(scratch.arena, 10, S("png"), S("jpg"), S("jpeg"), S("bmp"), S("gif"), S("psd"), S("tga"), S("hdr"), S("pic"), S("pnm"));
     StringArray exts_video = string_array_create(scratch.arena, 2, S("mp4"), S("mov"));
     
     for(int i = 0; i < strs_assets.count; ++i)
@@ -155,7 +155,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             else
             {
                 asset->type = TYPE_UNSUPPORTED;
-                asset->path = string_nil();
+                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, OS_PATH_SLASH_STR, file_str));
                 asset->output_path = string_nil(); // TODO
             }
         }
@@ -407,7 +407,7 @@ void settings_print_help()
     printf("\n");
     printf("    Accepts comma-separated list of image and video file paths, or a folder path.\n");
     printf("\n");
-    printf("    * Supported image formats: [ PNG, JPG, GIF ]\n");
+    printf("    * Supported image formats: [ PNG, JPG, BMP, PSD, GIF, TGA, HDR, PIC, PNM ]\n");
     printf("    * Supported video formats: [ MP4, MOV ]\n");
     printf("\n");
     printf("OPTIONS\n");
