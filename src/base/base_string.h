@@ -61,7 +61,7 @@ b32 string_equal(String s, String t);
 b32 string_starts_with(String str, String start);
 b32 string_ends_with(String str, String end);
 
-String string_nil();
+String string_nil(void);
 String string_copy(Arena *arena, String str);
 String string_copy_raw(Arena *arena, u8 *data, u64 len);
 
@@ -103,7 +103,7 @@ String     string_list_collapse(StringList *sl);
 // String Arrays
 ///////////////////////////
 
-StringArray string_array_nil();
+StringArray string_array_nil(void);
 StringArray string_array_create(Arena *arena, u64 count, ...);
 StringArray string_array_create_empty(Arena *arena, u64 count);
 StringArray string_split(Arena *arena, String base, String split);

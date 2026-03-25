@@ -17,7 +17,7 @@ typedef struct
 CmdLine cmdline_parse(Arena *arena, int argc, char *args[]);
 void    cmdline_print(CmdLine *cmdline);
 
-// flagged arguments (-) or (--)
+// flagged arguments (-) or (--) or ((/) on Windows)
 b32    cmdline_has_flag(CmdLine *cmdline,  String id);
 b32    cmdline_has_any_flags(CmdLine *cmdline, StringArray ids);
 String cmdline_get_value(CmdLine *cmdline, String id);

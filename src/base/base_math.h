@@ -100,7 +100,7 @@ Vec2 vec2_subtract(Vec2 a, Vec2 b);
 Vec2 vec2_scale(Vec2 a, f32 f);
 Vec2 vec2_negate(Vec2 a);
 Vec2 vec2_normalize(Vec2 v);
-Vec2 vec2_zero();
+Vec2 vec2_zero(void);
 
 /////////////////////////////////
 // 3D
@@ -119,7 +119,7 @@ Vec3 vec3_negate(Vec3 a);
 Vec3 vec3_normalize(Vec3 v);
 Vec3 vec3_normalize_fast(Vec3 v);
 Vec3 vec3_normal(Vec3 a, Vec3 b, Vec3 c);
-Vec3 vec3_zero();
+Vec3 vec3_zero(void);
 
 b32 vec3_is_zero(Vec3 v);
 b32 vec3_is_zeroish(Vec3 v);
@@ -142,7 +142,7 @@ Quaternion quat_multiply(Quaternion a, Quaternion b);
 // Matrices
 /////////////////////////////////
 
-Matrix matrix_identity();
+Matrix matrix_identity(void);
 Matrix matrix_dot_matrix(Matrix a, Matrix b);
 Matrix matrix_translate(f32 x, f32 y, f32 z);
 Matrix matrix_rotation(f32 x, f32 y, f32 z);

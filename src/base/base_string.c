@@ -163,7 +163,7 @@ void string_print(String s)
     logi(STR_FMT,s.len, s.data);
 }
 
-String string_nil()
+String string_nil(void)
 {
     String str = {0};
     return str;
@@ -808,7 +808,7 @@ String string_advance_char(String str)
     return string_advance(str, 1);
 }
 
-StringArray string_array_nil()
+StringArray string_array_nil(void)
 {
     StringArray sa = {0};
     return sa;

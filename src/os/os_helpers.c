@@ -15,7 +15,7 @@ THREAD_LOCAL ThreadContext s_thread_context = {0};
 // Stopwatch
 ///////////////////////////////////////
 
-Stopwatch stopwatch_create()
+Stopwatch stopwatch_create(void)
 {
     Stopwatch stopwatch = {0};
     stopwatch.entry_count = 1; // entry[0] is unaccounted time
@@ -117,7 +117,7 @@ void stopwatch_print(Stopwatch *stopwatch)
 // File Helpers
 ///////////////////////////////////////
 
-OS_File os_file_nil()
+OS_File os_file_nil(void)
 {
     OS_File file = {0};
     return file;

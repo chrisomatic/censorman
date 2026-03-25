@@ -26,7 +26,7 @@ typedef struct
 
 typedef s32 (*ListCompareFn)(void *a, void *b);
 
-List list_nil();
+List list_nil(void);
 List list_create(Arena *arena, u64 item_size);
 
 void list_add(List *list, void *item);

@@ -52,7 +52,7 @@ b32 os_commit_large(void *ptr, u64 size)
 
 OS_SystemInfo os_system_info = {0};
 
-void os_system_init()
+void os_system_init(void)
 {
     OS_SystemInfo *info = &os_system_info;
     if(info->initialized) return;
@@ -97,7 +97,7 @@ String os_system_get_executable_path(Arena *arena)
 // Time
 ///////////////////////////////////////
 
-OS_TimeData os_time_data_get()
+OS_TimeData os_time_data_get(void)
 {
     OS_TimeData time_data = {0};
 
@@ -162,7 +162,7 @@ void os_time_init(void)
 
 }
 
-f64 os_time_get()
+f64 os_time_get(void)
 {
     return (f64) (os_time_value_u64() - _timer.offset) / (f64)_timer.frequency;
 }
@@ -410,7 +410,7 @@ s32 os_file_write(OS_File file, void *data, s32 size)
     return write(file.handle, data, size);
 }
 
-String os_get_current_directory()
+String os_get_current_directory(void)
 {
     char cwd[1024] = {0};
     if(!getcwd(cwd, sizeof(cwd)))
@@ -619,12 +619,12 @@ void mutex_destroy(Mutex *m)
 // Socket
 ///////////////////////////////////////
 
-b32 socket_initialize()
+b32 socket_initialize(void)
 {
     return true;
 }
 
-void socket_shutdown()
+void socket_shutdown(void)
 {
     return;
 }

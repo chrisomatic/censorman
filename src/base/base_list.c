@@ -15,7 +15,7 @@ s32 list_compare_fn_s32_asc(void *a, void *b)
     return (*ia > *ib) - (*ia < *ib);
 }
 
-List list_nil()
+List list_nil(void)
 {
     List list = {0};
     return list;

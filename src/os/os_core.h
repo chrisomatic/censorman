@@ -88,7 +88,7 @@ typedef struct
 
 extern OS_SystemInfo os_system_info;
 
-void os_system_init();
+void os_system_init(void);
 String os_system_get_executable_path(Arena *arena);
 
 ///////////////////////////////////////
@@ -131,7 +131,7 @@ void usleep(s64 usec);
 
 u64  os_time_value_u64(void);
 void os_time_init(void);
-f64  os_time_get();
+f64  os_time_get(void);
 void os_time_begin(Timer* timer);
 void os_time_set_fps(Timer* timer, f32 fps);
 void os_time_wait_for_frame(Timer* timer);
@@ -164,7 +164,7 @@ typedef struct
     u8 entry_count;
 } Stopwatch;
 
-Stopwatch stopwatch_create();
+Stopwatch stopwatch_create(void);
 
 void stopwatch_reset(Stopwatch *stopwatch);
 void stopwatch_begin(Stopwatch *stopwatch, String entry_str);
@@ -226,9 +226,9 @@ u64 os_file_get_remaining_size(OS_File file);
 void os_file_set_pos(OS_File file, s64 pos);
 void os_file_reset_pos(OS_File file);
 
-OS_File os_file_nil();
+OS_File os_file_nil(void);
 
-String      os_get_current_directory();
+String      os_get_current_directory(void);
 StringArray os_get_files_in_directory(Arena *arena, String directory);
 StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArray extensions);
 
@@ -371,14 +371,14 @@ typedef struct
     u16 port;
 } Address;
 
-b32 socket_initialize();
+b32 socket_initialize(void);
 b32 socket_create(s32* socket_handle);
 b32 socket_bind(s32 socket_handle, Address* address, u16 port);
 s32 socket_sendto(s32 socket_handle, Address* address, u8* pkt, u32 pkt_size);
 s32 socket_recvfrom(s32 socket_handle, Address* address, u8* pkt);
 
 void socket_close(s32 socket_handle);
-void socket_shutdown();
+void socket_shutdown(void);
 
 ///////////////////////////////////////
 // Utility

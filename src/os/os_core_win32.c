@@ -41,7 +41,7 @@ b32 os_commit_large(void *ptr, u64 size)
 
 OS_SystemInfo os_system_info = {0};
 
-void os_system_init()
+void os_system_init(void)
 {
     OS_SystemInfo *info = &os_system_info;
 
@@ -76,7 +76,7 @@ String os_system_get_executable_path(Arena *arena)
 // Time
 ///////////////////////////////////////
 
-OS_TimeData os_time_data_get()
+OS_TimeData os_time_data_get(void)
 {
     OS_TimeData time_data = {0};
 
@@ -128,7 +128,7 @@ void os_time_init(void)
     _timer.offset = os_time_value_u64();
 }
 
-f64 os_time_get()
+f64 os_time_get(void)
 {
     return (f64) (os_time_value_u64() - _timer.offset) / (f64)_timer.frequency;
 }
@@ -400,7 +400,7 @@ StringArray os_get_files_in_directory(Arena *arena, String directory)
     return string_list_to_array(sl);
 }
 
-String os_get_current_directory()
+String os_get_current_directory(void)
 {
     TCHAR Buffer[MAX_PATH];
     DWORD dwRet;
@@ -618,13 +618,13 @@ void mutex_destroy(Mutex *m)
 // Socket
 ///////////////////////////////////////
 
-b32 socket_initialize()
+b32 socket_initialize(void)
 {
     WSADATA WsaData;
     return WSAStartup( MAKEWORD(2,2), &WsaData ) == NO_ERROR;
 }
 
-void socket_shutdown()
+void socket_shutdown(void)
 {
     WSACleanup();
 }
@@ -727,7 +727,7 @@ s32 socket_recvfrom(s32 socket_handle, Address* address, u8* pkt)
 // Utility
 ///////////////////////////////////////
 
-void os_wait_for_return_key()
+void os_wait_for_return_key(void)
 {
     logi("Waiting for return key...");
 

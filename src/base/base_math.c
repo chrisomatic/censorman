@@ -69,7 +69,7 @@ Vec2 vec2_normalize(Vec2 v)
     return ret;
 }
 
-Vec2 vec2_zero()
+Vec2 vec2_zero(void)
 {
     Vec2 v = {0};
     return v;
@@ -172,7 +172,7 @@ Vec3 vec3_normal(Vec3 a, Vec3 b, Vec3 c)
     return norm;
 }
 
-Vec3 vec3_zero()
+Vec3 vec3_zero(void)
 {
     Vec3 v = {0};
     return v;
@@ -273,7 +273,7 @@ Quaternion quat_multiply(Quaternion a, Quaternion b)
 // Matrices
 ///////////////////////////////////////////
 
-Matrix matrix_identity()
+Matrix matrix_identity(void)
 {
     return (Matrix){
         .data = {
