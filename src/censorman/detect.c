@@ -548,7 +548,7 @@ Model detect_get_model_by_type(DetectType type)
         case DETECT_TYPE_NOSE:          return model_face;
         case DETECT_TYPE_MOUTH:         return model_face;
         case DETECT_TYPE_NONE:
-        default:
+        default: break;
     }
 
     Model model = {0};
@@ -1156,7 +1156,7 @@ String detect_type_to_string(DetectType type)
         case DETECT_TYPE_NOSE:          return S("nose");
         case DETECT_TYPE_MOUTH:         return S("mouth");
         case DETECT_TYPE_NONE:
-        default:
+        default: break;
     }
 
     return S("none");

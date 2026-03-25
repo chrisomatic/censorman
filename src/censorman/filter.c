@@ -443,7 +443,8 @@ String filter_to_string(FilterType type)
         case FILTER_TYPE_SCRAMBLE:      return S("scramble");
         case FILTER_TYPE_TEXTURE:       return S("texture");
         case FILTER_TYPE_NONE:
-        default:
+        default: break;
+            
     }
 
     return S("none");

@@ -32,7 +32,11 @@ void os_release(void *ptr, u64 size)
 
 void *os_reserve_large(u64 size)
 {
+#if OS == OS_MAC
+    void *result = mmap(0, size, PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0); // no large page support on MacOS
+#else
     void *result = mmap(0, size, PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_HUGETLB, -1, 0);
+#endif
     if(result == MAP_FAILED)
     {
         result = 0;
@@ -574,6 +578,60 @@ void thread_close_many(Thread *threads, s64 thread_count)
     }
 }
 
+#if OS == OS_MAC
+Barrier barrier_create(s64 thread_count)
+{
+    Barrier barrier = {0};
+
+    if(thread_count == 0)
+		return barrier;
+
+	if(pthread_mutex_init(&barrier.mutex, 0) < 0)
+		return barrier;
+
+	if(pthread_cond_init(&barrier->cond, 0) < 0)
+    {
+		pthread_mutex_destroy(&barrier.mutex);
+		return barrier;
+	}
+
+	barrier.limit = thread_count;
+	barrier.count = 0;
+	barrier.phase = 0;
+
+    return barrier;
+}
+
+b32 barrier_sync(Barrier *barrier)
+{
+    pthread_mutex_lock(&barrier->mutex);
+	barrier->count++;
+
+	if(barrier->count >= barrier->limit)
+    {
+		barrier->phase++;
+		barrier->count = 0;
+		pthread_cond_broadcast(&barrier->cond);
+		pthread_mutex_unlock(&barrier->mutex);
+		return true;
+	}
+
+    unsigned phase = barrier->phase;
+    do
+        pthread_cond_wait(&barrier->cond, &barrier->mutex);
+    while(phase == barrier->phase);
+    pthread_mutex_unlock(&barrier->mutex);
+
+    return false;
+}
+
+void barrier_destroy(Barrier *barrier)
+{
+    pthread_mutex_destroy(&barrier->mutex);
+    pthread_cond_destroy(&barrier->cond);
+}
+
+#else
 Barrier barrier_create(s64 thread_count)
 {
     Barrier barrier = {0};
@@ -592,6 +650,7 @@ void barrier_destroy(Barrier *barrier)
 {
     pthread_barrier_destroy(&barrier->barrier);
 }
+#endif
 
 Mutex mutex_create(void)
 {

@@ -396,7 +396,7 @@ String asset_type_to_string(AssetType type)
     return S("unsupported");
 }
 
-void settings_print_help()
+void settings_print_help(void)
 {
     printf("\n");
     printf("USAGE\n");

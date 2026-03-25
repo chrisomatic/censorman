@@ -6,7 +6,7 @@
 // Utility
 ///////////////////////////////////////
 
-#define DELAY(s) os_time_delay_us((s)*1000*1000)
+#define DELAY_MS(s) os_time_delay_us((s)*1000)
 
 LogLevel      s_log_level = LOG_LEVEL_DEBUG;
 THREAD_LOCAL ThreadContext s_thread_context = {0};

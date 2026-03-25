@@ -107,7 +107,7 @@ typedef struct
     s32 millisecond;
 } OS_TimeData;
 
-OS_TimeData os_time_data_get();
+OS_TimeData os_time_data_get(void);
 
 typedef struct
 {
@@ -309,10 +309,21 @@ struct Thread
 {
     pthread_t handle;
 };
+#if OS == OS_MAC
+struct Barrier
+{
+    pthread_mutex_t mutex;
+	pthread_cond_t cond;
+	u32 limit;
+	u32 count;
+	u32 phase;
+};
+#else
 struct Barrier
 {
     pthread_barrier_t barrier;
 };
+#endif
 typedef struct
 {
     pthread_mutex_t handle;

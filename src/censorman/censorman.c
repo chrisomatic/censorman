@@ -33,7 +33,7 @@ enum CM_ReturnCode
     CM_FAILED  = 1,
 };
 
-void censorman_version()
+void censorman_version(void)
 {
     printf("[CENSORMAN V%d]\n", CENSORMAN_VERSION);
     printf("    _O_\n");
