@@ -19,16 +19,13 @@ autoreconf -i
 if [ "$1" = "win32" ]; then
     ./configure \
         --prefix="$PREFIX" \
-        --enable-static
-        --disable-shared
-        --host=x86_64-w64-mingw32 \
-        --extra-cflags="$CFLAGS" \
-        --extra-ldflags="$LDFLAGS"
+        --enable-static \
+        --disable-shared \
+        --host=x86_64-w64-mingw32
 else
     ./configure \
         --prefix="$PREFIX" \
-        --enable-static \
-        --disable-shared
+        --enable-static
 fi
 
 make -j$(nproc)
