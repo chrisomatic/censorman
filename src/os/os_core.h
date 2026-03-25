@@ -292,7 +292,7 @@ struct Thread
 };
 struct Barrier
 {
-    LPSYNCHRONIZATION_BARRIER barrier;
+    SYNCHRONIZATION_BARRIER barrier;
 };
 typedef struct
 {

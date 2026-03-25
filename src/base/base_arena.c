@@ -89,7 +89,8 @@ void arena_pop_to(Arena *arena, u64 pos)
     {
         if(BETWEEN(pos, arena->base_pos, arena_pos(arena)))
         {
-            arena->offset = (pos - arena->base_pos);
+            u64 new_offset = pos - arena->base_pos;
+            arena->offset = MAX(new_offset, ARENA_HEADER_SIZE); // don't clobber header
         }
         else if(pos < arena->base_pos)
         {

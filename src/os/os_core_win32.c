@@ -577,19 +577,19 @@ void thread_close_many(Thread *threads, s64 thread_count)
 Barrier barrier_create(s64 thread_count)
 {
     Barrier barrier = {0};
-    InitializeSynchronizationBarrier(barrier.barrier, (LONG)thread_count, (LONG)-1);
+    InitializeSynchronizationBarrier(&barrier.barrier, (LONG)thread_count, (LONG)-1);
 
     return barrier;
 }
 
 b32 barrier_sync(Barrier *barrier)
 {
-    return (b32)EnterSynchronizationBarrier(barrier->barrier, (DWORD)0);
+    return (b32)EnterSynchronizationBarrier(&barrier->barrier, SYNCHRONIZATION_BARRIER_FLAGS_BLOCK_ONLY);
 }
 
 void barrier_destroy(Barrier *barrier)
 {
-    DeleteSynchronizationBarrier(barrier->barrier);
+    DeleteSynchronizationBarrier(&barrier->barrier);
 }
 
 Mutex mutex_create(void)

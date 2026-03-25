@@ -21,6 +21,7 @@ if [ "$1" = "win32" ]; then
         --prefix="$PREFIX" \
         --enable-static \
         --disable-shared \
+        --disable-nls \
         --host=x86_64-w64-mingw32
 else
     ./configure \
