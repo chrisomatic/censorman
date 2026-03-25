@@ -46,7 +46,7 @@ typedef struct
 
 } Image;
 
-Image image_nil();
+Image image_nil(void);
 u32 image_step(Image *image);
 
 Image image_load(Arena *arena, String path, Stopwatch *stopwatch);

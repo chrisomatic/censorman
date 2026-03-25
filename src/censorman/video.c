@@ -1,4 +1,4 @@
-Video video_nil()
+Video video_nil(void)
 {
     Video vid = {0};
     return vid;

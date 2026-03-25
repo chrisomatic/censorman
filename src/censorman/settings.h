@@ -56,7 +56,7 @@ typedef struct
 AssetType asset_type_from_string(String str);
 String asset_type_to_string(AssetType type);
 
-Settings settings_default();
+Settings settings_default(void);
 Settings settings_parse(Arena *arena, int argc, char **args);
 void     settings_print(Settings *settings);
 void     settings_print_help();

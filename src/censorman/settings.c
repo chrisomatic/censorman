@@ -1,5 +1,5 @@
 
-Settings settings_default()
+Settings settings_default(void)
 {
     Settings settings = {0};
 

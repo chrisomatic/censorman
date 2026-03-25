@@ -43,4 +43,3 @@ void filter_pixelate(Image* image, Box *box, f32 block_scale);
 void filter_scramble(Image *image, Box *box);
 
 void filter_draw_debug_info(Image *image, BoxFrame *box_frame);
-

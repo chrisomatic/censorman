@@ -36,7 +36,7 @@ static s32 vec3_compare_z(void *a, void *b)
     return (va->z > vb->z) - (va->z < vb->z);
 }
 
-b32 tests_run()
+b32 tests_run(void)
 {
 
     Stopwatch stopwatch = stopwatch_create();

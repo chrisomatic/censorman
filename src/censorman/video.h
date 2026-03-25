@@ -85,6 +85,8 @@ typedef struct
     Arena *arena;
 } Video;
 
+Video video_nil(void);
+
 Video video_begin(Arena *arena, String path, String out_path, VideoSettings *settings);
 void  video_end(Video *vid);
 

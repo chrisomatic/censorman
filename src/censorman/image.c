@@ -7,7 +7,7 @@
 
 #include "libexif/exif-data.h"
 
-Image image_nil()
+Image image_nil(void)
 {
     Image image = {0};
     return image;
