@@ -54,7 +54,11 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/mman.h>
+#if OS == OS_MAC
+#include <sys/sysctl.h>
+#else
 #include <sys/sysinfo.h>
+#endif
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>

@@ -55,11 +55,26 @@ OS_SystemInfo os_system_info = {0};
 void os_system_init()
 {
     OS_SystemInfo *info = &os_system_info;
-
     if(info->initialized) return;
+
+#if OS == OS_MAC
+
+    u32 ncpu = 0;
+
+    size_t len = sizeof(u32);
+    sysctlbyname("hw.logicalcpu", &ncpu, &len, NULL, 0);
+    if(ncpu < 1) sysctlbyname("hw.ncpu", &ncpu, &len, NULL, 0);
+    if(ncpu < 1) ncpu = 1; //fallback if completely failed
+
+    info->logical_processor_count = ncpu;
+    info->page_size = sysconf(_SC_PAGESIZE);
+
+#else
 
     info->logical_processor_count = (u32)get_nprocs();
     info->page_size = (u64)getpagesize();
+
+#endif
 
     info->initialized = true;
 }
