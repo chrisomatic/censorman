@@ -379,7 +379,7 @@ void filter_blur_box(Image *image, Box *box, f32 blur_strength)
 
 void filter_texture(Image *image, Box *box)
 {
-    if(!g_texture_image.data)
+    if(image_is_empty(&g_texture_image))
         return;
 
     f32 scale_x = (f32)g_texture_image.props.w / box->w;
@@ -414,6 +414,9 @@ void filter_texture(Image *image, Box *box)
 
 void filter_draw_debug_info(Image *image, BoxFrame *box_frame)
 {
+    if(image_is_empty(image))
+        return;
+
     String label = string_format(image->arena, "%000d %s",
             box_frame->frame_number, box_frame->interpolated ? "interpolated" : "");
 
@@ -514,18 +517,18 @@ FilterType filter_from_string(String str)
     return FILTER_TYPE_NONE;
 }
 
-FilterFeature filter_feature_from_string(String str)
+FacialFeature facial_feature_from_string(String str)
 {
     if(string_equal(str, S("eyes")))
-        return FILTER_FEATURE_EYES;
+        return FACIAL_FEATURE_EYES;
 
     if(string_equal(str, S("nose")))
-        return FILTER_FEATURE_NOSE;
+        return FACIAL_FEATURE_NOSE;
 
     if(string_equal(str, S("mouth")))
-        return FILTER_FEATURE_MOUTH;
+        return FACIAL_FEATURE_MOUTH;
 
-    return FILTER_FEATURE_NONE;
+    return FACIAL_FEATURE_NONE;
 }
 
 //===================================

@@ -184,16 +184,16 @@ BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number)
     return bf;
 }
 
-BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 filter_features)
+BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 facial_features)
 {
     BoxFrame output = input;
 
-    if(filter_features == FILTER_FEATURE_NONE)
+    if(facial_features == FACIAL_FEATURE_NONE)
         return output;
 
-    b8 feature_eyes  = BIT_CHECK(filter_features, FILTER_FEATURE_EYES);
-    b8 feature_nose  = BIT_CHECK(filter_features, FILTER_FEATURE_NOSE);
-    b8 feature_mouth = BIT_CHECK(filter_features, FILTER_FEATURE_MOUTH);
+    b8 feature_eyes  = BIT_CHECK(facial_features, FACIAL_FEATURE_EYES);
+    b8 feature_nose  = BIT_CHECK(facial_features, FACIAL_FEATURE_NOSE);
+    b8 feature_mouth = BIT_CHECK(facial_features, FACIAL_FEATURE_MOUTH);
 
     // pre-gather how many face boxes there are
     // and allocate the new number of facial boxes
@@ -336,7 +336,6 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
     //   [filled]  [gap]    [gap]    [filled]
     //
 
-
     if(!vid || !box_frames)
         return;
 
@@ -447,6 +446,9 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
 
                     Box *ra = &a->boxes[k];
                     Box *rb = &b->boxes[l];
+
+                    if(ra->type != rb->type)
+                        continue; // only match boxes of the same detect type
 
                     // find center point of boxes
 

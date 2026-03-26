@@ -28,7 +28,8 @@ typedef struct
 
     Filter filters[FILTER_TYPE_MAX];
     u32 filter_count;
-    u8 filter_features; // bit-wise (e.g. eyes, nose, mouth)
+
+    u8 facial_features; // bit-wise (e.g. eyes, nose, mouth)
 
     String output_folder;
     String bbx_output;

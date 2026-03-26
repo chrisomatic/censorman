@@ -87,7 +87,7 @@ void stopwatch_end(Stopwatch *stopwatch, String label)
     }
 }
 
-void stopwatch_print(Stopwatch *stopwatch)
+void stopwatch_print(Stopwatch *stopwatch, LogLevel ll)
 {
     if(!stopwatch) return;
 
@@ -99,18 +99,19 @@ void stopwatch_print(Stopwatch *stopwatch)
 
     const char *dots = "....................";
 
-    logi("============== STOPWATCH ==============");
+    os_log(ll, __FILE__, __LINE__, "============== STOPWATCH ==============");
+
     for(s64 i = 1; i < stopwatch->entry_count; ++i)
     {
         StopwatchEntry *entry = &stopwatch->entries[i];
         String label = i == 0 ? S("(none)") : entry->label;
         s32 num_dots = MAX(0, 20 - label.len);
-        logi("  " STR_FMT "%.*s%8.6f s (%05.2f%%)", STR_ARG(label), num_dots, dots, entry->total_seconds, 100.0*(entry->total_seconds / total));
+        os_log(ll, __FILE__, __LINE__, "  " STR_FMT "%.*s%8.6f s (%05.2f%%)", STR_ARG(label), num_dots, dots, entry->total_seconds, 100.0*(entry->total_seconds / total));
     }
 
-    logi("---------------------------------------");
-    logi("  %s...............%8.6f s", "TOTAL", total);
-    logi("=======================================");
+    os_log(ll, __FILE__, __LINE__, "---------------------------------------");
+    os_log(ll, __FILE__, __LINE__, "  %s...............%8.6f s", "TOTAL", total);
+    os_log(ll, __FILE__, __LINE__, "=======================================");
 }
 
 ///////////////////////////////////////
@@ -311,7 +312,7 @@ inline s32 os_file_write_u32_at_index(OS_File file, u32 x, u32 index)
 
 StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArray extensions)
 {
-    StringArray files = os_get_files_in_directory(arena, directory);
+    StringArray files = os_get_files_in_directory(arena, directory, false);
 
     StringList filtered = string_list_create(arena);
 
@@ -366,7 +367,7 @@ String os_path_get_extension(String path)
     return extension;
 }
 
-String os_path_get_directory(String path)
+String os_path_get_folder_part(String path)
 {
     s64 i = 0;
     b32 found = false;
@@ -391,7 +392,7 @@ String os_path_get_directory(String path)
 
 }
 
-String os_path_get_file(String path)
+String os_path_get_file_part(String path)
 {
     s64 i = 0;
     b32 found = false;

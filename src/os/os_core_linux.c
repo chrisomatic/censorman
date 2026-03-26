@@ -424,29 +424,52 @@ String os_get_current_directory(void)
     return str;
 }
 
-StringArray os_get_files_in_directory(Arena *arena, String directory)
+static void gather_files(StringList *sl, String directory, b32 recursive)
 {
-    char *directory_cstr = string_to_cstr(arena, directory);
+    char *directory_cstr = string_to_cstr(sl->arena, directory);
     DIR* dir = opendir(directory_cstr);
-    if(!dir) return string_array_nil();;
+    if(!dir) return;
 
     struct dirent *entry = NULL;
-
-    StringList sl = string_list_create(arena);
 
     for(;;)
     {
         entry = readdir(dir);
         if(!entry) break;
 
-        b32 is_file = (entry->d_type != DT_DIR);
-        if(is_file)
-        {
-            String file_name = STR(entry->d_name);
-            string_list_add(&sl, file_name);
-        }
-    };
+        b8 is_dir = (entry->d_type == DT_DIR);
 
+        String d_name_str = STR(entry->d_name);
+        b8 is_dots = string_equal(d_name_str, S(".")) ||
+                     string_equal(d_name_str, S(".."));
+
+        String full_path = string_concat(sl->arena, 3, directory, OS_PATH_SLASH_STR, d_name_str);
+
+        if(!is_dots)
+        {
+            if(is_dir)
+            {
+                if(recursive)
+                {
+                    gather_files(sl, full_path, recursive);
+                }
+            }
+            else
+            {
+                // valid file, add to StringList
+                string_list_add(sl, full_path);
+            }
+        }
+    }
+
+    closedir(dir);
+    return;
+}
+
+StringArray os_get_files_in_directory(Arena *arena, String directory, b32 recursive)
+{
+    StringList sl = string_list_create(arena);
+    gather_files(&sl, directory, recursive);
     return string_list_to_array(sl);
 }
 
@@ -497,7 +520,7 @@ void os_log(LogLevel level, const char* file, int line, const char* fmt, ...)
     s32 uptime_sec = (s32)(uptime - (60.0*uptime_min));
     s32 uptime_ms  = (s32)((uptime - (60.0*uptime_min + uptime_sec))*1000.0);
 
-    fprintf(stdout, "[%02d:%02d.%03d] %s%-5s...\x1b[0m \x1b[90m%-20s:%-4d:\x1b[0m ", uptime_min, uptime_sec, uptime_ms, log_level_colors[level], log_level_strings[level], file_trunc, line);
+    fprintf(stdout, "[%02d:%02d.%03d] %s%-5s\x1b[0m \x1b[90m...%-20s:%-4d:\x1b[0m ", uptime_min, uptime_sec, uptime_ms, log_level_colors[level], log_level_strings[level], file_trunc, line);
 
     vfprintf(stdout, fmt, args);
     fprintf(stdout, "\n");

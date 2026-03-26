@@ -34,11 +34,10 @@ case "$PLATFORM" in
     CC="clang"
     OPTS_PROD="-arch $ARCH -O3 -ffast-math"
     OPTS_DEBUG="-arch $ARCH -O1 -Wall -pedantic"
-    #OPTS_DEBUG="-arch $ARCH -Ofast -Wall -pedantic -fsanitize=address -fno-omit-frame-pointer"
     LIB_DIR="third_party/lib/macos"
     LIBS="-L$LIB_DIR -lncnn -lncnn_shim \
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
-          -lexif -lx264 -lvpx \
+          -lx264 -lvpx \
           -lm -lz -lc++ -lpthread -liconv"
     FRAMEWORKS="-framework CoreFoundation \
                 -framework CoreMedia \
@@ -52,12 +51,11 @@ case "$PLATFORM" in
   linux)
     CC="gcc"
     OPTS_PROD="-march=x86-64 -O3 -ffast-math"
-    OPTS_DEBUG="-march=x86-64 -O3 -ffast-math -Wall -pedantic"
-    #OPTS_DEBUG="-march=x86-64 -Ofast -Wall -pedantic -fsanitize=address -fno-omit-frame-pointer"
+    OPTS_DEBUG="-march=x86-64 -O1 -Wall -pedantic"
     LIB_DIR="third_party/lib/linux"
     LIBS="-L$LIB_DIR -lncnn -lncnn_shim \
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
-          -lexif -lm -lz -lgomp \
+          -lm -lz \
           -lva -lva-drm -lvdpau -lX11 -lva-x11 \
           -lx264 -lvpx -lpthread -lstdc++"
     FRAMEWORKS=""
@@ -65,12 +63,12 @@ case "$PLATFORM" in
     ;;
   win32)
     CC="gcc"
-    OPTS_PROD="-march=x86-64 -Ofast"
-    OPTS_DEBUG="-march=x86-64 -Ofast -Wall -pedantic -fno-omit-frame-pointer"
+    OPTS_PROD="-march=x86-64 -O3 -ffast-math"
+    OPTS_DEBUG="-march=x86-64 -O1 -Wall -pedantic"
     LIB_DIR="third_party/lib/win"
-    LIBS="-L$LIB_DIR -lncnn -lncnn_shim -lgomp \
+    LIBS="-L$LIB_DIR -lncnn -lncnn_shim \
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
-          -lexif -lm -lx264 -lvpx \
+          -lm -lx264 -lvpx \
           -lpthread -lstdc++ -lws2_32 -lbcrypt \
           -static -liconv -lz"
     FRAMEWORKS=""

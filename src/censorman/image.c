@@ -5,12 +5,15 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#include "libexif/exif-data.h"
-
 Image image_nil(void)
 {
     Image image = {0};
     return image;
+}
+
+b32 image_is_empty(Image *image)
+{
+    return (!image->data) || (image->props.w == 0 && image->props.h == 0);
 }
 
 Image image_load(Arena *arena, String path, Stopwatch *stopwatch)
@@ -46,7 +49,7 @@ Image image_load(Arena *arena, String path, Stopwatch *stopwatch)
     image.props.h = h;
     image.data = PUSH_ARRAY(image.arena, RGBColor, w*h);
     image.props.scale = 1.0;
-    image.props.rotation = image_get_rotation_from_file(path_cstr);
+    image.props.rotation = ROTATE_0; // assume source image is upright
 
     // pack RGB (remove alpha channel if needed)
     for(s32 i = 0; i < w*h; ++i)
@@ -78,7 +81,7 @@ b32 image_save(Image *image, String path)
 
     char *output_file_cstr = string_to_cstr(scratch.arena, path);
 
-    s32 res = stbi_write_png(output_file_cstr, image->props.w, image->props.h, 3, image->data, image_step(image));
+    s32 res = stbi_write_png(output_file_cstr, image->props.w, image->props.h, 3, image->data, 3*image->props.w);
 
     scratch_end(scratch);
 
@@ -91,11 +94,6 @@ b32 image_save(Image *image, String path)
     }
 
     return true;
-}
-
-inline u32 image_step(Image *image)
-{
-    return image->props.w * 3;
 }
 
 Image image_rotate(Image source, u32 degrees, ClockDir direction)
@@ -257,37 +255,6 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
     stopwatch_end(source.stopwatch, S(__func__));
 
     return output;
-}
-
-Rotation image_get_rotation_from_file(char *file_path)
-{
-    Rotation rotation = ROTATE_0;
-
-    // get orientation using libexif
-    ExifData *ed = exif_data_new_from_file(file_path);
-
-    if(ed)
-    {
-        ExifEntry *entry = exif_data_get_entry(ed, EXIF_TAG_ORIENTATION);
-
-        if(entry)
-        {
-            ExifShort orient = exif_get_short(entry->data, exif_data_get_byte_order(ed));
-
-            switch(orient)
-            {
-                case 6: rotation = ROTATE_90;  break;
-                case 3: rotation = ROTATE_180; break;
-                case 8: rotation = ROTATE_270; break;
-                case 1: rotation = ROTATE_0;   break;
-                default: rotation = ROTATE_0;  break; // 1,2,4,5,7 require mirroring
-            }
-        }
-
-        exif_data_unref(ed);
-    }
-
-    return rotation;
 }
 
 void image_print(Image *image)

@@ -4,6 +4,11 @@ Video video_nil(void)
     return vid;
 }
 
+b32 video_is_empty(Video *vid)
+{
+    return (!vid->data) || (vid->w == 0 && vid->h == 0);
+}
+
 Video video_begin(Arena *arena, String path, String out_path, VideoSettings *settings)
 {
     Video vid = {0};
@@ -673,6 +678,9 @@ b32 video_save_frames(Video *vid)
 
 void video_save_done(Video *vid)
 {
+    if(video_is_empty(vid))
+        return;
+
     VideoContext *vid_ctx = &vid->context;
 
     // flush video encoder
@@ -861,8 +869,17 @@ void video_print(Video *vid)
     logi("  Size:        %d, %d", vid->w, vid->h);
     logi("  Frame count: %ld", vid->frame_count_total);
     logi("  FPS:         %f", vid->fps);
+    logi("  Duration:    %.2f s", vid->frame_count_total * vid->fps);
     logi("  Rotation:    %d", vid->rotation);
-    logi("  Codec:       %s (%d)", avcodec_get_name(vid->context.codec->id), vid->context.codec->id);
+
+    if(vid->context.codec)
+    {
+        logi("  Codec:       %s (%d)", avcodec_get_name(vid->context.codec->id), vid->context.codec->id);
+    }
+    else
+    {
+        logi("  Codec:       None");
+    }
 }
 
 void video_set_log_level(LogLevel level)

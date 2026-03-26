@@ -371,32 +371,44 @@ s32 os_file_write(OS_File file, void *data, s32 size)
     return (s32)bytes_written;
 }
 
-StringArray os_get_files_in_directory(Arena *arena, String directory)
+static void gather_files(StringList *sl, String directory, b32 recursive)
 {
-    String search_pattern = string_concat(arena, 2, directory, S("\\*"));
-    char *search_pattern_cstr = string_to_cstr(arena, search_pattern);
-
+    String search_pattern = string_concat(sl->arena, 2, directory, S("\\*"));
+    char *search_pattern_cstr = string_to_cstr(sl->arena, search_pattern);
     WIN32_FIND_DATAA find_data;
     HANDLE handle = FindFirstFileA(search_pattern_cstr, &find_data);
-    
-    if(handle == INVALID_HANDLE_VALUE)
-        return string_array_nil();
-
-    StringList sl = string_list_create(arena);
+    if(handle == INVALID_HANDLE_VALUE) return;
 
     for(;;)
     {
-        b32 is_file = !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
-        if(is_file)
+        String d_name_str = STR(find_data.cFileName);
+        b8 is_dir = !!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+        b8 is_dots = string_equal(d_name_str, S(".")) ||
+                     string_equal(d_name_str, S(".."));
+        String full_path = string_concat(sl->arena, 3, directory, S("\\"), d_name_str);
+        if(!is_dots)
         {
-            String file_name = string_copy_raw(arena, find_data.cFileName, cstring_strlen(find_data.cFileName));
-            string_list_add(&sl, file_name);
+            if(is_dir)
+            {
+                if(recursive)
+                {
+                    gather_files(sl, full_path, recursive);
+                }
+            }
+            else
+            {
+                string_list_add(sl, full_path);
+            }
         }
+        if(!FindNextFileA(handle, &find_data)) break;
+    }
+    FindClose(handle);
+}
 
-        if(!FindNextFileA(handle, &find_data))
-            break;
-    };
-
+StringArray os_get_files_in_directory(Arena *arena, String directory, b32 recursive)
+{
+    StringList sl = string_list_create(arena);
+    gather_files(&sl, directory, recursive);
     return string_list_to_array(sl);
 }
 

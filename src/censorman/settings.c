@@ -55,7 +55,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_texture_path     = string_array_create(scratch.arena, 2, S("texture_path"),     S("tp"));
     StringArray ids_bbx_output       = string_array_create(scratch.arena, 2, S("bbx_file"),         S("bbx"));
     StringArray ids_bbx_file_format  = string_array_create(scratch.arena, 2, S("bbx_file_format"),  S("bff"));
-    StringArray ids_filter_features  = string_array_create(scratch.arena, 2, S("filter_features"),  S("ff"));
+    StringArray ids_facial_features  = string_array_create(scratch.arena, 2, S("facial_features"),  S("ff"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
     String str_detect_types     = cmdline_get_value_first_match(&cmdline, ids_detect_types);
@@ -68,12 +68,12 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     String str_texture_path     = cmdline_get_value_first_match(&cmdline, ids_texture_path);
     String str_bbx_output       = cmdline_get_value_first_match(&cmdline, ids_bbx_output);
     String str_distort_audio    = cmdline_get_value_first_match(&cmdline, ids_distort_audio);
-    String str_filter_features  = cmdline_get_value_first_match(&cmdline, ids_filter_features);
+    String str_facial_features  = cmdline_get_value_first_match(&cmdline, ids_facial_features);
 
     StringArray strs_assets          = string_split(scratch.arena, str_assets,          S(","));
     StringArray strs_detect_types    = string_split(scratch.arena, str_detect_types,    S(","));
     StringArray strs_filters         = string_split(scratch.arena, str_filters,         S(","));
-    StringArray strs_filter_features = string_split(scratch.arena, str_filter_features, S(","));
+    StringArray strs_facial_features = string_split(scratch.arena, str_facial_features, S(","));
 
     if(str_output_folder.len > 0)    settings.output_folder    = str_output_folder;
     if(str_bbx_output.len > 0)       settings.bbx_output       = str_bbx_output;
@@ -122,18 +122,15 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
         b32 is_directory = os_path_is_directory(str_asset);
 
-        String input_folder = {0};
         StringArray file_names_arr = {0};
 
         if(is_directory)
         {
-            input_folder = str_asset;
-            file_names_arr = os_get_files_in_directory(scratch.arena, str_asset);
+            file_names_arr = os_get_files_in_directory(scratch.arena, str_asset, true);
         }
         else
         {
-            input_folder = os_path_get_directory(str_asset);
-            file_names_arr = string_array_create(scratch.arena, 1, os_path_get_file(str_asset));
+            file_names_arr = string_array_create(scratch.arena, 1, str_asset);
         }
 
         for(int j = 0; j < file_names_arr.count; ++j)
@@ -147,20 +144,20 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             if(string_in_array(ext, exts_image))
             {
                 asset->type = TYPE_IMAGE;
-                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, OS_PATH_SLASH_STR, file_str));
-                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, file_str);
+                asset->path = file_str;
+                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part(file_str));
             }
             else if(string_in_array(ext, exts_video))
             {
                 asset->type = TYPE_VIDEO;
-                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, OS_PATH_SLASH_STR, file_str));
-                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, file_str);
+                asset->path = file_str;
+                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part(file_str));
             }
             else
             {
                 asset->type = TYPE_UNSUPPORTED;
-                asset->path = string_copy(arena, string_concat(arena, 3, input_folder, OS_PATH_SLASH_STR, file_str));
-                asset->output_path = string_nil(); // TODO
+                asset->path = file_str;
+                asset->output_path = string_nil();
             }
         }
     }
@@ -275,16 +272,16 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     
     // Filter Features
 
-    if(strs_filter_features.count > 0)
+    if(strs_facial_features.count > 0)
     {
-        settings.filter_features = 0x0;
+        settings.facial_features = 0x0;
 
-        for(s64 i = 0; i < strs_filter_features.count; ++i)
+        for(s64 i = 0; i < strs_facial_features.count; ++i)
         {
-            String filter_feature = string_trim(strs_filter_features.items[i]);
-            FilterFeature ff = filter_feature_from_string(filter_feature);
+            String facial_feature = string_trim(strs_facial_features.items[i]);
+            FacialFeature ff = facial_feature_from_string(facial_feature);
 
-            settings.filter_features |= ff;
+            settings.facial_features |= ff;
         }
     }
 
@@ -360,7 +357,7 @@ void settings_print(Settings *settings)
     String filters_str = string_list_collapse(&sl);
 
     logi("%-22s " STR_FMT,     "Filters",               STR_ARG(filters_str));
-    logi("%-22s 0x%02X",        "Filter Features",      settings->filter_features);
+    logi("%-22s 0x%02X",        "Facial Features",      settings->facial_features);
     logi("%-22s %u",            "Thread Count",         settings->thread_count);
     logi("%-22s %lu B",         "Buffer Size",          settings->buffer_size);
     logi("%-22s %f",            "Box Padding",          settings->box_padding);
@@ -405,7 +402,7 @@ void settings_print_help(void)
     printf("\nUSAGE\n");
     printf("    censorman <asset_path> [options | flags]\n");
     printf("\nASSET_PATH\n");
-    printf("    Accepts comma-separated list of image and video file paths, or a folder path.\n");
+    printf("    Accepts comma-separated list of image and video file paths, or a folder path (searches recursively).\n");
     printf("    * Supported image formats: [ PNG, JPG, BMP, PSD, GIF, TGA, HDR, PIC, PNM ]\n");
     printf("    * Supported video formats: [ MP4, MOV ]\n");
     printf("\nOPTIONS\n");
@@ -415,6 +412,7 @@ void settings_print_help(void)
     printf("        Each filter can specify an optional parameter with ':' (e.g blur:0.20)\n");
     printf("        This parameter indicates 'blur_strength' for blur and gaussian_blur, or\n");
     printf("        'block_scale' with pixelate\n");
+    printf("\n");
     printf("    --detect [-d] <detect-types>\n");
     printf("        a comma-separated list of detect types [face,person,license_plate,nudity]\n");
     printf("        default: face\n");
@@ -422,31 +420,39 @@ void settings_print_help(void)
     printf("        The first parameter is confidence threshold\n");
     printf("        The second parameter is NMS IOU threshold\n");
     printf("        Most of the models have 0.25 confidence threshold, and 0.45 NMS IOU threshold\n");
+    printf("\n");
     printf("    --output_folder [-o] <output_folder_path>\n");
     printf("        Specify the output folder of processed assets (images/videos).\n");
     printf("        If the folder doesn't exist, it will be created\n");
     printf("        Default: output\n");
+    printf("\n");
     printf("    --distort_audio [-da] <distortion_hz>\n");
     printf("        Apply a ring modulation to the audio stream of a video file.\n");
     printf("        A typical range for distortion is 150 Hz to 300 Hz\n");
+    printf("\n");
     printf("    --thread_count [-j] <thread_count>\n");
     printf("        Specify thread count. Used for video processing. Images are processed single-threaded.\n");
     printf("        Default: Number of logical cores\n");
+    printf("\n");
     printf("    --buffer_size [-bs] <buffer_size_bytes>\n");
     printf("        Set the maximum buffer size for video frames. Video frames are loaded in chunks, so\n");
     printf("        larger chunks allow more frames of a video to be decoded at a time.\n");
     printf("        Default: 536870912 (512 MB)\n");
+    printf("\n");
     printf("    --box_padding [-bp] <box_padding_percent>\n");
     printf("        Specify the box padding percentage. Padding is added at the end of the detection.\n");
     printf("        Default: 0.15 (15 %%)\n");
+    printf("\n");
     printf("    --smoothing_window [-sw] <smoothing_window_seconds>\n");
     printf("        Used for video interpolation of detection boxes. Interpolation is an exponentional smooth.\n");
     printf("        There is also an implicit first stage to find discontinuities and fast motion\n");
     printf("        and schedule those frames for detection\n");
     printf("        Default: 0.200 (200 ms)\n");
+    printf("\n");
     printf("    --texture_path [-tp] <texture_path>\n");
     printf("        Supply a path to an image file that is stretched over bounding boxes on the output.\n");
     printf("        Used with the --filter texture option\n");
+    printf("\n");
     printf("    --bbx_file [-bbx] <bbx_file_path>\n");
     printf("        Bounding-box output file. If specified, the detect box data will be written to a file\n");
     printf("\nFLAGS\n");
@@ -458,9 +464,12 @@ void settings_print_help(void)
     printf("    --help [-h]               Display this help output\n");
     printf("\nEXAMPLES\n");
     printf("    1.  Just run default settings on test1.png (detect faces and apply box blur)\n");
-    printf("        > censorman assets/images/test1.png\n");
+    printf("          censorman assets/images/test1.png\n");
+    printf("\n");
     printf("    2.  Detect persons on all supported files in assets/images and pixelate boxes with a block scale of 0.12\n");
-    printf("        > censorman assets/images -d person -f pixelate:0.12\n");
+    printf("          censorman assets/images -d person -f pixelate:0.12\n");
+    printf("\n");
     printf("    3.  Apply box blur to faces and license plates in vid1.mp4 with debug markup\n");
-    printf("        > censorman assets/videos/vid1.mp4 -d face,license_plate -f blur --debug\n");
+    printf("          censorman assets/videos/vid1.mp4 -d face,license_plate -f blur --debug\n");
+    printf("\n");
 }

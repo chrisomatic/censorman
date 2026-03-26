@@ -146,6 +146,35 @@ void os_time_delay_us(u64 us);
 b32 os_entropy(u8 *data, u64 len);
 
 ///////////////////////////////////////
+// Logs
+///////////////////////////////////////
+
+#define logi(...) os_log(LOG_LEVEL_INFO,    __FILE__, __LINE__, __VA_ARGS__);
+#define logw(...) os_log(LOG_LEVEL_WARN,    __FILE__, __LINE__, __VA_ARGS__);
+#define loge(...) os_log(LOG_LEVEL_ERROR,   __FILE__, __LINE__, __VA_ARGS__);
+#define logd(...) os_log(LOG_LEVEL_DEBUG,   __FILE__, __LINE__, __VA_ARGS__);
+#define logv(...) os_log(LOG_LEVEL_VERBOSE, __FILE__, __LINE__, __VA_ARGS__);
+
+typedef enum
+{
+    LOG_LEVEL_QUIET = 0,
+    LOG_LEVEL_INFO,
+    LOG_LEVEL_WARN,
+    LOG_LEVEL_ERROR,
+    LOG_LEVEL_DEBUG,
+    LOG_LEVEL_VERBOSE,
+} LogLevel;
+
+void os_log(LogLevel level, const char* file, s32 line, const char* fmt, ...);
+
+LogLevel os_get_log_level(void);
+void os_set_log_level(LogLevel level);
+
+void os_printf(const char* fmt, ...);
+void os_vprintf(const char* fmt, va_list args);
+s32  os_print_raw(const char* msg, s32 msg_len);
+
+///////////////////////////////////////
 // Stopwatch (simple profiling)
 ///////////////////////////////////////
 
@@ -169,7 +198,7 @@ Stopwatch stopwatch_create(void);
 void stopwatch_reset(Stopwatch *stopwatch);
 void stopwatch_begin(Stopwatch *stopwatch, String entry_str);
 void stopwatch_end(Stopwatch *stopwatch, String entry_str);
-void stopwatch_print(Stopwatch *stopwatch);
+void stopwatch_print(Stopwatch *stopwatch, LogLevel ll);
 
 ///////////////////////////////////////
 // Files
@@ -229,7 +258,7 @@ void os_file_reset_pos(OS_File file);
 OS_File os_file_nil(void);
 
 String      os_get_current_directory(void);
-StringArray os_get_files_in_directory(Arena *arena, String directory);
+StringArray os_get_files_in_directory(Arena *arena, String directory, b32 recursive);
 StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArray extensions);
 
 ///////////////////////////////////////
@@ -238,37 +267,8 @@ StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArr
 
 b32    os_path_is_directory(String path);
 String os_path_get_extension(String path);
-String os_path_get_directory(String path);
-String os_path_get_file(String path);
-
-///////////////////////////////////////
-// Logs
-///////////////////////////////////////
-
-#define logi(...) os_log(LOG_LEVEL_INFO,    __FILE__, __LINE__, __VA_ARGS__);
-#define logw(...) os_log(LOG_LEVEL_WARN,    __FILE__, __LINE__, __VA_ARGS__);
-#define loge(...) os_log(LOG_LEVEL_ERROR,   __FILE__, __LINE__, __VA_ARGS__);
-#define logd(...) os_log(LOG_LEVEL_DEBUG,   __FILE__, __LINE__, __VA_ARGS__);
-#define logv(...) os_log(LOG_LEVEL_VERBOSE, __FILE__, __LINE__, __VA_ARGS__);
-
-typedef enum
-{
-    LOG_LEVEL_QUIET = 0,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_DEBUG,
-    LOG_LEVEL_VERBOSE,
-} LogLevel;
-
-void os_log(LogLevel level, const char* file, s32 line, const char* fmt, ...);
-
-LogLevel os_get_log_level(void);
-void os_set_log_level(LogLevel level);
-
-void os_printf(const char* fmt, ...);
-void os_vprintf(const char* fmt, va_list args);
-s32  os_print_raw(const char* msg, s32 msg_len);
+String os_path_get_folder_part(String path);
+String os_path_get_file_part(String path);
 
 ///////////////////////////////////////
 // Threads

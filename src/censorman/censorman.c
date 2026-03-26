@@ -154,7 +154,7 @@ s64 entry_point(void *params)
                 arena_reset(arena_frame);
 
                 Image img_src = image_load(arena_frame, asset->path, &sw);
-                
+
                 bbx_file_write_asset_header(bbx_file, i, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
                 List box_list = list_create(arena_frame, sizeof(Box));
 
@@ -173,7 +173,7 @@ s64 entry_point(void *params)
 
                 BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
 
-                box_frame = box_frame_divide_into_features(arena_frame, box_frame, settings.filter_features);
+                box_frame = box_frame_divide_into_features(arena_frame, box_frame, settings.facial_features);
                 box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
 
                 bbx_file_write_box_frame(bbx_file, &box_frame);
@@ -296,10 +296,11 @@ s64 entry_point(void *params)
 
                     mutex_lock(&arena_chunk_mutex);
 
-                    BoxFrame *box_frame = &box_frames[frame];
-                    *box_frame = box_frame_from_list(arena_chunk, box_list, vid.frames_processed + frame);
-                    *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, settings.filter_features);
-                    box_frame_apply_padding(*box_frame, &img_src.props, settings.box_padding);
+                      BoxFrame *box_frame = &box_frames[frame];
+                      *box_frame = box_frame_from_list(arena_chunk, box_list, vid.frames_processed + frame);
+                      *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, settings.facial_features);
+                      box_frame_apply_padding(*box_frame, &img_src.props, settings.box_padding);
+
                     mutex_unlock(&arena_chunk_mutex);
                 }
 
@@ -371,6 +372,7 @@ s64 entry_point(void *params)
                     // [output]
                     stopwatch_begin(&sw, S("save video"));
                     video_save_frames(&vid);
+                    logi("Progress: %3d%% [%5d / %d]", (s32)(100*vid.frames_processed / (f32)vid.frame_count_total), vid.frames_processed, vid.frame_count_total);
                     stopwatch_end(&sw, S("save video"));
                 }
 
@@ -389,7 +391,7 @@ s64 entry_point(void *params)
     {
         bbx_file_close(bbx_file);
         // bbx_file_parse_and_print(settings.bbx_output); // @TEMP
-        if(settings.verbose) stopwatch_print(&sw);
+        stopwatch_print(&sw, LOG_LEVEL_VERBOSE);
 
         logi("Complete! Processed files in folder: '" STR_FMT "'", STR_ARG(settings.output_folder));
     }
