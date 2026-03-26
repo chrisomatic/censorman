@@ -589,7 +589,7 @@ Barrier barrier_create(s64 thread_count)
 	if(pthread_mutex_init(&barrier.mutex, 0) < 0)
 		return barrier;
 
-	if(pthread_cond_init(&barrier->cond, 0) < 0)
+	if(pthread_cond_init(&barrier.cond, 0) < 0)
     {
 		pthread_mutex_destroy(&barrier.mutex);
 		return barrier;

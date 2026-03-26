@@ -266,7 +266,14 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
             ctx->audio_enc_ctx   = avcodec_alloc_context3(ctx->audio_enc_codec);
             ctx->audio_enc_ctx->sample_rate = ctx->audio_dec_ctx->sample_rate;
             av_channel_layout_copy(&ctx->audio_enc_ctx->ch_layout, &ctx->audio_dec_ctx->ch_layout);
-            ctx->audio_enc_ctx->sample_fmt  = ctx->audio_enc_codec->sample_fmts[0];
+
+             // Get supported sample formats
+            const enum AVSampleFormat *sample_fmts;
+            avcodec_get_supported_config(ctx->audio_enc_ctx, ctx->audio_enc_codec,
+                AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
+                (const void **)&sample_fmts, NULL);
+            ctx->audio_enc_ctx->sample_fmt = sample_fmts[0];          
+
             ctx->audio_enc_ctx->bit_rate    = 128000;
             ctx->audio_enc_ctx->time_base   = (AVRational){1, ctx->audio_dec_ctx->sample_rate};
 

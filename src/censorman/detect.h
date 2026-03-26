@@ -13,10 +13,9 @@ typedef enum
     DETECT_TYPE_NUDITY,
 
     // subtypes used for labels
-    DETECT_TYPE_EYE,
+    DETECT_TYPE_EYE = 16,
     DETECT_TYPE_NOSE,
     DETECT_TYPE_MOUTH,
-    DETECT_TYPE_MAX,
 } DetectType;
 
 typedef struct
@@ -31,7 +30,7 @@ typedef struct
     s32 y;
     s32 w;
     s32 h;
-    u16 confidence;
+    u8  confidence;
     Point landmarks[LANDMARK_COUNT];
     DetectType type;
 } Box;

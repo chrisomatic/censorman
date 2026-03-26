@@ -1,6 +1,7 @@
 #pragma once
 
 #define ASSET_MAX  1024
+#define DETECT_CONFIG_MAX 16
 
 typedef enum
 {
@@ -22,7 +23,7 @@ typedef struct
     Asset assets[ASSET_MAX];
     u64 asset_count;
 
-    DetectConfig detect_configs[DETECT_TYPE_MAX];
+    DetectConfig detect_configs[DETECT_CONFIG_MAX];
     u32 detect_config_count;
 
     Filter filters[FILTER_TYPE_MAX];
@@ -31,6 +32,7 @@ typedef struct
 
     String output_folder;
     String bbx_output;
+    String texture_path;
 
     u32 thread_count;
     u64 buffer_size;
@@ -49,6 +51,7 @@ typedef struct
     b8 verbose;
     b8 quiet;
     b8 distort_audio;
+    b8 bbx_print_format;
     b8 help;
 
 } Settings;

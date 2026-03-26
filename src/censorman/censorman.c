@@ -6,7 +6,6 @@
 
 #include "base/base.h"
 #include "os/os.h"
-#include "tests/tests.h"
 #include "censorman/image.h"
 #include "censorman/video.h"
 #include "censorman/detect.h"
@@ -16,7 +15,6 @@
 
 #include "base/base.c"
 #include "os/os.c"
-#include "tests/tests.c"
 #include "censorman/image.c"
 #include "censorman/video.c"
 #include "censorman/detect.c"
@@ -25,7 +23,6 @@
 #include "censorman/bbx_file.c"
 
 #define CENSORMAN_VERSION 2
-#define RUN_TESTS 0
 
 enum CM_ReturnCode
 {
@@ -86,13 +83,21 @@ int main(int argc, char **args)
             settings_print_help();   
             return CM_SUCCESS;
         }
+
+        if(settings.bbx_print_format)
+        {
+            bbx_print_format();
+            return CM_SUCCESS;
+        }
     }
 
     settings_print(&settings);
 
-#if RUN_TESTS
-    tests_run();
-#endif
+    if(settings.texture_path.len > 0)
+    {
+        // load texture
+        g_texture_image = image_load(arena_perm, settings.texture_path, NULL);
+    }
 
     s_thread_context.count = settings.thread_count;
 

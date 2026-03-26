@@ -10,5 +10,5 @@ void bbx_file_write_asset_header(OS_File file, u32 asset_index, Asset *asset, s3
 void bbx_file_write_box_frame(OS_File file, BoxFrame *frame);
 void bbx_file_close(OS_File file);
 
-// For testing
 void bbx_file_parse_and_print(String bbx_file_path);
+void bbx_print_format(void);

@@ -16,6 +16,12 @@ static RGBColor get_pixel(Image *image, s64 x, s64 y);
 static RGBColor blend_color(RGBColor base, RGBColor color, f32 factor);
 
 //===================================
+// Global vars
+//===================================
+
+Image g_texture_image;
+
+//===================================
 // Filter functions
 //===================================
 
@@ -31,18 +37,19 @@ void filter_apply(Filter filter, Image *image, Box *box)
             filter_blackout(image, box);
             break;
         case FILTER_TYPE_BLUR_BOX:
-            filter_blur_box(image, box, filter.blur_strength);
+            filter_blur_box(image, box, filter.param);
             break;
         case FILTER_TYPE_BLUR_GAUSSIAN:
-            filter_blur_gaussian(image, box, filter.blur_strength);
+            filter_blur_gaussian(image, box, filter.param);
             break;
         case FILTER_TYPE_PIXELATE:
-            filter_pixelate(image, box, filter.block_scale);
+            filter_pixelate(image, box, filter.param);
             break;
         case FILTER_TYPE_SCRAMBLE:
             filter_scramble(image, box);
             break;
         case FILTER_TYPE_TEXTURE:
+            filter_texture(image, box);
             break;
         case FILTER_TYPE_NONE:
         default:
@@ -368,7 +375,41 @@ void filter_blur_box(Image *image, Box *box, f32 blur_strength)
     }
 
     scratch_end(scratch);
+}
 
+void filter_texture(Image *image, Box *box)
+{
+    if(!g_texture_image.data)
+        return;
+
+    f32 scale_x = (f32)g_texture_image.props.w / box->w;
+    f32 scale_y = (f32)g_texture_image.props.h / box->h;
+
+    for(s32 dy = 0; dy < box->h; ++dy)
+    {
+        for(s32 dx = 0; dx < box->w; ++dx)
+        {
+            s32 sx = (s32)(dx * scale_x);
+            s32 sy = (s32)(dy * scale_y);
+
+            if(sx >= g_texture_image.props.w) sx = g_texture_image.props.w - 1;
+            if(sy >= g_texture_image.props.h) sy = g_texture_image.props.h - 1;
+
+            RGBColor *src_pixel = g_texture_image.data + sy * g_texture_image.props.w + sx;
+            RGBColor *dst_pixel = image->data + (box->y + dy) * image->props.w + (box->x + dx);
+
+            // check for magenta pixel (poor man's transparency)
+            b32 ignore = (src_pixel->r == 0xFF && src_pixel->g == 0x00 && src_pixel->b == 0xFF);
+
+            if(ignore)
+                continue;
+
+            // Copy pixel data
+            dst_pixel->r = src_pixel->r;
+            dst_pixel->g = src_pixel->g;
+            dst_pixel->b = src_pixel->b;
+        }
+    }
 }
 
 void filter_draw_debug_info(Image *image, BoxFrame *box_frame)

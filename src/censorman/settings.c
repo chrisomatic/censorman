@@ -3,9 +3,9 @@ Settings settings_default(void)
 {
     Settings settings = {0};
 
-    settings.filters[0].type = FILTER_TYPE_BLUR_BOX;
-    settings.filters[0].blur_strength = 0.60f;
-    settings.filter_count = 1;
+    settings.filters[0].type  = FILTER_TYPE_BLUR_BOX;
+    settings.filters[0].param = 0.60f;
+    settings.filter_count     = 1;
 
     settings.output_folder = S("output");
 
@@ -54,6 +54,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_smoothing_window = string_array_create(scratch.arena, 2, S("smoothing_window"), S("sw"));
     StringArray ids_texture_path     = string_array_create(scratch.arena, 2, S("texture_path"),     S("tp"));
     StringArray ids_bbx_output       = string_array_create(scratch.arena, 2, S("bbx_file"),         S("bbx"));
+    StringArray ids_bbx_file_format  = string_array_create(scratch.arena, 2, S("bbx_file_format"),  S("bff"));
     StringArray ids_filter_features  = string_array_create(scratch.arena, 2, S("filter_features"),  S("ff"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
@@ -74,29 +75,32 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray strs_filters         = string_split(scratch.arena, str_filters,         S(","));
     StringArray strs_filter_features = string_split(scratch.arena, str_filter_features, S(","));
 
-    if(str_output_folder.len > 0)    settings.output_folder        = str_output_folder;
-    if(str_bbx_output.len > 0)       settings.bbx_output           = str_bbx_output;
-    if(str_box_padding.len > 0)      settings.box_padding          = string_to_f64(str_box_padding);
-    if(str_smoothing_window.len > 0) settings.smoothing_window     = string_to_f64(str_smoothing_window);
-    if(str_thread_count.len > 0)     settings.thread_count         = string_to_s64(str_thread_count);
-    if(str_buffer_size.len > 0)      settings.buffer_size          = string_to_s64(str_buffer_size);
+    if(str_output_folder.len > 0)    settings.output_folder    = str_output_folder;
+    if(str_bbx_output.len > 0)       settings.bbx_output       = str_bbx_output;
+    if(str_texture_path.len > 0)     settings.texture_path     = str_texture_path;
+    if(str_box_padding.len > 0)      settings.box_padding      = string_to_f64(str_box_padding);
+    if(str_smoothing_window.len > 0) settings.smoothing_window = string_to_f64(str_smoothing_window);
+    if(str_thread_count.len > 0)     settings.thread_count     = string_to_s64(str_thread_count);
+    if(str_buffer_size.len > 0)      settings.buffer_size      = string_to_s64(str_buffer_size);
     if(str_distort_audio.len > 0)
     {
         settings.distort_audio = true;
         settings.distort_audio_carrier_hz = string_to_f64(str_distort_audio);    
     }
 
-    b32 f_help      = cmdline_has_any_flags(&cmdline, ids_help) | (cmdline.args.count == 0);
-    b32 f_no_encode = cmdline_has_any_flags(&cmdline, ids_no_encode);
-    b32 f_debug     = cmdline_has_any_flags(&cmdline, ids_debug);
-    b32 f_verbose   = cmdline_has_any_flags(&cmdline, ids_verbose);
-    b32 f_quiet     = cmdline_has_any_flags(&cmdline, ids_quiet);
+    b32 f_help       = cmdline_has_any_flags(&cmdline, ids_help) | (cmdline.args.count == 0);
+    b32 f_bbx_format = cmdline_has_any_flags(&cmdline, ids_bbx_file_format);
+    b32 f_no_encode  = cmdline_has_any_flags(&cmdline, ids_no_encode);
+    b32 f_debug      = cmdline_has_any_flags(&cmdline, ids_debug);
+    b32 f_verbose    = cmdline_has_any_flags(&cmdline, ids_verbose);
+    b32 f_quiet      = cmdline_has_any_flags(&cmdline, ids_quiet);
 
-    if(f_help)      settings.help      = true;
-    if(f_no_encode) settings.no_encode = true;
-    if(f_debug)     settings.debug     = true;
-    if(f_verbose)   settings.verbose   = true;
-    if(f_quiet)     settings.quiet     = true;
+    if(f_help)       settings.help      = true;
+    if(f_bbx_format) settings.bbx_print_format = true;
+    if(f_no_encode)  settings.no_encode = true;
+    if(f_debug)      settings.debug     = true;
+    if(f_verbose)    settings.verbose   = true;
+    if(f_quiet)      settings.quiet     = true;
     
     // create output directory if needed
     char *output_folder_cstr = string_to_cstr(scratch.arena, settings.output_folder);
@@ -258,11 +262,11 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
             if(type == FILTER_TYPE_BLUR_BOX || type == FILTER_TYPE_BLUR_GAUSSIAN)
             {
-                filter->blur_strength = param == 0.0 ? settings.blur_strength : param;
+                filter->param = param == 0.0 ? settings.blur_strength : param;
             }
             else if(type == FILTER_TYPE_PIXELATE)
             {
-                filter->block_scale = param == 0.0 ? settings.block_scale : param;
+                filter->param = param == 0.0 ? settings.block_scale : param;
             }
 
             settings.filter_count++;
@@ -334,10 +338,10 @@ void settings_print(Settings *settings)
         {
             case FILTER_TYPE_BLUR_BOX:
             case FILTER_TYPE_BLUR_GAUSSIAN:
-                string_list_addf(&sl, ":%0.2f", filter.blur_strength);
+                string_list_addf(&sl, ":%0.2f", filter.param);
                 break;
             case FILTER_TYPE_PIXELATE:
-                string_list_addf(&sl, ":%0.2f", filter.block_scale);
+                string_list_addf(&sl, ":%0.2f", filter.param);
                 break;
             case FILTER_TYPE_TEXTURE:
                 string_list_addf(&sl, ":" STR_FMT, STR_ARG(filter.texture_path));
@@ -390,7 +394,7 @@ String asset_type_to_string(AssetType type)
         case TYPE_IMAGE: return S("image");
         case TYPE_VIDEO: return S("video");
         case TYPE_UNSUPPORTED:
-        default:
+        default: break;
     }
 
     return S("unsupported");
@@ -398,120 +402,65 @@ String asset_type_to_string(AssetType type)
 
 void settings_print_help(void)
 {
-    printf("\n");
-    printf("USAGE\n");
-    printf("\n");
-    printf("    censorman <asset_path> [options]\n");
-    printf("\n");
-    printf("ASSET_PATH\n");
-    printf("\n");
+    printf("\nUSAGE\n");
+    printf("    censorman <asset_path> [options | flags]\n");
+    printf("\nASSET_PATH\n");
     printf("    Accepts comma-separated list of image and video file paths, or a folder path.\n");
-    printf("\n");
     printf("    * Supported image formats: [ PNG, JPG, BMP, PSD, GIF, TGA, HDR, PIC, PNM ]\n");
     printf("    * Supported video formats: [ MP4, MOV ]\n");
-    printf("\n");
-    printf("OPTIONS\n");
-    printf("\n");
+    printf("\nOPTIONS\n");
     printf("    --filter [-f] <filters>\n");
-    printf("\n");
-    printf("        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout]\n");
+    printf("        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]\n");
     printf("        default: blur\n");
-    printf("\n");
     printf("        Each filter can specify an optional parameter with ':' (e.g blur:0.20)\n");
     printf("        This parameter indicates 'blur_strength' for blur and gaussian_blur, or\n");
     printf("        'block_scale' with pixelate\n");
-    printf("\n");
     printf("    --detect [-d] <detect-types>\n");
-    printf("\n");
     printf("        a comma-separated list of detect types [face,person,license_plate,nudity]\n");
     printf("        default: face\n");
-    printf("\n");
     printf("        Each detect type can specify up to two optional parameters with ':' between them\n");
     printf("        The first parameter is confidence threshold\n");
     printf("        The second parameter is NMS IOU threshold\n");
     printf("        Most of the models have 0.25 confidence threshold, and 0.45 NMS IOU threshold\n");
-    printf("\n");
     printf("    --output_folder [-o] <output_folder_path>\n");
-    printf("\n");
     printf("        Specify the output folder of processed assets (images/videos).\n");
     printf("        If the folder doesn't exist, it will be created\n");
     printf("        Default: output\n");
-    printf("\n");
     printf("    --distort_audio [-da] <distortion_hz>\n");
-    printf("\n");
     printf("        Apply a ring modulation to the audio stream of a video file.\n");
     printf("        A typical range for distortion is 150 Hz to 300 Hz\n");
-    printf("\n");
     printf("    --thread_count [-j] <thread_count>\n");
-    printf("\n");
     printf("        Specify thread count. Used for video processing. Images are processed single-threaded.\n");
     printf("        Default: Number of logical cores\n");
-    printf("\n");
     printf("    --buffer_size [-bs] <buffer_size_bytes>\n");
-    printf("\n");
     printf("        Set the maximum buffer size for video frames. Video frames are loaded in chunks, so\n");
     printf("        larger chunks allow more frames of a video to be decoded at a time.\n");
     printf("        Default: 536870912 (512 MB)\n");
-    printf("\n");
     printf("    --box_padding [-bp] <box_padding_percent>\n");
-    printf("\n");
     printf("        Specify the box padding percentage. Padding is added at the end of the detection.\n");
     printf("        Default: 0.15 (15 %%)\n");
-    printf("\n");
     printf("    --smoothing_window [-sw] <smoothing_window_seconds>\n");
-    printf("\n");
     printf("        Used for video interpolation of detection boxes. Interpolation is an exponentional smooth.\n");
     printf("        There is also an implicit first stage to find discontinuities and fast motion\n");
     printf("        and schedule those frames for detection\n");
     printf("        Default: 0.200 (200 ms)\n");
-    printf("\n");
-    printf("    --texture_path [-tp]\n");
-    printf("\n");
-    printf("        (Unimplemented)\n");
-    printf("\n");
+    printf("    --texture_path [-tp] <texture_path>\n");
+    printf("        Supply a path to an image file that is stretched over bounding boxes on the output.\n");
+    printf("        Used with the --filter texture option\n");
     printf("    --bbx_file [-bbx] <bbx_file_path>\n");
-    printf("\n");
     printf("        Bounding-box output file. If specified, the detect box data will be written to a file\n");
-    printf("\n");
-    printf("    --bbx_file_format\n");
-    printf("\n");
-    printf("        Print information about the file format for BBX files\n");
-    printf("\n");
-    printf("    --no_encode [-ne]\n");
-    printf("\n");
-    printf("        Disable the writing of the processed output file(s)\n");
-    printf("\n");
-    printf("    --debug [-db]\n");
-    printf("\n");
-    printf("        Enable debug info markout on output. This will draw the boxes on the output images/videos along with\n");
-    printf("        confidence numbers and labels\n");
-    printf("\n");
-    printf("    --verbose [-vb]\n");
-    printf("\n");
-    printf("        Turn on verbose console prints\n");
-    printf("\n");
-    printf("    --quiet [-q]\n");
-    printf("\n");
-    printf("        Disable all console prints\n");
-    printf("\n");
-    printf("    --help [-h]\n");
-    printf("\n");
-    printf("        Display this help output\n");
-    printf("\n");
-    printf("EXAMPLES\n");
-
-    printf("\n");
+    printf("\nFLAGS\n");
+    printf("    --bbx_file_format [-bff]  Print information about the file format for BBX files\n");
+    printf("    --no_encode [-ne]         Disable the writing of the processed output file(s)\n");
+    printf("    --debug [-db]             Enable debug info markout on output. Draws boxes on output with labels\n");
+    printf("    --verbose [-vb]           Turn on verbose console prints\n");
+    printf("    --quiet [-q]              Disable all console prints\n");
+    printf("    --help [-h]               Display this help output\n");
+    printf("\nEXAMPLES\n");
     printf("    1.  Just run default settings on test1.png (detect faces and apply box blur)\n");
-    printf("\n");
-    printf("        censorman assets/images/test1.png\n");
-    printf("\n");
+    printf("        > censorman assets/images/test1.png\n");
     printf("    2.  Detect persons on all supported files in assets/images and pixelate boxes with a block scale of 0.12\n");
-    printf("\n");
-    printf("        censorman assets/images -d person -f pixelate:0.12\n");
-    printf("\n");
+    printf("        > censorman assets/images -d person -f pixelate:0.12\n");
     printf("    3.  Apply box blur to faces and license plates in vid1.mp4 with debug markup\n");
-    printf("\n");
-    printf("        censorman assets/videos/vid1.mp4 -d face,license_plate -f blur --debug\n");
-    printf("\n");
+    printf("        > censorman assets/videos/vid1.mp4 -d face,license_plate -f blur --debug\n");
 }
-

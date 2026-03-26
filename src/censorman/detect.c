@@ -4,39 +4,6 @@
 #include "model_data/license_plate_bin.h"
 #include "model_data/nudity_bin.h"
 
-// NudeNet class indices
-typedef enum
-{
-    NUDITY_FEMALE_GENITALIA_COVERED = 0,
-    NUDITY_FACE_FEMALE              = 1,
-    NUDITY_BUTTOCKS_EXPOSED         = 2,
-    NUDITY_FEMALE_BREAST_EXPOSED    = 3,
-    NUDITY_FEMALE_GENITALIA_EXPOSED = 4,
-    NUDITY_MALE_BREAST_EXPOSED      = 5,
-    NUDITY_ANUS_EXPOSED             = 6,
-    NUDITY_FEET_EXPOSED             = 7,
-    NUDITY_BELLY_COVERED            = 8,
-    NUDITY_FEET_COVERED             = 9,
-    NUDITY_ARMPITS_COVERED          = 10,
-    NUDITY_ARMPITS_EXPOSED          = 11,
-    NUDITY_FACE_MALE                = 12,
-    NUDITY_BELLY_EXPOSED            = 13,
-    NUDITY_MALE_GENITALIA_EXPOSED   = 14,
-    NUDITY_ANUS_COVERED             = 15,
-    NUDITY_FEMALE_BREAST_COVERED    = 16,
-    NUDITY_BUTTOCKS_COVERED         = 17,
-} NudityClass;
-
-// classes to censor
-static const s32 nudity_censor_classes[] = {
-    NUDITY_BUTTOCKS_EXPOSED,
-    NUDITY_FEMALE_BREAST_EXPOSED,
-    NUDITY_FEMALE_GENITALIA_EXPOSED,
-    NUDITY_ANUS_EXPOSED,
-    NUDITY_MALE_GENITALIA_EXPOSED,
-};
-static const s32 nudity_censor_class_count = 5;
-
 static Model model_face   = {0};
 static Model model_person = {0};
 static Model model_license_plate = {0};
@@ -514,7 +481,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
                     box_interpolated->y = (s32)interp_exp_smooth((f32)ra->y, (f32)rb->y, alpha, f);
                     box_interpolated->w = (s32)interp_exp_smooth((f32)ra->w, (f32)rb->w, alpha, f);
                     box_interpolated->h = (s32)interp_exp_smooth((f32)ra->h, (f32)rb->h, alpha, f);
-                    box_interpolated->confidence = (s32)interp_exp_smooth((f32)ra->confidence, (f32)rb->confidence, alpha, f);
+                    box_interpolated->confidence = (u8)interp_exp_smooth((f32)ra->confidence, (f32)rb->confidence, alpha, f);
                     box_interpolated->type = ra->type;
 
                     for(s32 j2 = 0; j2 < LANDMARK_COUNT; ++j2)
@@ -560,8 +527,8 @@ s32 box_compare(void *a, void *b)
     Box *box_a = (Box *)a;
     Box *box_b = (Box *)b;
 
-    s32 result =   (box_a->confidence < box_b->confidence) 
-                 - (box_a->confidence > box_b->confidence);
+    s32 result = (s32)(box_a->confidence < box_b->confidence) 
+                    - (box_a->confidence > box_b->confidence);
 
     return result;
 }
@@ -711,7 +678,7 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
                     box.y = (s32)y1;
                     box.w = (s32)(x2 - x1);
                     box.h = (s32)(y2 - y1);
-                    box.confidence = (u16)(prob * 100);
+                    box.confidence = (u8)(prob * 100);
                     box.type = DETECT_TYPE_FACE;
 
                     for(s32 k = 0; k < LANDMARK_COUNT; k++)
@@ -825,7 +792,7 @@ List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 th
                 box.y = (s32)y1;
                 box.w = (s32)(x2 - x1);
                 box.h = (s32)(y2 - y1);
-                box.confidence = (u16)(prob * 100);
+                box.confidence = (u8)(prob * 100);
                 box.type = DETECT_TYPE_PERSON;
 
                 for(s32 k = 0; k < LANDMARK_COUNT; k++)
@@ -910,7 +877,7 @@ List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence,
         box.y = (s32)(cy - h * 0.5f);
         box.w = (s32)w;
         box.h = (s32)h;
-        box.confidence = (u16)(max_score * 100);
+        box.confidence = (u8)(max_score * 100);
         box.type = DETECT_TYPE_LICENSE_PLATE;
 
         box = box_unscale(box, image);
@@ -959,7 +926,7 @@ List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 thr
         f32 max_score   = 0.0f;
         s32 best_class  = -1;
 
-        for(s32 c = 0; c < nudity_censor_class_count; ++c)
+        for(s32 c = 0; c < ARRAY_COUNT(nudity_censor_classes); ++c)
         {
             s32 class_idx = nudity_censor_classes[c];
             f32 s = data[(4 + class_idx) * num_anchors + i];
@@ -983,7 +950,7 @@ List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 thr
         box.y        = (s32)(cy - h * 0.5f);
         box.w        = (s32)w;
         box.h        = (s32)h;
-        box.confidence = (u16)(max_score * 100);
+        box.confidence = (u8)(max_score * 100);
         box.type     = DETECT_TYPE_NUDITY;
 
         box = box_unscale(box, image);

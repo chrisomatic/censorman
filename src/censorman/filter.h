@@ -22,12 +22,8 @@ typedef enum
 typedef struct
 {
     FilterType type;
-
-    f32 block_scale;   // (Pixelate) [0.0 - 1.0]
-    f32 blur_strength; // (Blur)     [0.0 - 1.0]
-
+    f32 param; // typically in range [0.0, 1.0]
     String texture_path;
-
 } Filter;
 
 String     filter_to_string(FilterType type);
@@ -41,5 +37,6 @@ void filter_blur_gaussian(Image *image, Box *box, f32 blur_strength);
 void filter_blur_box(Image *image, Box *box, f32 blur_strength);
 void filter_pixelate(Image* image, Box *box, f32 block_scale);
 void filter_scramble(Image *image, Box *box);
+void filter_texture(Image *image, Box *box);
 
 void filter_draw_debug_info(Image *image, BoxFrame *box_frame);
