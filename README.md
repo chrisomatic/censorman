@@ -38,10 +38,10 @@ Video example
 censorman assets/crowd.jpg
 
 # scramble and pixelate faces in an image
-censorman assets/crowd.jpg -t scramble,pixelate
+censorman assets/crowd.jpg -f scramble,pixelate
 
 #  blur faces in video with debug boxes
-censorman assets/vid.mp4 -t pixelate --debug
+censorman assets/vid.mp4 -f pixelate --debug
 ```
 
 ## Supported Formats
