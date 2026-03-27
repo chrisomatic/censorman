@@ -48,7 +48,6 @@ Mutex arena_chunk_mutex = {0};
 // Shared variables for threads
 Barrier   barrier        = {0};
 Thread    *threads       = NULL;
-Stopwatch stopwatch      = {0};
 Settings  settings       = {0};
 OS_File   bbx_file       = {0};
 Video     vid            = {0};
@@ -67,7 +66,6 @@ int main(int argc, char **args)
     arena_perm  = arena_create(MB(8));
     arena_chunk = arena_create(MB(8));
     arena_chunk_mutex = mutex_create();
-    stopwatch   = stopwatch_create();
 
     randgen_seed_with_entropy();
 
@@ -391,7 +389,7 @@ s64 entry_point(void *params)
     {
         bbx_file_close(bbx_file);
         // bbx_file_parse_and_print(settings.bbx_output); // @TEMP
-        stopwatch_print(&sw, LOG_LEVEL_VERBOSE);
+        if(settings.stopwatch) stopwatch_print(&sw, LOG_LEVEL_INFO);
 
         logi("Complete! Processed files in folder: '" STR_FMT "'", STR_ARG(settings.output_folder));
     }

@@ -869,7 +869,7 @@ void video_print(Video *vid)
     logi("  Size:        %d, %d", vid->w, vid->h);
     logi("  Frame count: %ld", vid->frame_count_total);
     logi("  FPS:         %f", vid->fps);
-    logi("  Duration:    %.2f s", vid->frame_count_total * vid->fps);
+    logi("  Duration:    %.2f s", vid->frame_count_total * (1.0f / vid->fps));
     logi("  Rotation:    %d", vid->rotation);
 
     if(vid->context.codec)

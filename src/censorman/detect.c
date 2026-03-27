@@ -619,6 +619,8 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_mat_t kps_16;
     ncnn_mat_t kps_32;
 
+    f64 t0 = os_time_get();
+
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT0, &score_8);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT1, &score_16);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT2, &score_32);
@@ -628,6 +630,9 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT6, &kps_8);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT7, &kps_16);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT8, &kps_32);
+
+    f64 t1 = os_time_get();
+    // logd("Thread: %d, inference time: %f", s_thread_context.index, (t1-t0));
 
     const ncnn_mat_t scoreMats[] = {score_8, score_16, score_32};
     const ncnn_mat_t bboxMats[]  = {bbox_8, bbox_16, bbox_32};

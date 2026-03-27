@@ -22,9 +22,9 @@ Settings settings_default(void)
     settings.detect_config_count = 1;
 
     settings.no_encode = false;
-    settings.no_rotate = false;
     settings.debug     = false;
     settings.verbose   = false;
+    settings.stopwatch = false;
     settings.quiet     = false;
     settings.help      = false;
 
@@ -44,6 +44,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_quiet            = string_array_create(scratch.arena, 2, S("quiet"),            S("q"));
     StringArray ids_debug            = string_array_create(scratch.arena, 2, S("debug"),            S("db"));
     StringArray ids_verbose          = string_array_create(scratch.arena, 2, S("verbose"),          S("vb"));
+    StringArray ids_stopwatch        = string_array_create(scratch.arena, 2, S("stopwatch"),        S("sw"));
     StringArray ids_distort_audio    = string_array_create(scratch.arena, 2, S("distort_audio"),    S("da"));
     StringArray ids_detect_types     = string_array_create(scratch.arena, 2, S("detect"),           S("d"));
     StringArray ids_filters          = string_array_create(scratch.arena, 2, S("filter"),           S("f"));
@@ -93,6 +94,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     b32 f_no_encode  = cmdline_has_any_flags(&cmdline, ids_no_encode);
     b32 f_debug      = cmdline_has_any_flags(&cmdline, ids_debug);
     b32 f_verbose    = cmdline_has_any_flags(&cmdline, ids_verbose);
+    b32 f_stopwatch  = cmdline_has_any_flags(&cmdline, ids_stopwatch);
     b32 f_quiet      = cmdline_has_any_flags(&cmdline, ids_quiet);
 
     if(f_help)       settings.help      = true;
@@ -100,6 +102,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(f_no_encode)  settings.no_encode = true;
     if(f_debug)      settings.debug     = true;
     if(f_verbose)    settings.verbose   = true;
+    if(f_stopwatch)  settings.stopwatch = true;
     if(f_quiet)      settings.quiet     = true;
     
     // create output directory if needed
@@ -137,7 +140,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         {
             String file_str = file_names_arr.items[j];
 
-            Asset *asset = &settings.assets[settings.asset_count++];
+            Asset *asset = &settings.assets[settings.asset_count];
             String ext = os_path_get_extension(file_str);
             ext = string_to_lower(scratch.arena, ext);
 
@@ -146,18 +149,14 @@ Settings settings_parse(Arena *arena, int argc, char **args)
                 asset->type = TYPE_IMAGE;
                 asset->path = file_str;
                 asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part(file_str));
+                settings.asset_count++;
             }
             else if(string_in_array(ext, exts_video))
             {
                 asset->type = TYPE_VIDEO;
                 asset->path = file_str;
                 asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part(file_str));
-            }
-            else
-            {
-                asset->type = TYPE_UNSUPPORTED;
-                asset->path = file_str;
-                asset->output_path = string_nil();
+                settings.asset_count++;
             }
         }
     }
@@ -356,7 +355,7 @@ void settings_print(Settings *settings)
     string_list_add(&sl, S("]"));
     String filters_str = string_list_collapse(&sl);
 
-    logi("%-22s " STR_FMT,     "Filters",               STR_ARG(filters_str));
+    logi("%-22s " STR_FMT,      "Filters",              STR_ARG(filters_str));
     logi("%-22s 0x%02X",        "Facial Features",      settings->facial_features);
     logi("%-22s %u",            "Thread Count",         settings->thread_count);
     logi("%-22s %lu B",         "Buffer Size",          settings->buffer_size);
@@ -364,9 +363,10 @@ void settings_print(Settings *settings)
     logi("%-22s %f",            "Smoothing Window",     settings->smoothing_window);
     logi("%-22s %s (%0.2f Hz)", "Distort Audio",        STR_BOOL(settings->distort_audio), settings->distort_audio_carrier_hz);
     logi("%-22s %s",            "No Encoding",          STR_BOOL(settings->no_encode));
-    logi("%-22s %s",            "No Rotate",            STR_BOOL(settings->no_rotate));
-    logi("%-22s %s",            "Debug",                settings->debug ? "ON" : "OFF");
-    logi("%-22s %s",            "Verbose",              settings->verbose ? "ON" : "OFF");
+    logi("%-22s %s",            "Debug",                STR_BOOL(settings->debug));
+    logi("%-22s %s",            "Verbose",              STR_BOOL(settings->verbose));
+    logi("%-22s " STR_FMT,      "Output Folder",        STR_ARG(settings->output_folder));
+    logi("%-22s " STR_FMT,      "Texture Path",         STR_ARG(settings->texture_path));
     logi("%-22s " STR_FMT,      "Bounding Box Output",  STR_ARG(settings->bbx_output));
     logi("=======================================");
 

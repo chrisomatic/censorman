@@ -1,13 +1,13 @@
 #!/bin/bash
 # build_deps.sh - Build third-party dependencies for the current platform
 # Usage: ./build_deps.sh <target>
-#   target: all | ffmpeg | ncnn
+#   target: all | ffmpeg | ncnn | exif
 
 set -e
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 if [ -z "$1" ]; then
-  echo "Usage: $0 <all|ffmpeg|ncnn>"
+  echo "Usage: $0 <all|ffmpeg|ncnn|exif>"
   exit 1
 fi
 
@@ -327,6 +327,63 @@ build_ncnn() {
   echo "  ✓ ncnn libs installed to $LIB_DEST"
 }
 
+# ─── libexif ─────────────────────────────────────────────────────────────────
+build_exif() {
+  echo "════════════════════════════════════"
+  echo " Building libexif"
+  echo "════════════════════════════════════"
+
+  BUILD_DIR="$PWD/build_exif"
+  PREFIX="$BUILD_DIR/exif_build"
+
+  rm -rf "$BUILD_DIR"
+  mkdir -p "$BUILD_DIR"
+
+  # macOS needs GNU libtool on PATH (brew install libtool)
+  if [ "$PLATFORM" = "macos" ]; then
+    export PATH="/usr/local/opt/libtool/libexec/gnubin:$PATH"
+  fi
+
+  cd "$BUILD_DIR"
+  git clone --branch libexif-0_6_25-release https://github.com/libexif/libexif.git libexif
+  cd libexif
+  autoreconf -i
+
+  case "$PLATFORM" in
+    win32)
+      ./configure \
+        --prefix="$PREFIX" \
+        --enable-static \
+        --disable-shared \
+        --disable-nls \
+        --host=x86_64-w64-mingw32
+      ;;
+    macos)
+      ./configure \
+        --prefix="$PREFIX" \
+        --enable-static \
+        --disable-shared \
+        --disable-nls \
+        CFLAGS="-O3 -arch $ARCH" \
+        LDFLAGS="-arch $ARCH"
+      ;;
+    linux)
+      ./configure \
+        --prefix="$PREFIX" \
+        --enable-static \
+        --disable-shared \
+        --disable-nls
+      ;;
+  esac
+
+  make -j$NCPU
+  make install
+
+  mv "$PREFIX/lib/"*.a "$LIB_DEST/"
+  rm -rf "$BUILD_DIR"
+  echo "  ✓ exif libs installed to $LIB_DEST"
+}
+
 # ═════════════════════════════════════════════════════════════════════════════
 # DISPATCH
 # ═════════════════════════════════════════════════════════════════════════════
@@ -335,12 +392,14 @@ case "$TARGET" in
   all)
     build_ffmpeg
     build_ncnn
+    build_exif
     ;;
   ffmpeg) build_ffmpeg ;;
   ncnn)   build_ncnn   ;;
+  exif)   build_exif   ;;
   *)
     echo "ERROR: Unknown target '$TARGET'"
-    echo "Usage: $0 <all|ffmpeg|ncnn>"
+    echo "Usage: $0 <all|ffmpeg|ncnn|exif>"
     exit 1
     ;;
 esac

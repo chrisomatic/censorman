@@ -160,7 +160,7 @@ void bbx_print_format(void)
     printf("| Magic Word     | char array  | 3           | 'BBX'            |      :    \n");
     printf("| Version        | u8          | 1           |  2               |   preamble\n");
     printf("| Asset Count    | u32         | 4           | Number of Assets |      :    \n");
-    printf("|----------------|-------------|-------------|------------------|<......    \n");
+    printf("|----------------|-------------|-------------|------------------|<.....:    \n");
     printf("| Index          | u32         | 4           | Asset Index      |      :    \n");
     printf("| Type           | u8          | 1           | 1:Image 2:Video  |      :    \n");
     printf("| Path Len       | u64         | 8           | File Path Length |      :    \n");
@@ -169,11 +169,11 @@ void bbx_print_format(void)
     printf("| Height         | u16         | 2           | In Pixels        |      :    \n");
     printf("| FPS            | float32     | 4           | Frames Per Sec   |      :    \n");
     printf("| Frame Count    | u32         | 4           | Number of Frames |      :    \n");
-    printf("|----------------|-------------|-------------|------------------|<......    \n");
+    printf("|----------------|-------------|-------------|------------------|<.....:    \n");
     printf("| Frame Number   | u32         | 4           | Frame Index      |      :    \n");
     printf("| Box Count      | u32         | 4           | Number of Boxes  |   frame M \n");
     printf("| Interpolated   | u8          | 1           | 0:False 1:True   |      :    \n");
-    printf("|----------------|-------------|-------------|------------------|<......    \n");
+    printf("|----------------|-------------|-------------|------------------|<.....:    \n");
     printf("| Box Type       | u8          | 1           | <detect type>    |      :    \n");
     printf("| Position X     | u16         | 2           | In Image         |      :    \n");
     printf("| Position Y     | u16         | 2           | In Image         |      :    \n");

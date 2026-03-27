@@ -5,6 +5,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#include "libexif/exif-data.h"
+
 Image image_nil(void)
 {
     Image image = {0};
@@ -49,7 +51,7 @@ Image image_load(Arena *arena, String path, Stopwatch *stopwatch)
     image.props.h = h;
     image.data = PUSH_ARRAY(image.arena, RGBColor, w*h);
     image.props.scale = 1.0;
-    image.props.rotation = ROTATE_0; // assume source image is upright
+    image.props.rotation = image_get_rotation_from_file(path_cstr);
 
     // pack RGB (remove alpha channel if needed)
     for(s32 i = 0; i < w*h; ++i)
@@ -255,6 +257,37 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
     stopwatch_end(source.stopwatch, S(__func__));
 
     return output;
+}
+
+Rotation image_get_rotation_from_file(char *file_path)
+{
+    Rotation rotation = ROTATE_0;
+
+    // get orientation using libexif
+    ExifData *ed = exif_data_new_from_file(file_path);
+
+    if(ed)
+    {
+        ExifEntry *entry = exif_data_get_entry(ed, EXIF_TAG_ORIENTATION);
+
+        if(entry)
+        {
+            ExifShort orient = exif_get_short(entry->data, exif_data_get_byte_order(ed));
+
+            switch(orient)
+            {
+                case 1: case 2: rotation = ROTATE_0;   break;
+                case 3: case 4: rotation = ROTATE_180; break;
+                case 6: case 7: rotation = ROTATE_270; break;
+                case 5: case 8: rotation = ROTATE_90;  break;
+                default: rotation = ROTATE_0;  break; 
+            }
+        }
+
+        exif_data_unref(ed);
+    }
+
+    return rotation;
 }
 
 void image_print(Image *image)
