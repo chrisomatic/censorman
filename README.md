@@ -1,180 +1,250 @@
 # Censorman
 
-Command-line tool to censor faces in __images__ and __videos__!
-
-```
-      "All in a day's work!"
-                - Censor Man
-   _O_
- /|-x-|\
-/  \_/  \
-   / \
- _/   \_
-
-```
-
-## Example Commands
-
-```sh
-# blur faces in an image
-censorman assets/crowd.jpg -t blur
-
-# scramble and pixelate faces in an image
-censorman assets/crowd.jpg -t scramble,pixelate
-
-#  blur faces in video with debug boxes
-censorman assets/nosound_1face_60s.mp4 -t pixelate --debug
-```
+Command-line tool to censor faces (and more) in __images__ and __videos__!
 
 Before Blur                |  After Blur
 :-------------------------:|:-------------------------:
-![](img/crowd.png)         | ![](img/crowd_processed.png)
+![](img/office.jpg)        | ![](img/office_blurred.jpg)
+![](img/crowd.jpg)         | ![](img/crowd_blurred.jpg)
 
 Video example
 
 ![](img/vid_processed.gif)
 
+## Detection Classes
 
-## Get Latest Builds
+| Class             | Model                                           |
+|-------------------|-------------------------------------------------|
+| Face (default)    | InsightFace SCRFD 500m with Group Normalization |
+| Person            | InsightFace SCRFD 500m |
+| License Plate     | YOLOv8 trained 2.5g |
+| Nudity            | NudeNET |
 
-- Linux:   [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman)
-- Windows: [censorman.exe](https://github.com/chrisomatic/censorman/releases/latest/download/censorman.exe)
-- MacOS: (soon)
+## Filters
+
+| Filter            | Description                                     |
+|-------------------|-------------------------------------------------|
+| Box Blur | |
+| Gaussian Blur | |
+| Pixelate | |
+| Scramble | |
+| Blackout | |
+| Texture | |
+
+## Example Commands
+
+```sh
+# blur faces in an image (default)
+censorman assets/crowd.jpg
+
+# scramble and pixelate faces in an image
+censorman assets/crowd.jpg -t scramble,pixelate
+
+#  blur faces in video with debug boxes
+censorman assets/vid.mp4 -t pixelate --debug
+```
+
+## Supported Formats
+
+- Image: JPG, PNG, BMP, PSD, TGA, HDR, PIC, GIF(unanimated), PNM
+- Video: MP4, MOV
+
+> Output videos are written in MP4/AAC format
+
+> Images retain their format
+
+## Get Latest Binary
+
+Censorman V2
+
+- Linux:   [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
+- Windows: [censorman.exe](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.exe)
+- MacOS:   [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64)
 
 ## How to build and run
 
-Linux
+The build scripts will detect your operating system.
+
+To build on Windows, run these commands in MSYS2 MingW environment
 
 ```sh
-# do once
-./ffmpeg_build.sh
+# build dependencies (do once)
+./scripts/build_deps.sh
 
 # build censorman
-./build.sh
+./build.sh prod
 
 # run the dang program
 bin/censorman
-```
-
-MacOS
-
-```sh
-# do once
-./ffmpeg_build.sh macos
-
-# build censorman
-./build.sh macos
-
-# run the dang program
-bin/censorman
-```
-
-Windows
-
-```sh
-# do once
-ffmpeg_build.cmd
-
-# build censorman
-build.cmd
-
-# run the dang program
-bin\censorman
 ```
 
 ## Dependencies
 
-- [libfacedetection](https://github.com/ShiqiYu/libfacedetection)
-- [ffmpeg](https://git.ffmpeg.org/ffmpeg.git)
-- [stb\_image](https://github.com/nothings/stb/blob/master/stb_image.h)
-- [stb\_image\_write](https://github.com/nothings/stb/blob/master/stb_image_write.h)
+All dependencies are built from source and statically linked to final binary
 
-## Credits
+| Name              | Function               | Link                                              |
+|-------------------|------------------------|---------------------------------------------------|
+| ffmpeg            | Video/Audio Processing | https://git.ffmpeg.org/ffmpeg.git                 |
+| libx264           | HECV Video Encoding    | https://code.videolan.org/videolan/x264.git       |
+| libvpx            | VPX Video Encoding     | https://chromium.googlesource.com/webm/libvpx.git |
+| libexif           | EXIF Metadata          | https://github.com/libexif/libexif.git            |
+| ncnn              | CNN Inference Engine   | https://github.com/tencent/NCNN                   |
+| stb\_image        | Image Reading/Writing  | https://github.com/nothings/stb                   |
 
-### Face Detection
-
-This project uses the libfacedetection model created by Shiqi Yu on GitHub (https://github.com/ShiqiYu/libfacedetection)
-
-### Image Reading / Writing
-
-Thanks to the awesome Sean Barrett for his open source single-header libraries (https://github.com/nothings/stb/)
-
-
-### Video
-
-FFMPEG is being pulled, built, and statically linked for this project
-
-## Usage
+## Help
 
 ```
-[USAGE]
-    censorman <in_file> -o <out_file> -d {class_list} -t {transform_list} [-c confidence_threshold][-j thread_count] [--debug] [--image <texture_image_path>] [--bbx_output <bbx_output_filepath>] [--block_scale <block_scale>] [--blur_strength <blur_strength>] [--max_buffer_size <buffer_size>] [--scaled_size <scaled_size>] [--box_padding_pct <padding_pct>] [--no_scale] [--no_encoding] [--quiet] [--verbose]
+[CENSORMAN V2]
+    _O_
+  /|-X-|\
+ /  \_/  \
+    / \
+  _/   \_
 
-[DESCRIPTION]
-    Takes an image or video file, detects regions of human faces (for now), applies transformations on those regions and writes back an output file
+USAGE
+    censorman <asset_path> [options | flags]
 
-[ARGUMENTS]
-    in_file:              Path to input image (or video) file (or folder) (.jpg, .png, .bmp, .mp4, .mov)
-    out_file:             Path to output image (or video) file (.jpg, .png, .bmp, .mp4)
-    class_list:           {face}
-    transform_list:       {pixelate, blur, blackout, scramble, texture}
-    confidence_threshold: Discard any boxes lower than this (0 - 100)
-    thread_count:         How many threads to use to detect (default to number of cores)
-    debug:                Print debug info and draw boxes on output image
-    texture_image_path:   Used with 'texture' transform
-    block_scale:          Value between 0.0 and 1.0. Used to scale blocks in pixelate transform
-    blur_strength:        Value between 0.0 and 1.0. Blur is a box blur. (Default: 0.50)
-    frame_smoothing_window:  Smoothing window for lerping between frames of video (Default: 0.150 or 150m
-    buffer_size:          Number of bytes for video frames during conversion (Default: 1 GB)
-    scaled_size:          The longest dimension in pixels to scale down to (Default: 640 for images, 320 for videos)
-    padding_pct:          Added percentage of padding to detected boxes (Default: 0.15)
-    no_encoding:          Prevents writing output image or video file
-    bbx_output_filepath:  Bounding boxes output file. Specify if you want this file output.
-    no_scale:             Disables downscaling of images and videos before detections
-    quiet:                Suppress standard log output
-    verbose:              Enable verbose log output
+ASSET_PATH
+    Accepts comma-separated list of image and video file paths, or a folder path (searches recursively).
+    * Supported image formats: [ PNG, JPG, BMP, PSD, GIF, TGA, HDR, PIC, PNM ]
+    * Supported video formats: [ MP4, MOV ]
 
+OPTIONS
+    --detect [-d] <detect-types>
+        a comma-separated list of detect types [face,person,license_plate,nudity]
+        default: face
+        Each detect type can specify up to two optional parameters with ':' between them
+        The first parameter is confidence threshold
+        The second parameter is NMS IOU threshold
+        Most of the models have 0.25 confidence threshold, and 0.45 NMS IOU threshold
+
+    --filter [-f] <filters>
+        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]
+        default: blur
+        Each filter can specify an optional parameter with ':' (e.g blur:0.20)
+        This parameter indicates 'blur_strength' for blur and gaussian_blur, or
+        'block_scale' with pixelate
+
+    --output_folder [-o] <output_folder_path>
+        Specify the output folder of processed assets (images/videos).
+        If the folder doesn't exist, it will be created
+        Default: output
+
+    --distort_audio [-da] <distortion_hz>
+        Apply a ring modulation to the audio stream of a video file.
+        A typical range for distortion is 150 Hz to 300 Hz
+
+    --thread_count [-j] <thread_count>
+        Specify thread count. Used for video processing. Images are processed single-threaded.
+        Default: Number of logical cores
+
+    --buffer_size [-bs] <buffer_size_bytes>
+        Set the maximum buffer size for video frames. Video frames are loaded in chunks, so
+        larger chunks allow more frames of a video to be decoded at a time.
+        Default: 536870912 (512 MB)
+
+    --box_padding [-bp] <box_padding_percent>
+        Specify the box padding percentage. Padding is added at the end of the detection.
+        Default: 0.15 (15 %)
+
+    --smoothing_window [-sw] <smoothing_window_seconds>
+        Used for video interpolation of detection boxes. Interpolation is an exponentional smooth.
+        There is also an implicit first stage to find discontinuities and fast motion
+        and schedule those frames for detection
+        Default: 0.200 (200 ms)
+
+    --texture_path [-tp] <texture_path>
+        Supply a path to an image file that is stretched over bounding boxes on the output.
+        Used with the --filter texture option
+
+    --bbx_file [-bbx] <bbx_file_path>
+        Bounding-box output file. If specified, the detect box data will be written to a file
+
+FLAGS
+    --bbx_file_format [-bff]  Print information about the file format for BBX files
+    --no_encode [-ne]         Disable the writing of the processed output file(s)
+    --debug [-db]             Enable debug info markout on output. Draws boxes on output with labels
+    --verbose [-vb]           Turn on verbose console prints
+    --stopwatch [-sw]         Turn on stopwatch prints for timing information
+    --quiet [-q]              Disable all console prints
+    --help [-h]               Display this help output
+
+EXAMPLES
+    1.  Just run default settings on test1.png (detect faces and apply box blur)
+          censorman assets/images/test1.png
+
+    2.  Detect persons on all supported files in assets/images and pixelate boxes with a block scale of 0.12
+          censorman assets/images -d person -f pixelate:0.12
+
+    3.  Apply box blur to faces and license plates in vid1.mp4 with debug markup
+          censorman assets/videos/vid1.mp4 -d face,license_plate -f blur --debug
 ```
 
-## Bounding Box File Format
+## Bounding Box (BBX) File Format
 
 The Bounding Box file can be specified as an output on command line. All integer types are stored in little-endian byte order.
 
-**File Header (16 Bytes)**
+```
+BBX FILE FORMAT (V2)
 
-| Index | Section        | Size (B) | Data Type | Description                    |
-|-------|----------------|----------|-----------|--------------------------------|
-|     0 | Header         |        3 |    Char[3]| Magic. 'B','B','X'             |
-|     3 | Header         |        1 |        U8 | Version (Should be 1)          |
-|     4 | Header         |        2 |       U16 | Frame Width                    |
-|     6 | Header         |        2 |       U16 | Frame Height                   |
-|     8 | Header         |        4 |       F32 | FPS                            |
-|    12 | Header         |        4 |       U32 | Number of Frames               |
+A binary format that contains bounding box data for a list
+of video and image assets.
 
-**Frame**
+|---------------------------------------------------------------|
+|      name      |    format   | byte length |   description    |
+|----------------|-------------|-------------|------------------|<......
+| Magic Word     | char array  | 3           | 'BBX'            |      :
+| Version        | u8          | 1           |  2               |   preamble
+| Asset Count    | u32         | 4           | Number of Assets |      :
+|----------------|-------------|-------------|------------------|<.....:
+| Index          | u32         | 4           | Asset Index      |      :
+| Type           | u8          | 1           | 1:Image 2:Video  |      :
+| Path Len       | u64         | 8           | File Path Length |      :
+| Path           | char array  | <path len>  | Of Asset File    |   asset N
+| Width          | u16         | 2           | In Pixels        |      :
+| Height         | u16         | 2           | In Pixels        |      :
+| FPS            | float32     | 4           | Frames Per Sec   |      :
+| Frame Count    | u32         | 4           | Number of Frames |      :
+|----------------|-------------|-------------|------------------|<.....:
+| Frame Number   | u32         | 4           | Frame Index      |      :
+| Box Count      | u32         | 4           | Number of Boxes  |   frame M
+| Interpolated   | u8          | 1           | 0:False 1:True   |      :
+|----------------|-------------|-------------|------------------|<.....:
+| Box Type       | u8          | 1           | <detect type>    |      :
+| Position X     | u16         | 2           | In Image         |      :
+| Position Y     | u16         | 2           | In Image         |      :
+| Width          | u16         | 2           | In Pixels        |      :
+| Height         | u16         | 2           | In Pixels        |      :
+| Confidence     | u8          | 1           | [0-100]          |      :
+| Landmark 1 X   | u16         | 2           | Left Eye X       |      :
+| Landmark 1 Y   | u16         | 2           | Left Eye Y       |    box B
+| Landmark 2 X   | u16         | 2           | Right Eye X      |      :
+| Landmark 2 Y   | u16         | 2           | Right Eye Y      |      :
+| Landmark 3 X   | u16         | 2           | Nose X           |      :
+| Landmark 3 Y   | u16         | 2           | Nose Y           |      :
+| Landmark 4 X   | u16         | 2           | Mouth Left X     |      :
+| Landmark 4 Y   | u16         | 2           | Mouth Left Y     |      :
+| Landmark 5 X   | u16         | 2           | Mouth Right X    |      :
+| Landmark 5 Y   | u16         | 2           | Mouth Right Y    |      :
+|----------------|-------------|-------------|------------------|<......
 
-Where f = 0 to Number of Frames
+N := Range [0...Asset Count]
+M := Range [0...Frame Count]
+B := Range [0.....Box Count]
 
-| Index | Section        | Size (B) | Data Type | Description                    |
-|-------|----------------|----------|-----------|--------------------------------|
-|f + 16 | Frame 0 Header |        4 |       U32 | Frame Index                    |
-|f + 20 | Frame 0 Header |        2 |       U16 | Number of Bounding Boxes       |
-|f + 22 | Box 0 Data     |        2 |       U16 | X Position (Top-left)          |
-|f + 24 | Box 0 Data     |        2 |       U16 | Y Position (Top-left)          |
-|f + 26 | Box 0 Data     |        2 |       U16 | Width                          |
-|f + 28 | Box 0 Data     |        2 |       U16 | Height                         |
-|f + 30 | Box 0 Data     |        2 |       U16 | Confidence                     |
-|f + 32 | Box 0 Data     |        2 |       U16 | Left eye X                     |
-|f + 34 | Box 0 Data     |        2 |       U16 | Left eye Y                     |
-|f + 36 | Box 0 Data     |        2 |       U16 | Right eye X                    |
-|f + 38 | Box 0 Data     |        2 |       U16 | Right eye Y                    |
-|f + 40 | Box 0 Data     |        2 |       U16 | Nose X                         |
-|f + 42 | Box 0 Data     |        2 |       U16 | Nose Y                         |
-|f + 44 | Box 0 Data     |        2 |       U16 | Right mouth X                  |
-|f + 46 | Box 0 Data     |        2 |       U16 | Right mouth Y                  |
-|f + 48 | Box 0 Data     |        2 |       U16 | Left mouth X                   |
-|f + 50 | Box 0 Data     |        2 |       U16 | Left mouth Y                   |
-|f + 52 | Box 0 Data     |        1 |        U8 | Interpolated (0=No, 1=Yes)     |
-| ...   | ...            |      ... |       ... | ...                            |
-|f + N  | Box N Data     |          |           |                                |
+MORE TABLES
+
+|---------------|-------|
+| detect type   | value |
+|---------------|-------|
+| face          | 1     |
+| person        | 2     |
+| license_plate | 3     |
+| nudity        | 4     |
+|...............|.......|
+| eye           | 16    |
+| nose          | 17    |
+| mouth         | 18    |
+|---------------|-------|
+```
 

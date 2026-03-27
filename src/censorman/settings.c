@@ -129,6 +129,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
         if(is_directory)
         {
+            str_asset = os_path_remove_trailing_slashes(str_asset);
             file_names_arr = os_get_files_in_directory(scratch.arena, str_asset, true);
         }
         else
@@ -406,13 +407,6 @@ void settings_print_help(void)
     printf("    * Supported image formats: [ PNG, JPG, BMP, PSD, GIF, TGA, HDR, PIC, PNM ]\n");
     printf("    * Supported video formats: [ MP4, MOV ]\n");
     printf("\nOPTIONS\n");
-    printf("    --filter [-f] <filters>\n");
-    printf("        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]\n");
-    printf("        default: blur\n");
-    printf("        Each filter can specify an optional parameter with ':' (e.g blur:0.20)\n");
-    printf("        This parameter indicates 'blur_strength' for blur and gaussian_blur, or\n");
-    printf("        'block_scale' with pixelate\n");
-    printf("\n");
     printf("    --detect [-d] <detect-types>\n");
     printf("        a comma-separated list of detect types [face,person,license_plate,nudity]\n");
     printf("        default: face\n");
@@ -420,6 +414,13 @@ void settings_print_help(void)
     printf("        The first parameter is confidence threshold\n");
     printf("        The second parameter is NMS IOU threshold\n");
     printf("        Most of the models have 0.25 confidence threshold, and 0.45 NMS IOU threshold\n");
+    printf("\n");
+    printf("    --filter [-f] <filters>\n");
+    printf("        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]\n");
+    printf("        default: blur\n");
+    printf("        Each filter can specify an optional parameter with ':' (e.g blur:0.20)\n");
+    printf("        This parameter indicates 'blur_strength' for blur and gaussian_blur, or\n");
+    printf("        'block_scale' with pixelate\n");
     printf("\n");
     printf("    --output_folder [-o] <output_folder_path>\n");
     printf("        Specify the output folder of processed assets (images/videos).\n");
@@ -460,6 +461,7 @@ void settings_print_help(void)
     printf("    --no_encode [-ne]         Disable the writing of the processed output file(s)\n");
     printf("    --debug [-db]             Enable debug info markout on output. Draws boxes on output with labels\n");
     printf("    --verbose [-vb]           Turn on verbose console prints\n");
+    printf("    --stopwatch [-sw]         Turn on stopwatch prints for timing information\n");
     printf("    --quiet [-q]              Disable all console prints\n");
     printf("    --help [-h]               Display this help output\n");
     printf("\nEXAMPLES\n");

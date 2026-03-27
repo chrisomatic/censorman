@@ -24,12 +24,6 @@
 
 #define CENSORMAN_VERSION 2
 
-enum CM_ReturnCode
-{
-    CM_SUCCESS = 0,
-    CM_FAILED  = 1,
-};
-
 void censorman_version(void)
 {
     printf("[CENSORMAN V%d]\n", CENSORMAN_VERSION);
@@ -79,13 +73,13 @@ int main(int argc, char **args)
         if(settings.help)
         {
             settings_print_help();   
-            return CM_SUCCESS;
+            return 0;
         }
 
         if(settings.bbx_print_format)
         {
             bbx_print_format();
-            return CM_SUCCESS;
+            return 0;
         }
     }
 
@@ -124,7 +118,7 @@ int main(int argc, char **args)
         thread_join(threads[thread_index]);
     }
 
-    return CM_SUCCESS;
+    return 0;
 }
 
 s64 entry_point(void *params)
@@ -192,7 +186,7 @@ s64 entry_point(void *params)
 
                     if(settings.debug)
                     {
-                        filter_draw_debug_info(&img_src, &box_frame);
+                        filter_draw_debug_info(&img_src, &box_frame, settings.box_padding);
                     }
 
                     // [output]
@@ -219,6 +213,9 @@ s64 entry_point(void *params)
                 vid = video_begin(arena_chunk, asset->path, asset->output_path, &vs);
                 video_print(&vid);
 
+                // extra print here to give some indication that progress is happening even though it is 0
+                logi("Progress: %3d%% [%5d / %d]", (s32)(100*vid.frames_processed / (f32)vid.frame_count_total), vid.frames_processed, vid.frame_count_total);
+
                 bbx_file_write_asset_header(bbx_file, i, asset, vid.w, vid.h, vid.fps, vid.frame_count_total);
             }
 
@@ -240,6 +237,7 @@ s64 entry_point(void *params)
                     {
                         // determine detect frames
                         frames = video_get_detect_frames(&vid, settings.smoothing_window);
+                        logv("Detect frames count: %d", frames.count);
 
                         // Allocate box frames for all frames of decoded video
                         box_frames = PUSH_ARRAY(arena_chunk, BoxFrame, vid.frame_count);
@@ -359,7 +357,7 @@ s64 entry_point(void *params)
 
                     if(settings.debug)
                     {
-                        filter_draw_debug_info(&img_src, box_frame);
+                        filter_draw_debug_info(&img_src, box_frame, settings.box_padding);
                     }
                 }
 

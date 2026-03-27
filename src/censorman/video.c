@@ -728,6 +728,17 @@ void video_save_done(Video *vid)
         avio_flush(vid_ctx->enc_fmt_ctx->pb);
 }
 
+#define HISTOGRAM_BUCKET_COUNT 4096
+#define HISTOGRAM_GRID_X 4
+#define HISTOGRAM_GRID_Y 4
+#define HISTOGRAM_GRID_COUNT (HISTOGRAM_GRID_X * HISTOGRAM_GRID_Y)
+
+// Discontinuity tiers: {min_cells_exceeded, threshold_percent}
+// Evaluated in order — first match triggers a discontinuity
+#define HISTOGRAM_TIER_COUNT 3
+static const f32 HISTOGRAM_TIER_THRESHOLDS[HISTOGRAM_TIER_COUNT] = { 0.65f, 0.45f, 0.20f };
+static const s32 HISTOGRAM_TIER_MIN_CELLS[HISTOGRAM_TIER_COUNT]  = { 1,     5,     9     };
+
 ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
 {
     s32 skip_frames = MAX(1, (s32)(smoothing_window * vid->fps));
@@ -751,40 +762,96 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
 
     logv("Determining video discontinuities...");
 
-    u32 *prev_histogram = PUSH_ARRAY(scratch.arena, u32, 4096);
-    u32 *curr_histogram = PUSH_ARRAY(scratch.arena, u32, 4096);
-    u64 *diff_histogram = PUSH_ARRAY(scratch.arena, u64, vid->frame_count);
+    u32 *prev_histogram = PUSH_ARRAY(scratch.arena, u32, HISTOGRAM_GRID_COUNT * HISTOGRAM_BUCKET_COUNT);
+    u32 *curr_histogram = PUSH_ARRAY(scratch.arena, u32, HISTOGRAM_GRID_COUNT * HISTOGRAM_BUCKET_COUNT);
+
+    u64 *difference_sums = PUSH_ARRAY(scratch.arena, u64, HISTOGRAM_GRID_COUNT * vid->frame_count);
+
+    s32 grid_width  = (s32)(vid->w / (f32)HISTOGRAM_GRID_X);
+    s32 grid_height = (s32)(vid->h / (f32)HISTOGRAM_GRID_Y);
+
+    // Precompute per-tier absolute thresholds (in histogram difference units)
+    u64 tier_thresholds[HISTOGRAM_TIER_COUNT];
+    for(s32 t = 0; t < HISTOGRAM_TIER_COUNT; ++t)
+    {
+        tier_thresholds[t] = (u64)((vid->w * vid->h * HISTOGRAM_TIER_THRESHOLDS[t]) / HISTOGRAM_GRID_COUNT);
+        logv("Tier %d: min_cells=%d, threshold=%llu (%.0f%%)",
+             t, HISTOGRAM_TIER_MIN_CELLS[t], tier_thresholds[t], HISTOGRAM_TIER_THRESHOLDS[t] * 100.f);
+    }
 
     for(s32 i = 0; i < vid->frame_count; ++i)
     {
-        s32 icurr      = (u64)i * vid->w * vid->h;
+        s32 icurr       = (s32)((u64)i * vid->w * vid->h);
         RGBColor *bcurr = &vid->data[icurr];
 
         if(i > 0)
         {
-            MemoryCopy(prev_histogram, curr_histogram, sizeof(u32) * 4096);
-            MemoryZero(curr_histogram, sizeof(u32) * 4096);
+            MemoryCopy(prev_histogram, curr_histogram, sizeof(u32) * HISTOGRAM_GRID_COUNT * HISTOGRAM_BUCKET_COUNT);
+            MemoryZero(curr_histogram, sizeof(u32) * HISTOGRAM_GRID_COUNT * HISTOGRAM_BUCKET_COUNT);
         }
 
-        for(s32 j = 0; j < vid->w * vid->h; ++j)
+        for(s32 g = 0; g < HISTOGRAM_GRID_COUNT; ++g)
         {
-            RGBColor curr    = bcurr[j];
-            u16 color_bucket = ((u16)(curr.r & 0xF0) << 4) | (u16)(curr.g & 0xF0) | ((u16)(curr.b & 0xF0) >> 4);
-            curr_histogram[MIN(color_bucket, 4095)]++;
+            s32 gx = g % HISTOGRAM_GRID_X;
+            s32 gy = g / HISTOGRAM_GRID_X;
+
+            s32 start_x = gx * grid_width;
+            s32 start_y = gy * grid_height;
+
+            s32 end_x = (gx + 1) * grid_width  - 1;
+            s32 end_y = (gy + 1) * grid_height - 1;
+
+            for(s32 j = start_y; j < end_y; ++j)
+            {
+                for(s32 k = start_x; k < end_x; ++k)
+                {
+                    u64 index = j * vid->w + k;
+
+                    RGBColor curr    = bcurr[index];
+                    u16 color_bucket = ((u16)(curr.r & 0xF0) << 4) | (u16)(curr.g & 0xF0) | ((u16)(curr.b & 0xF0) >> 4);
+                    curr_histogram[g * HISTOGRAM_BUCKET_COUNT + MIN(color_bucket, HISTOGRAM_BUCKET_COUNT - 1)]++;
+                }
+            }
+
+            u64 sum_histogram = 0;
+            for(s32 j = 0; j < HISTOGRAM_BUCKET_COUNT; ++j)
+            {
+                sum_histogram += ABS((s64)curr_histogram[g * HISTOGRAM_BUCKET_COUNT + j]
+                                   - prev_histogram[g * HISTOGRAM_BUCKET_COUNT + j]);
+            }
+
+            difference_sums[i * HISTOGRAM_GRID_COUNT + g] = sum_histogram;
         }
-
-        u64 sum_histogram = 0;
-        for(u32 j = 0; j < 4096; ++j)
-            sum_histogram += ABS((s64)curr_histogram[j] - prev_histogram[j]);
-
-        diff_histogram[i] = sum_histogram;
     }
-
-    u64 threshold = (u64)((vid->w * vid->h) * 0.10);
 
     for(u32 i = 1; i < vid->frame_count; ++i)
     {
-        if(diff_histogram[i] >= threshold)
+        // Count how many cells exceed each tier's threshold
+        s32 tier_cell_counts[HISTOGRAM_TIER_COUNT] = {0};
+        for(s32 g = 0; g < HISTOGRAM_GRID_COUNT; ++g)
+        {
+            u64 diff = difference_sums[i * HISTOGRAM_GRID_COUNT + g];
+            for(s32 t = 0; t < HISTOGRAM_TIER_COUNT; ++t)
+            {
+                if(diff >= tier_thresholds[t])
+                    tier_cell_counts[t]++;
+            }
+        }
+
+        // Check if any tier's minimum cell count is met
+        b32 is_discontinuity = false;
+        for(s32 t = 0; t < HISTOGRAM_TIER_COUNT; ++t)
+        {
+            if(tier_cell_counts[t] >= HISTOGRAM_TIER_MIN_CELLS[t])
+            {
+                logv("Discontinuity at frame %d via tier %d (%d/%d cells >= %.0f%%)",
+                     i, t, tier_cell_counts[t], HISTOGRAM_GRID_COUNT, HISTOGRAM_TIER_THRESHOLDS[t] * 100.f);
+                is_discontinuity = true;
+                break;
+            }
+        }
+
+        if(is_discontinuity)
         {
             b32 frame_1_in_array = false;
             b32 frame_2_in_array = false;
@@ -798,7 +865,7 @@ ListArray video_get_detect_frames(Video *vid, f32 smoothing_window)
 
             if(!frame_1_in_array)
             {
-                u32 pi = i-1;
+                u32 pi = i - 1;
                 logv("Adding discontinuity frame at %d", pi);
                 list_add(&detect_frames, (void *)&pi);
             }

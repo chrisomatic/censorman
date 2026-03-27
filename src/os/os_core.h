@@ -267,6 +267,7 @@ StringArray os_get_files_by_extensions(Arena *arena, String directory, StringArr
 
 b32    os_path_is_directory(String path);
 String os_path_get_extension(String path);
+String os_path_remove_trailing_slashes(String path);
 String os_path_get_folder_part(String path);
 String os_path_get_file_part(String path);
 
