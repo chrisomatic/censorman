@@ -1,17 +1,47 @@
 # Censorman
 
-Command-line tool to censor faces (and more) in __images__ and __videos__!
+Automatically detect **faces**, **people**, **license plates**, or **nudity** in images and videos and apply filters to these regions.
 
-Before Blur                |  After Blur
-:-------------------------:|:-------------------------:
-![](img/office.jpg)        | ![](img/office_blurred.jpg)
-![](img/crowd.jpg)         | ![](img/crowd_blurred.jpg)
+| Input                     | Output                     |
+|:-------------------------:|:--------------------------:|
+| ![](img/crowd.jpg)        | ![](img/crowd_blurred.jpg) |
 
-Video example
+## Latest Binaries
 
-![](img/vid_processed.gif)
+Censorman V2
 
-## Detection Classes
+| Windows | Mac OS | Linux |
+|---------|--------|-------|
+| [censorman.exe](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.exe) | [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64) | [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
+
+# Filters
+
+| No Filter | Box Blur | Gaussian Blur | Pixelate | Scramble | Blackout | Texture |
+|:----:|:----------:|:-------------:|:--------:|:--------:|:--------:|:-------:|
+| ![](img/face_none.png) | ![](img/face_blur.png) | ![](img/face_blur_gaussian.png) | ![](img/face_pixelate.png) | ![](img/face_scramble.png) | ![](img/face_blackout.png) | ![](img/face_texture.png) |
+
+## Supported Formats
+
+- Image: JPG, PNG, BMP, PSD, TGA, HDR, PIC, GIF(unanimated), PNM
+- Video: MP4, MOV
+
+> [!NOTE]
+> Output videos are written in MP4/AAC format
+> Images retain their format
+
+# Details
+
+- Command-Line Tool
+- Statically built single binary for Windows, MacOS, and Linux
+- Embedded CNNs (no external services)
+- Threading enabled for video files
+- Interpolation of Bounding Boxes for videos with configurable smoothing window
+- Filters (like blur) can be chained together with custom parameters
+- Many assets can be processed in a single command
+- Configurable box padding
+- Output bounding box data to file (BBX)
+
+## Model Details
 
 | Class             | Model                                           |
 |-------------------|-------------------------------------------------|
@@ -20,52 +50,43 @@ Video example
 | License Plate     | YOLOv8 trained 2.5g |
 | Nudity            | NudeNET |
 
-## Filters
+# Examples
 
-| Filter            | Description                                     |
-|-------------------|-------------------------------------------------|
-| Box Blur | |
-| Gaussian Blur | |
-| Pixelate | |
-| Scramble | |
-| Blackout | |
-| Texture | |
-
-## Example Commands
+## 1. Simply blur faces in an image (Default)
 
 ```sh
-# blur faces in an image (default)
-censorman assets/crowd.jpg
-
-# scramble and pixelate faces in an image
-censorman assets/crowd.jpg -f scramble,pixelate
-
-#  blur faces in video with debug boxes
-censorman assets/vid.mp4 -f pixelate --debug
+censorman img/office.jpg -f gaussian_blur
 ```
 
-## Supported Formats
+| Input                     | Output                       |
+|:-------------------------:|:----------------------------:|
+| ![](img/office.jpg)       | ![](img/office_blurred.jpg)  |
 
-- Image: JPG, PNG, BMP, PSD, TGA, HDR, PIC, GIF(unanimated), PNM
-- Video: MP4, MOV
+## 2. TODO
 
-> Output videos are written in MP4/AAC format
+```sh
+censorman img/todo.png -f blur:0.3,pixelate:0.05 --debug
+```
 
-> Images retain their format
+| Input                     | Output                       |
+|:-------------------------:|:----------------------------:|
+| ![](img/office.jpg)       | ![](img/office_blurred.jpg)  |
 
-## Get Latest Binary
+## 3. Blur faces in video with custom filter and include debug markup
 
-Censorman V2
+```sh
+censorman img/hello.mp4 -f blur:0.3,pixelate:0.05 --debug
+```
 
-- Linux:   [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
-- Windows: [censorman.exe](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.exe)
-- MacOS:   [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64)
+| Input                     | Output                       |
+|:-------------------------:|:----------------------------:|
+| ![](img/hello.gif)        | ![](img/hello_blurred.gif)  |
 
-## How to build and run
+## Build and Run
 
 The build scripts will detect your operating system.
 
-To build on Windows, run these commands in MSYS2 MingW environment
+To build on Windows, run in MSYS2 MingW environment
 
 ```sh
 # build dependencies (do once)
@@ -77,7 +98,6 @@ To build on Windows, run these commands in MSYS2 MingW environment
 # run the dang program
 bin/censorman
 ```
-
 ## Dependencies
 
 All dependencies are built from source and statically linked to final binary
