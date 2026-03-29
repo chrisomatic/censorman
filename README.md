@@ -1,10 +1,13 @@
 # Censorman
 
-Automatically detect **faces**, **people**, **license plates**, or **nudity** in images and videos and apply filters to these regions.
+Automatically detect **faces**, **people**, **license plates**, or **nudity** in images and videos and apply filters to these regions
 
-| Input                     | Output                     |
-|:-------------------------:|:--------------------------:|
-| ![](img/crowd.jpg)        | ![](img/crowd_blurred.jpg) |
+![Command Line](img/command_line.gif)
+
+| Input                     | Output                      |
+|:-------------------------:|:---------------------------:|
+| ![](img/office.jpg)       | ![](img/office_blurred.jpg) |
+| ![](img/hello.gif)        | ![](img/hello_blurred.gif)  |
 
 ## Latest Binaries
 
@@ -14,7 +17,8 @@ Censorman V2
 |---------|--------|-------|
 | [censorman.exe](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.exe) | [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64) | [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
 
-# Filters
+
+## Filters
 
 | No Filter | Box Blur | Gaussian Blur | Pixelate | Scramble | Blackout | Texture |
 |:----:|:----------:|:-------------:|:--------:|:--------:|:--------:|:-------:|
@@ -26,13 +30,14 @@ Censorman V2
 - Video: MP4, MOV
 
 > [!NOTE]
-> Output videos are written in MP4/AAC format
+> Output videos are written in MP4/AAC format.
+
 > Images retain their format
 
-# Details
+## Details
 
 - Command-Line Tool
-- Statically built single binary for Windows, MacOS, and Linux
+- Statically built single binary
 - Embedded CNNs (no external services)
 - Threading enabled for video files
 - Interpolation of Bounding Boxes for videos with configurable smoothing window
@@ -50,39 +55,7 @@ Censorman V2
 | License Plate     | YOLOv8 trained 2.5g |
 | Nudity            | NudeNET |
 
-# Examples
-
-## 1. Simply blur faces in an image (Default)
-
-```sh
-censorman img/office.jpg -f gaussian_blur
-```
-
-| Input                     | Output                       |
-|:-------------------------:|:----------------------------:|
-| ![](img/office.jpg)       | ![](img/office_blurred.jpg)  |
-
-## 2. TODO
-
-```sh
-censorman img/todo.png -f blur:0.3,pixelate:0.05 --debug
-```
-
-| Input                     | Output                       |
-|:-------------------------:|:----------------------------:|
-| ![](img/office.jpg)       | ![](img/office_blurred.jpg)  |
-
-## 3. Blur faces in video with custom filter and include debug markup
-
-```sh
-censorman img/hello.mp4 -f blur:0.3,pixelate:0.05 --debug
-```
-
-| Input                     | Output                       |
-|:-------------------------:|:----------------------------:|
-| ![](img/hello.gif)        | ![](img/hello_blurred.gif)  |
-
-## Build and Run
+## Build it yourself
 
 The build scripts will detect your operating system.
 
@@ -110,6 +83,45 @@ All dependencies are built from source and statically linked to final binary
 | libexif           | EXIF Metadata          | https://github.com/libexif/libexif.git            |
 | ncnn              | CNN Inference Engine   | https://github.com/tencent/NCNN                   |
 | stb\_image        | Image Reading/Writing  | https://github.com/nothings/stb                   |
+
+
+# Example Commands
+
+## 1. Simply blur faces in an image (Default)
+
+```sh
+./censorman img/office.jpg -f gaussian_blur
+```
+
+## 2. Blur people and license plates in a folder of assets
+
+```sh
+./censorman assets/ -d people,license_plate
+```
+
+## 3. Blur faces in video with custom filter and include debug markup
+
+```sh
+./censorman assets/hello.mp4 -f blur:0.3,pixelate:0.05 --debug
+```
+
+## 4. Texture faces on a video file
+
+```sh
+./censorman assets/hello.mp4 -f texture --texture_path img/mask.png
+```
+
+## 5. Blur faces in an image with a confidence threshold of 35% and NMS Threshold 45%
+
+```sh
+./censorman img/image.jpg -d face:0.35:0.45 -f blur
+```
+
+## 6. Blur only the eyes and nose of faces in a video, and distort the audio
+
+```sh
+./censorman assets/hello.mp4 -d face -f blur --facial_features eyes,nose --distort_audio 200.0
+```
 
 ## Help
 
