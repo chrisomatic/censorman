@@ -13,7 +13,7 @@ extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
 extern void ncnn_extractor_clear(ncnn_extractor_t ex);
 extern void ncnn_net_set_workspace_allocator(ncnn_net_t net);
 
-static Model model_create_mem(Arena *arena, s32 net_w, s32 net_h, const u8 *param_bin, const u8 *model_bin)
+static Model model_create_mem(s32 net_w, s32 net_h, const u8 *param_bin, const u8 *model_bin)
 {
     Model model = {0};
 
@@ -22,20 +22,19 @@ static Model model_create_mem(Arena *arena, s32 net_w, s32 net_h, const u8 *para
 
     s64 thread_count = s_thread_context.count;
 
-    model.nets = PUSH_ARRAY(arena, ncnn_net_t, thread_count);
     for(s64 i = 0; i < thread_count; ++i)
     {
-        model.nets[i] = ncnn_net_create();
+        model.net = ncnn_net_create();
 
-        //ncnn_net_set_workspace_allocator(model.nets[i]);
-        ncnn_net_set_lightmode(model.nets[i], 1);
-        ncnn_option_t opt = ncnn_net_get_option(model.nets[i]);
-        ncnn_option_set_num_threads(opt, 1); // @LOOKAT
+        // ncnn_net_set_workspace_allocator(model.net);
+        ncnn_net_set_lightmode(model.net, 1);
+        ncnn_option_t opt = ncnn_net_get_option(model.net);
+        ncnn_option_set_num_threads(opt, 1);
         ncnn_option_set_use_packing_layout(opt, 1); // faster SIMD on x86
-        ncnn_net_set_option(model.nets[i], opt);
+        ncnn_net_set_option(model.net, opt);
 
-        size_t param_ret = ncnn_net_load_param_bin_memory(model.nets[i], param_bin);
-        size_t model_ret = ncnn_net_load_model_memory(model.nets[i], model_bin);
+        size_t param_ret = ncnn_net_load_param_bin_memory(model.net, param_bin);
+        size_t model_ret = ncnn_net_load_model_memory(model.net, model_bin);
 
         model.initialized = (param_ret > 0 && model_ret > 0);
     }
@@ -43,7 +42,7 @@ static Model model_create_mem(Arena *arena, s32 net_w, s32 net_h, const u8 *para
     return model;
 }
 
-b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
+b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
 {
     for(s64 i = 0; i < config_count; ++i)
     {
@@ -55,7 +54,7 @@ b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_face.initialized)
                 {
-                    model_face = model_create_mem(arena, 640, 640,
+                    model_face = model_create_mem(640, 640,
                             scrfd_500m_gnkps_ncnn_param_bin,
                             scrfd_500m_gnkps_ncnn_bin
                     );
@@ -65,7 +64,7 @@ b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_person.initialized)
                 {
-                    model_person = model_create_mem(arena, 640, 640,
+                    model_person = model_create_mem(640, 640,
                             scrfd_person_2_5g_ncnn_param_bin,
                             scrfd_person_2_5g_ncnn_bin
                     );
@@ -75,7 +74,7 @@ b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_license_plate.initialized)
                 {
-                    model_license_plate = model_create_mem(arena, 640, 640,
+                    model_license_plate = model_create_mem(640, 640,
                             license_plate_ncnn_param_bin,
                             license_plate_ncnn_bin
                     );
@@ -85,7 +84,7 @@ b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_nudity.initialized)
                 {
-                    model_nudity = model_create_mem(arena, 320, 320,
+                    model_nudity = model_create_mem(320, 320,
                         nudity_ncnn_param_bin,
                         nudity_ncnn_bin
                     );
@@ -604,7 +603,7 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     const f32 norm[] = {1.0f/128.0f, 1.0f/128.0f, 1.0f/128.0f};
     ncnn_mat_substract_mean_normalize(input, mean, norm);
 
-    ncnn_net_t net = model_face.nets[s_thread_context.index];
+    ncnn_net_t net = model_face.net;
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
     ncnn_extractor_input_index(ex, SCRFD_FACE_IN0, input);
@@ -732,7 +731,7 @@ List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 th
     const f32 norm[] = {1.0f/128.0f, 1.0f/128.0f, 1.0f/128.0f};
     ncnn_mat_substract_mean_normalize(input, mean, norm);
 
-    ncnn_net_t net = model_person.nets[s_thread_context.index];
+    ncnn_net_t net = model_person.net;
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
     ncnn_extractor_input_index(ex, SCRFD_PERSON_IN0, input);
@@ -842,7 +841,7 @@ List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence,
     const f32 norm[] = {1.0f/255.0f, 1.0f/255.0f, 1.0f/255.0f};
     ncnn_mat_substract_mean_normalize(input, mean, norm);
 
-    ncnn_net_t net = model_license_plate.nets[s_thread_context.index];
+    ncnn_net_t net = model_license_plate.net;
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
     ncnn_extractor_input_index(ex, LICENSE_PLATE_IN0, input);
@@ -912,7 +911,7 @@ List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 thr
     const f32 norm[] = {1.0f/255.0f, 1.0f/255.0f, 1.0f/255.0f};
     ncnn_mat_substract_mean_normalize(input, mean, norm);
 
-    ncnn_net_t net = model_nudity.nets[s_thread_context.index];
+    ncnn_net_t net = model_nudity.net;
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
     ncnn_extractor_input_index(ex, NUDITY_IN0, input);

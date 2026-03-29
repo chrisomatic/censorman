@@ -94,7 +94,7 @@ int main(int argc, char **args)
     s_thread_context.count = settings.thread_count;
 
     // initialize models
-    detect_init(arena_perm, settings.detect_configs, settings.detect_config_count);
+    detect_init(settings.detect_configs, settings.detect_config_count);
 
     // setup threads
     threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);

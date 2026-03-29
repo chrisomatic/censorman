@@ -55,7 +55,7 @@ typedef struct
 
 typedef struct
 {
-    ncnn_net_t *nets;
+    ncnn_net_t net;
     b32 initialized;
     u32 net_w;
     u32 net_h;
@@ -72,7 +72,7 @@ List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 th
 List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
 List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
 
-b32 detect_init(Arena *arena, DetectConfig *detect_cfgs, s64 config_count);
+b32 detect_init(DetectConfig *detect_cfgs, s64 config_count);
 void detect(DetectConfig *cfg, Image *image, List *total_boxes);
 
 BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number);
