@@ -4,10 +4,9 @@ Automatically detect **faces**, **people**, **license plates**, or **nudity** in
 
 ![Command Line](img/command_line.gif)
 
-| Input                     | Output                      |
-|:-------------------------:|:---------------------------:|
-| ![](img/office.jpg)       | ![](img/office_blurred.jpg) |
-| ![](img/hello.gif)        | ![](img/hello_blurred.gif)  |
+| Image Example               | Video Example              |
+|:---------------------------:|:--------------------------:|
+| ![](img/office_blurred.jpg) | ![](img/hello_blurred.gif) |
 
 ## Latest Binaries
 
@@ -15,7 +14,7 @@ Censorman V2
 
 | Windows | Mac OS | Linux |
 |---------|--------|-------|
-| [censorman.exe](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.exe) | [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64) | [censorman](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
+| [censorman.exe (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.exe) | [censorman (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64) | [censorman (AMD64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
 
 
 ## Filters
@@ -30,9 +29,7 @@ Censorman V2
 - Video: MP4, MOV
 
 > [!NOTE]
-> Output videos are written in MP4/AAC format.
-
-> Images retain their format
+> Output videos are written in MP4/AAC format. Images retain their format
 
 ## Details
 
@@ -121,6 +118,12 @@ All dependencies are built from source and statically linked to final binary
 
 ```sh
 ./censorman assets/hello.mp4 -d face -f blur --facial_features eyes,nose --distort_audio 200.0
+```
+
+## 7. Detect faces in a video and output bounding box data to file, don't save an output
+
+```sh
+./censorman assets/hello.mp4 -d face -f none --bbx_file out.bbx --no_encode
 ```
 
 ## Help
