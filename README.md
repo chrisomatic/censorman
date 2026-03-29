@@ -12,9 +12,9 @@ Automatically detect **faces**, **people**, **license plates**, or **nudity** in
 
 Censorman V2
 
-| Windows | Mac OS | Linux |
+| Windows | MacOS | Linux |
 |---------|--------|-------|
-| [censorman.zip (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.zip) | [censorman.tar.gz (amd64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64) | [censorman (AMD64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
+| [censorman.zip (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.zip) | [censorman.tar.gz (amd64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-amd64.tar.gz) | [censorman.tar.gz (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-x86-64.tar.gz)
 
 ## Filters
 
@@ -53,11 +53,10 @@ Censorman V2
 
 ## Install pre-made binaries
 
-If you want to just install censorman on your machine, you can run the install script
-which will curl the URL to the proper local place.
+If you want to just install censorman on your machine, you can run the install script to pull the correct file from the latest release and place it in an appropriate folder
 
 ```sh
-# Mac OS / Linux
+# MacOS / Linux
 ./scripts/install.sh
 
 # Windows
