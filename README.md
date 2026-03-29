@@ -14,8 +14,7 @@ Censorman V2
 
 | Windows | Mac OS | Linux |
 |---------|--------|-------|
-| [censorman.exe (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.exe) | [censorman (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64) | [censorman (AMD64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
-
+| [censorman.zip (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.zip) | [censorman.tar.gz (amd64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-x86-64) | [censorman (AMD64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-amd64)
 
 ## Filters
 
@@ -52,6 +51,19 @@ Censorman V2
 | License Plate     | YOLOv8 trained 2.5g |
 | Nudity            | NudeNET |
 
+## Install pre-made binaries
+
+If you want to just install censorman on your machine, you can run the install script
+which will curl the URL to the proper local place.
+
+```sh
+# Mac OS / Linux
+./scripts/install.sh
+
+# Windows
+./scripts/install.bat
+```
+
 ## Build it yourself
 
 The build scripts will detect your operating system.
@@ -68,6 +80,7 @@ To build on Windows, run in MSYS2 MingW environment
 # run the dang program
 bin/censorman
 ```
+
 ## Dependencies
 
 All dependencies are built from source and statically linked to final binary
