@@ -26,7 +26,7 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 | Box Blur      | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur.png) |
 | Gaussian Blur | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur_gaussian.png) |
 | Pixelate      | Block Scale   | 0.0 - 1.0   | 0.12          | ![](img/face_pixelate.png) |
-| Scramble      | Block Scale   | 0.0 - 1.0   | 0.08          | ![](img/face_scramble.png) |
+| Scramble      | -             | -           | -             | ![](img/face_scramble.png) |
 | Blackout      | -             | -           | -             | ![](img/face_blackout.png) |
 | Texture       | Texture Path  | string      | "" (empty)    | ![](img/face_texture.png) |
 
@@ -153,7 +153,8 @@ The CNN models used by censorman are NCNN formatted (.bin / .param)
 
 To integrate a new model into censorman, find one that has an NCNN version or ONNX version and convert it to NCNN with pnnx tool
 
-> [!NOTE] It is recommended to use smaller models (500m if possible), and fp16 or fp8
+> [!NOTE]
+> It is recommended to use smaller models (500m if possible), and fp16 or fp8
 
 From there, you can use ncnn2mem tool to convert the model data into C arrays. Copy the binary data header into src/model\_data/
 
