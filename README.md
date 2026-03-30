@@ -16,7 +16,7 @@ Censorman V2
 
 | Windows | MacOS | Linux |
 |---------|--------|-------|
-| [censorman.zip (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.zip) | [censorman.tar.gz (amd64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-amd64.tar.gz) | [censorman.tar.gz (x86-64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-x86-64.tar.gz)
+| [censorman.zip (x86\_64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.zip) | [censorman.tar.gz (amd64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-amd64.tar.gz) | [censorman.tar.gz (x86\_64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-x86_64.tar.gz)
 
 ## Filters
 
