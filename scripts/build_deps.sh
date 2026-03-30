@@ -24,6 +24,7 @@ case "$(uname -s)" in
     ;;
 esac
 
+
 # ─── Detect architecture ─────────────────────────────────────────────────────
 ARCH=$(uname -m)   # x86_64 or arm64
 
@@ -33,21 +34,27 @@ case "$PLATFORM" in
   *)     NCPU=$(nproc) ;;
 esac
 
+ROOT_DIR=$(git rev-parse --show-toplevel)
+
 # ─── Output lib directory ────────────────────────────────────────────────────
 case "$PLATFORM" in
-  macos)  LIB_DEST="src/third_party/lib/macos" ;;
-  linux)  LIB_DEST="src/third_party/lib/linux" ;;
-  win32)  LIB_DEST="src/third_party/lib/win"   ;;
+  macos)  LIB_DEST="$ROOT_DIR/src/third_party/lib/macos" ;;
+  linux)  LIB_DEST="$ROOT_DIR/src/third_party/lib/linux" ;;
+  win32)  LIB_DEST="$ROOT_DIR/src/third_party/lib/win"   ;;
 esac
 
-echo "Platform : $PLATFORM"
-echo "Arch     : $ARCH"
-echo "CPUs     : $NCPU"
-echo "Target   : $TARGET"
-echo "Lib dest : $LIB_DEST"
+TOOLS_DEST="$ROOT_DIR/tools"
+
+echo "Platform   : $PLATFORM"
+echo "Arch       : $ARCH"
+echo "CPUs       : $NCPU"
+echo "Target     : $TARGET"
+echo "Lib dest   : $LIB_DEST"
+echo "Tools dest : $TOOLS_DEST"
 echo ""
 
 mkdir -p "$LIB_DEST"
+mkdir -p "$TOOLS_DEST"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # BUILD FUNCTIONS
@@ -301,20 +308,20 @@ build_ncnn() {
 
   case "$PLATFORM" in
     win32)
-      g++ -c src/ncnn_shim.cpp \
-          -I src/third_party/include/ncnn \
+      g++ -c $ROOT_DIR/src/ncnn_shim.cpp \
+          -I $ROOT_DIR/src/third_party/include/ncnn \
           -static-libgcc -static-libstdc++ \
           -o ncnn_shim.o
       ;;
     macos)
-      clang++ -c src/ncnn_shim.cpp \
+      clang++ -c $ROOT_DIR/src/ncnn_shim.cpp \
           -arch $ARCH \
-          -I src/third_party/include/ncnn \
+          -I $ROOT_DIR/src/third_party/include/ncnn \
           -o ncnn_shim.o
       ;;
     linux)
-      g++ -c src/ncnn_shim.cpp \
-          -I src/third_party/include/ncnn \
+      g++ -c $ROOT_DIR/src/ncnn_shim.cpp \
+          -I $ROOT_DIR/src/third_party/include/ncnn \
           -o ncnn_shim.o
       ;;
   esac
@@ -323,6 +330,8 @@ build_ncnn() {
   rm ncnn_shim.o
 
   mv "$PREFIX/lib/"*.a "$LIB_DEST/"
+  mv "$PREFIX/bin/"* "$TOOLS_DEST/"
+
   rm -rf "$BUILD_DIR"
   echo "  ✓ ncnn libs installed to $LIB_DEST"
 }
