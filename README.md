@@ -4,9 +4,11 @@ Automatically detect **faces**, **people**, **license plates**, or **nudity** in
 
 ![Command Line](img/command_line.gif)
 
-| Image Example               | Video Example              |
-|:---------------------------:|:--------------------------:|
-| ![](img/office_blurred.jpg) | ![](img/hello_blurred.gif) |
+| Before                      |  After                         |
+|:---------------------------:|:------------------------------:|
+| ![](img/example1.jpeg)      | ![](img/examble1_blurred.jpeg) |
+| ![](img/example2.jpg)       | ![](img/examble2_blurred.jpg)  |
+| ![](img/example3.png)       | ![](img/examble3_blurred.png)  |
 
 ## Latest Binaries
 
