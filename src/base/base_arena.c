@@ -75,7 +75,8 @@ void* arena_push(Arena *arena, u64 size, b32 non_zero)
         // allocate a new arena that doubles the arena memory capacity
         // or more to accommodate a large allocation
 
-        u64 new_arena_size = (arena->capacity >= size ? 1.5*arena->capacity : size);
+        u64 new_capacity = 1.5f*arena->capacity;
+        u64 new_arena_size = (new_capacity >= size ? new_capacity : size);
         arena->next = arena_create(new_arena_size);
         arena->next->base_pos = arena->base_pos + arena->capacity;
 

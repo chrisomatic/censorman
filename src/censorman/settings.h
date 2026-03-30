@@ -48,6 +48,7 @@ typedef struct
     // flags
     b8 no_encode;
     b8 debug;
+    b8 no_labels;
     b8 verbose;
     b8 stopwatch;
     b8 quiet;

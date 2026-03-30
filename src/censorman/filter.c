@@ -412,7 +412,7 @@ void filter_texture(Image *image, Box *box)
     }
 }
 
-void filter_draw_debug_info(Image *image, BoxFrame *box_frame, f32 box_padding)
+void filter_draw_debug_info(Image *image, BoxFrame *box_frame, f32 box_padding, b32 no_labels)
 {
     if(image_is_empty(image))
         return;
@@ -470,26 +470,29 @@ void filter_draw_debug_info(Image *image, BoxFrame *box_frame, f32 box_padding)
         // draw confidence string
         draw_string(image, box->x+2, box->y+2, color, string_format(image->arena, "%u", box->confidence));
 
-        Box label_box = {0};
-
-        if(box->y > FONT_HEIGHT + 1)
+        if(!no_labels)
         {
-            label_box.x = box->x;
-            label_box.y = box->y - FONT_HEIGHT - 1;
-            label_box.w = box->w;
-            label_box.h = FONT_HEIGHT + 1;
-        }
-        else if(box->y + box->w < image->props.h - FONT_HEIGHT - 2)
-        {
-            label_box.x = box->x;
-            label_box.y = box->y + box->h;
-            label_box.w = box->w;
-            label_box.h = FONT_HEIGHT + 1;
-        }
+            Box label_box = {0};
 
-        // draw label
-        draw_box(image, &label_box, color, true, box_transparency, 0);
-        draw_string(image, label_box.x + 1, label_box.y + 1, (RGBColor){32,32,32}, detect_type_to_string(box->type));
+            if(box->y > FONT_HEIGHT + 1)
+            {
+                label_box.x = box->x;
+                label_box.y = box->y - FONT_HEIGHT - 1;
+                label_box.w = box->w;
+                label_box.h = FONT_HEIGHT + 1;
+            }
+            else if(box->y + box->w < image->props.h - FONT_HEIGHT - 2)
+            {
+                label_box.x = box->x;
+                label_box.y = box->y + box->h;
+                label_box.w = box->w;
+                label_box.h = FONT_HEIGHT + 1;
+            }
+
+            // draw label
+            draw_box(image, &label_box, color, true, box_transparency, 0);
+            draw_string(image, label_box.x + 1, label_box.y + 1, (RGBColor){32,32,32}, detect_type_to_string(box->type));
+        }
 
         u32 radius = MAX(1, box->h * 0.015);
         for(s64 i = 0; i < LANDMARK_COUNT; ++i)

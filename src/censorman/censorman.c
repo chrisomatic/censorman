@@ -26,12 +26,12 @@
 
 void censorman_version(void)
 {
-    printf("[CENSORMAN V%d]\n", CENSORMAN_VERSION);
-    printf("    _O_\n");
-    printf("  /|-X-|\\\n");
-    printf(" /  \\_/  \\\n");
-    printf("    / \\\n");
-    printf("  _/   \\_\n");
+    os_printf("[CENSORMAN V%d]\n", CENSORMAN_VERSION);
+    os_printf("    _O_\n");
+    os_printf("  /|-X-|\\\n");
+    os_printf(" /  \\_/  \\\n");
+    os_printf("    / \\\n");
+    os_printf("  _/   \\_\n");
 }
 
 Arena *arena_perm;  // permanent allocations
@@ -186,7 +186,7 @@ s64 entry_point(void *params)
 
                     if(settings.debug)
                     {
-                        filter_draw_debug_info(&img_src, &box_frame, settings.box_padding);
+                        filter_draw_debug_info(&img_src, &box_frame, settings.box_padding, settings.no_labels);
                     }
 
                     // [output]
@@ -357,7 +357,7 @@ s64 entry_point(void *params)
 
                     if(settings.debug)
                     {
-                        filter_draw_debug_info(&img_src, box_frame, settings.box_padding);
+                        filter_draw_debug_info(&img_src, box_frame, settings.box_padding, settings.no_labels);
                     }
                 }
 

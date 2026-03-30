@@ -18,9 +18,17 @@ Censorman V2
 
 ## Filters
 
-| No Filter | Box Blur | Gaussian Blur | Pixelate | Scramble | Blackout | Texture |
-|:----:|:----------:|:-------------:|:--------:|:--------:|:--------:|:-------:|
-| ![](img/face_none.png) | ![](img/face_blur.png) | ![](img/face_blur_gaussian.png) | ![](img/face_pixelate.png) | ![](img/face_scramble.png) | ![](img/face_blackout.png) | ![](img/face_texture.png) |
+Filters can be applied to detected bounding boxes, and can be stacked to create different effects.
+
+| Filter Type   | Parameter     | Value Range | Default Value | Example                |
+|:-------------:|:-------------:|:-----------:|:-------------:|:----------------------:|
+| No Filter     | -             | -           | -             | ![](img/face_none.png) |
+| Box Blur      | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur.png) |
+| Gaussian Blur | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur_gaussian.png) |
+| Pixelate      | Block Scale   | 0.0 - 1.0   | 0.12          | ![](img/face_pixelate.png) |
+| Scramble      | Block Scale   | 0.0 - 1.0   | 0.08          | ![](img/face_scramble.png) |
+| Blackout      | -             | -           | -             | ![](img/face_blackout.png) |
+| Texture       | Texture Path  | string      | "" (empty)    | ![](img/face_texture.png) |
 
 ## Supported Formats
 
@@ -35,6 +43,7 @@ Censorman V2
 - Command-Line Tool
 - Statically built single binary
 - Embedded CNNs (no external services)
+- Runs entirely on CPU
 - Threading enabled for video files
 - Interpolation of Bounding Boxes for videos with configurable smoothing window
 - Filters (like blur) can be chained together with custom parameters
@@ -44,12 +53,12 @@ Censorman V2
 
 ## Model Details
 
-| Class             | Model                                           |
-|-------------------|-------------------------------------------------|
-| Face (default)    | InsightFace SCRFD 500m with Group Normalization |
-| Person            | InsightFace SCRFD 500m |
-| License Plate     | YOLOv8 trained 2.5g |
-| Nudity            | NudeNET |
+| Class             | Model                                 | Confidence Threshold (Default) | NMS IoU Threshold (Default) |
+|-------------------|---------------------------------------|--------------------------------|-----------------------------|
+| Face (default)    | InsightFace SCRFD 500m Face (with GN) | 0.25 (25%)                     | 0.45 (45%)                  |
+| Person            | InsightFace SCRFD 500m Person         | 0.50 (50%)                     | 0.50 (50%)                  |
+| License Plate     | YOLOv8 trained 2.5g                   | 0.50 (50%)                     | 0.45 (45%)                  |
+| Nudity            | NudeNET                               | 0.25 (25%)                     | 0.45 (45%)                  |
 
 ## Install pre-made binaries
 
@@ -105,7 +114,7 @@ All dependencies are built from source and statically linked to final binary
 ## 2. Blur people and license plates in a folder of assets
 
 ```sh
-./censorman assets/ -d people,license_plate
+./censorman assets/ -d person,license_plate
 ```
 
 ## 3. Blur faces in video with custom filter and include debug markup
@@ -137,6 +146,20 @@ All dependencies are built from source and statically linked to final binary
 ```sh
 ./censorman assets/hello.mp4 -d face -f none --bbx_file out.bbx --no_encode
 ```
+
+## Add a new model
+
+The CNN models used by censorman are NCNN formatted (.bin / .param)
+
+To integrate a new model into censorman, find one that has an NCNN version or ONNX version and convert it to NCNN with pnnx tool
+
+> [!NOTE] It is recommended to use smaller models (500m if possible), and fp16 or fp8
+
+From there, you can use ncnn2mem tool to convert the model data into C arrays. Copy the binary data header into src/model\_data/
+
+Modify the source code starting with detect.h and add a new value to DetectType enum. In detect.c copy a function like detect\_face for your own class
+
+You can modify settings.c to add support for your model on the command-line
 
 ## Help
 
