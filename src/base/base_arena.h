@@ -9,7 +9,7 @@
 typedef struct Arena Arena;
 struct Arena
 {
-    u8* memory;         // pointer to beginning of memory block
+    u8  *memory;        // pointer to beginning of memory block
     u64 capacity;       // the total size of the memory block
     u64 offset;         // current offset in memory block
     u64 base_pos;       // absolute position for this arena's memory
