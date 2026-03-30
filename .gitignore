@@ -1,4 +1,5 @@
 output/*
 bin/*
 assets/*
+third_party/lib/*
 *.bbx
