@@ -427,9 +427,10 @@ String os_path_get_file_part(String path)
         }
     }
 
-    String file = {0};
-    if(!found) return file;
+    if(!found) return path; // no slash, assume
+                            // string is entire file
 
+    String file = {0};
     file.len = path.len - i;
     file.data = &path.data[i];
 

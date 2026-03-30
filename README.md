@@ -22,7 +22,6 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 | Filter Type   | Parameter     | Value Range | Default Value | Example                |
 |:-------------:|:-------------:|:-----------:|:-------------:|:----------------------:|
-| No Filter     | -             | -           | -             | ![](img/face_none.png) |
 | Box Blur      | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur.png) |
 | Gaussian Blur | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur_gaussian.png) |
 | Pixelate      | Block Scale   | 0.0 - 1.0   | 0.12          | ![](img/face_pixelate.png) |
@@ -55,10 +54,16 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 | Class             | Model                                 | Confidence Threshold (Default) | NMS IoU Threshold (Default) |
 |-------------------|---------------------------------------|--------------------------------|-----------------------------|
-| Face (default)    | InsightFace SCRFD 500m Face (with GN) | 0.25 (25%)                     | 0.45 (45%)                  |
-| Person            | InsightFace SCRFD 500m Person         | 0.50 (50%)                     | 0.50 (50%)                  |
+| Face (default)    | scrfd_2.5g_gnkps                      | 0.25 (25%)                     | 0.45 (45%)                  |
+| Person            | InsightFace SCRFD 2.5g Person         | 0.50 (50%)                     | 0.50 (50%)                  |
 | License Plate     | YOLOv8 trained 2.5g                   | 0.50 (50%)                     | 0.45 (45%)                  |
 | Nudity            | NudeNET                               | 0.25 (25%)                     | 0.45 (45%)                  |
+
+WIDER face benchmarks:
+
+| Model            | Easy  | Medium | Hard  |
+|------------------|-------|--------|-------|
+| scrfd_2.5g_gnkps | 93.57 | 91.70  | 76.08 |
 
 ## Install pre-made binaries
 

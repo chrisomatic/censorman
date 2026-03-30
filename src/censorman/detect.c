@@ -55,8 +55,8 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
                 if(!model_face.initialized)
                 {
                     model_face = model_create_mem(640, 640,
-                            scrfd_500m_gnkps_ncnn_param_bin,
-                            scrfd_500m_gnkps_ncnn_bin
+                            scrfd_2_5g_gnkps_ncnn_param_bin,
+                            scrfd_2_5g_gnkps_ncnn_bin
                     );
                 }
             } break;
@@ -596,7 +596,7 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     List boxes = list_create(arena, sizeof(Box));
 
     ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data, NCNN_MAT_PIXEL_RGB, image->props.w, image->props.h, image->props.w*3, 0);
-    
+
     // Maps [0,255] --> [-1,1]
 
     const f32 mean[] = {127.5f, 127.5f, 127.5f};
@@ -618,8 +618,6 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_mat_t kps_16;
     ncnn_mat_t kps_32;
 
-    f64 t0 = os_time_get();
-
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT0, &score_8);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT1, &score_16);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT2, &score_32);
@@ -629,9 +627,6 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT6, &kps_8);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT7, &kps_16);
     ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT8, &kps_32);
-
-    f64 t1 = os_time_get();
-    // logd("Thread: %d, inference time: %f", s_thread_context.index, (t1-t0));
 
     const ncnn_mat_t scoreMats[] = {score_8, score_16, score_32};
     const ncnn_mat_t bboxMats[]  = {bbox_8, bbox_16, bbox_32};
@@ -695,6 +690,8 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
 
                     box = box_unscale(box, image);
                     box = box_rotate(box, image, image->props_orig.rotation, CW);
+
+                    box_print(&box,LOG_LEVEL_VERBOSE);
 
                     list_add(&boxes, &box);
                 }
@@ -983,25 +980,17 @@ Box box_unscale(Box box, Image *image)
     s32 src_w = swap_dimensions ? image->props_orig.h : image->props_orig.w;
     s32 src_h = swap_dimensions ? image->props_orig.w : image->props_orig.h;
 
-    box.x = (s32)((box.x - image->props.pad_x) * scale_factor);
-    box.y = (s32)((box.y - image->props.pad_y) * scale_factor);
+    box.x = (s32)(MAX(0,(s32)(box.x - image->props.pad_x)) * scale_factor);
+    box.y = (s32)(MAX(0,(s32)(box.y - image->props.pad_y)) * scale_factor);
     box.w = (s32)(box.w * scale_factor);
     box.h = (s32)(box.h * scale_factor);
-
-    box.x = CLAMP(box.x, 0, src_w - 1);
-    box.y = CLAMP(box.y, 0, src_h - 1);
-    box.w = CLAMP(box.w, 1, src_w - box.x - 1);
-    box.h = CLAMP(box.h, 1, src_h - box.y - 1);
 
     for(s32 k = 0; k < LANDMARK_COUNT; k++)
     {
         Point *lm = &box.landmarks[k];
 
-        lm->x = (s32)((lm->x - image->props.pad_x) * scale_factor);
-        lm->y = (s32)((lm->y - image->props.pad_y) * scale_factor);
-
-        lm->x = CLAMP(lm->x, 0, src_w - 1);
-        lm->y = CLAMP(lm->y, 0, src_h - 1);
+        lm->x = (s32)(MAX(0,lm->x - image->props.pad_x) * scale_factor);
+        lm->y = (s32)(MAX(0,lm->y - image->props.pad_y) * scale_factor);
     }
 
     return box;

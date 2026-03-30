@@ -91,7 +91,7 @@ b32 image_save(Image *image, String path)
 
     if(res == 0)
     {
-        loge("Failed to write output");
+        loge("Failed to write output, path: " STR_FMT, STR_ARG(path));
         return false;
     }
 

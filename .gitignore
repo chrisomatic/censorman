@@ -2,4 +2,5 @@ output/*
 bin/*
 assets/*
 src/third_party/lib/*
+tools/*
 *.bbx
