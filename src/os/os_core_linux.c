@@ -531,23 +531,30 @@ void os_log(LogLevel level, const char* file, int line, const char* fmt, ...)
 void os_printf(const char* fmt, ...)
 {
     va_list va;
-
-    Temp scratch = scratch_begin();
     va_start(va, fmt);
 
-    int count = stbsp_vsnprintf(NULL, 0, fmt, va);
+    va_list va_copy_list;
+    va_copy(va_copy_list, va);
+
+    Temp scratch = scratch_begin();
+
+    int count = stbsp_vsnprintf(NULL, 0, fmt, va_copy_list) + 1;
+    va_end(va_copy_list);
+
     char *buf = PUSH_ARRAY(scratch.arena, char, count);
-    stbsp_vsnprintf(buf,count,fmt, va);
+    stbsp_vsnprintf(buf, count, fmt, va);
+
     va_end(va);
 
-    os_print_raw(buf, count);
+    os_print_raw(buf, count - 1);
 
     scratch_end(scratch);
 }
 
 int os_print_raw(const char* msg, s32 msg_len)
 {
-    return write(STDOUT_FILENO, msg, msg_len);
+    s32 res = write(STDOUT_FILENO, msg, msg_len);
+    return res;
 }
 
 ///////////////////////////////////////
