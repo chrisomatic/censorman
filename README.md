@@ -6,9 +6,9 @@ Automatically detect **faces**, **people**, **license plates**, or **nudity** in
 
 | Before                      |  After                         |
 |:---------------------------:|:------------------------------:|
-| ![](img/example1.jpeg)      | ![](img/examble1_blurred.jpeg) |
-| ![](img/example2.jpg)       | ![](img/examble2_blurred.jpg)  |
-| ![](img/example3.png)       | ![](img/examble3_blurred.png)  |
+| ![](img/example1.jpeg)      | ![](img/example1_blurred.jpeg) |
+| ![](img/example2.jpg)       | ![](img/example2_blurred.jpg)  |
+| ![](img/example3.png)       | ![](img/example3_blurred.png)  |
 
 ## Latest Binaries
 
@@ -115,7 +115,7 @@ All dependencies are built from source and statically linked to final binary
 ## 1. Simply blur faces in an image (Default)
 
 ```sh
-./censorman img/office.jpg -f gaussian_blur
+./censorman img/office.jpg -f blur
 ```
 
 ## 2. Blur people and license plates in a folder of assets
@@ -161,7 +161,7 @@ The CNN models used by censorman are NCNN formatted (.bin / .param)
 To integrate a new model into censorman, find one that has an NCNN version or ONNX version and convert it to NCNN with pnnx tool
 
 > [!NOTE]
-> It is recommended to use smaller models (500m if possible), and fp16 or fp8
+> It is recommended to use smaller models (2.5g or 500m if possible)
 
 From there, you can use ncnn2mem tool to convert the model data into C arrays. Copy the binary data header into src/model\_data/
 
