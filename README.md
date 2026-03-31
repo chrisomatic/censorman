@@ -87,7 +87,7 @@ To build on Windows, run in MSYS2 MingW environment
 
 ```sh
 # build dependencies (do once)
-./scripts/build_deps.sh
+./scripts/build_deps.sh all
 
 # build censorman
 ./build.sh prod
