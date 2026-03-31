@@ -89,6 +89,7 @@ typedef struct
 extern OS_SystemInfo os_system_info;
 
 void os_system_init(void);
+
 String os_system_get_executable_path(Arena *arena);
 
 ///////////////////////////////////////

@@ -63,9 +63,9 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 WIDER face benchmarks:
 
-| Model            | Easy  | Medium | Hard  |
-|------------------|-------|--------|-------|
-| scrfd_2.5g_gnkps | 93.57 | 91.70  | 76.08 |
+| Model              | Easy  | Medium | Hard  |
+|--------------------|-------|--------|-------|
+| scrfd\_2.5g\_gnkps | 93.57 | 91.70  | 76.08 |
 
 ## Install pre-made binaries
 
@@ -103,7 +103,7 @@ All dependencies are built from source and statically linked to final binary
 | Name              | Function               | Link                                              |
 |-------------------|------------------------|---------------------------------------------------|
 | ffmpeg            | Video/Audio Processing | https://git.ffmpeg.org/ffmpeg.git                 |
-| libx264           | HECV Video Encoding    | https://code.videolan.org/videolan/x264.git       |
+| libx264           | H.264 Video Encoding   | https://code.videolan.org/videolan/x264.git       |
 | libvpx            | VPX Video Encoding     | https://chromium.googlesource.com/webm/libvpx.git |
 | libexif           | EXIF Metadata          | https://github.com/libexif/libexif.git            |
 | ncnn              | CNN Inference Engine   | https://github.com/tencent/NCNN                   |

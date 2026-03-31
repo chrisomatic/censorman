@@ -83,7 +83,7 @@ if errorlevel 1 (
     echo NOTE: %INSTALL_DIR% is not in your PATH.
     echo To add it permanently, run the following command:
     echo.
-    echo   setx PATH "%%PATH%%;%INSTALL_DIR%"
+    echo   set "PATH %%PATH%%;%INSTALL_DIR%"
     echo.
     echo Then restart your Command Prompt.
 )

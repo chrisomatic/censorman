@@ -239,7 +239,7 @@ build_ffmpeg() {
   # ── Copy libs and clean up ─────────────────────────────────────────────────
   mv "$PREFIX/lib/"*.a "$LIB_DEST/"
   rm -rf "$BUILD_DIR"
-  echo "  ✓ ffmpeg libs installed to $LIB_DEST"
+  echo "ffmpeg libs installed to $LIB_DEST"
 }
 
 # ─── ncnn ────────────────────────────────────────────────────────────────────
@@ -333,7 +333,7 @@ build_ncnn() {
   mv "$PREFIX/bin/"* "$TOOLS_DEST/"
 
   rm -rf "$BUILD_DIR"
-  echo "  ✓ ncnn libs installed to $LIB_DEST"
+  echo "ncnn libs installed to $LIB_DEST"
 }
 
 # ─── libexif ─────────────────────────────────────────────────────────────────
@@ -390,7 +390,7 @@ build_exif() {
 
   mv "$PREFIX/lib/"*.a "$LIB_DEST/"
   rm -rf "$BUILD_DIR"
-  echo "  ✓ exif libs installed to $LIB_DEST"
+  echo "exif libs installed to $LIB_DEST"
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
