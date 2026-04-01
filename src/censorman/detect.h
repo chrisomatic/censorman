@@ -16,6 +16,8 @@ typedef enum
     DETECT_TYPE_EYE = 16,
     DETECT_TYPE_NOSE,
     DETECT_TYPE_MOUTH,
+    DETECT_TYPE_CHEEK,
+    DETECT_TYPE_FOREHEAD,
 } DetectType;
 
 typedef struct
@@ -76,7 +78,7 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count);
 void detect(DetectConfig *cfg, Image *image, List *total_boxes);
 
 BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number);
-BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 filter_features);
+BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation rotation, u8 facial_features);
 void     box_frame_apply_padding(BoxFrame input, ImageProps *props, f32 padding_percent);
 
 Box box_unscale(Box box, Image *image);

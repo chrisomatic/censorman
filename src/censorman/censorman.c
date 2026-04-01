@@ -165,7 +165,7 @@ s64 entry_point(void *params)
 
                 BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
 
-                box_frame = box_frame_divide_into_features(arena_frame, box_frame, settings.facial_features);
+                box_frame = box_frame_divide_into_features(arena_frame, box_frame, img_src.props.rotation, settings.facial_features);
                 box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
 
                 bbx_file_write_box_frame(bbx_file, &box_frame);
@@ -294,7 +294,7 @@ s64 entry_point(void *params)
 
                       BoxFrame *box_frame = &box_frames[frame];
                       *box_frame = box_frame_from_list(arena_chunk, box_list, vid.frames_processed + frame);
-                      *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, settings.facial_features);
+                      *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, vid.rotation, settings.facial_features);
                       box_frame_apply_padding(*box_frame, &img_src.props, settings.box_padding);
 
                     mutex_unlock(&arena_chunk_mutex);

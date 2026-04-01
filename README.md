@@ -323,6 +323,8 @@ MORE TABLES
 | eye           | 16    |
 | nose          | 17    |
 | mouth         | 18    |
+| cheeks        | 19    |
+| forehead      | 20    |
 |---------------|-------|
 ```
 

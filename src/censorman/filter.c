@@ -555,6 +555,12 @@ FacialFeature facial_feature_from_string(String str)
     if(string_equal(str, S("mouth")))
         return FACIAL_FEATURE_MOUTH;
 
+    if(string_equal(str, S("cheeks")))
+        return FACIAL_FEATURE_CHEEKS;
+
+    if(string_equal(str, S("forehead")))
+        return FACIAL_FEATURE_FOREHEAD;
+
     return FACIAL_FEATURE_NONE;
 }
 

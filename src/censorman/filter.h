@@ -13,10 +13,12 @@ typedef enum
 
 typedef enum
 {
-    FACIAL_FEATURE_NONE  = 0,
-    FACIAL_FEATURE_EYES  = (1<<0),
-    FACIAL_FEATURE_NOSE  = (1<<1),
-    FACIAL_FEATURE_MOUTH = (1<<2),
+    FACIAL_FEATURE_NONE     = 0,
+    FACIAL_FEATURE_EYES     = (1<<0),
+    FACIAL_FEATURE_NOSE     = (1<<1),
+    FACIAL_FEATURE_MOUTH    = (1<<2),
+    FACIAL_FEATURE_CHEEKS   = (1<<3),
+    FACIAL_FEATURE_FOREHEAD = (1<<4),
 } FacialFeature;
 
 typedef struct

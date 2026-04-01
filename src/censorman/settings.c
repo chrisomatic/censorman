@@ -460,6 +460,9 @@ void settings_print_help(void)
     os_printf("\n");
     os_printf("    --bbx_file [-bbx] <bbx_file_path>\n");
     os_printf("        Bounding-box output file. If specified, the detect box data will be written to a file\n");
+    os_printf("\n");
+    os_printf("    --facial_features [-ff] <facial_features>\n");
+    os_printf("        Break the facial box into sub-boxes. Comma-delimited list of ['eyes','nose','mouth','cheeks','forehead']\n");
     os_printf("\nFLAGS\n");
     os_printf("    --bbx_file_format [-bff]  Print information about the file format for BBX files\n");
     os_printf("    --no_encode [-ne]         Disable the writing of the processed output file(s)\n");

@@ -187,16 +187,18 @@ BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number)
     return bf;
 }
 
-BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 facial_features)
+BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation rotation, u8 facial_features)
 {
     BoxFrame output = input;
 
     if(facial_features == FACIAL_FEATURE_NONE)
         return output;
 
-    b8 feature_eyes  = BIT_CHECK(facial_features, FACIAL_FEATURE_EYES);
-    b8 feature_nose  = BIT_CHECK(facial_features, FACIAL_FEATURE_NOSE);
-    b8 feature_mouth = BIT_CHECK(facial_features, FACIAL_FEATURE_MOUTH);
+    b8 feature_eyes     = BIT_CHECK(facial_features, FACIAL_FEATURE_EYES);
+    b8 feature_nose     = BIT_CHECK(facial_features, FACIAL_FEATURE_NOSE);
+    b8 feature_mouth    = BIT_CHECK(facial_features, FACIAL_FEATURE_MOUTH);
+    b8 feature_cheeks   = BIT_CHECK(facial_features, FACIAL_FEATURE_CHEEKS);
+    b8 feature_forehead = BIT_CHECK(facial_features, FACIAL_FEATURE_FOREHEAD);
 
     // pre-gather how many face boxes there are
     // and allocate the new number of facial boxes
@@ -210,6 +212,8 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 facial_
             box_count_new += (2*feature_eyes); // there are two eyes <o>_<o>
             box_count_new += feature_nose;
             box_count_new += feature_mouth;
+            box_count_new += (2*feature_cheeks); // two cheeks
+            box_count_new += feature_forehead;
         }
         else
         {
@@ -230,39 +234,44 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 facial_
 
     for(s64 i = 0; i < input.box_count; ++i)
     {
-        Box *input_box = &input.boxes[i];
+        Box input_box = input.boxes[i];
 
-        if(input_box->type != DETECT_TYPE_FACE)
+        if(rotation == ROTATE_90 || rotation == ROTATE_270)
         {
-            output.boxes[output.box_count++] = *input_box;
+            SWAP(s32, input_box.w, input_box.h);
+        }
+
+        if(input_box.type != DETECT_TYPE_FACE)
+        {
+            output.boxes[output.box_count++] = input_box;
             continue;
         }
 
-        Point eye_left    = input_box->landmarks[0];
-        Point eye_right   = input_box->landmarks[1];
-        Point nose        = input_box->landmarks[2];
-        Point mouth_left  = input_box->landmarks[3];
-        Point mouth_right = input_box->landmarks[4];
+        Point eye_left    = input_box.landmarks[0];
+        Point eye_right   = input_box.landmarks[1];
+        Point nose        = input_box.landmarks[2];
+        Point mouth_left  = input_box.landmarks[3];
+        Point mouth_right = input_box.landmarks[4];
 
         if(feature_eyes)
         {
             Box box_eye_left  = {0};
             Box box_eye_right = {0};
 
-            box_eye_left.w = 0.32f * input_box->w;
-            box_eye_left.h = 0.18f * input_box->h;
+            box_eye_left.w = 0.32f * input_box.w;
+            box_eye_left.h = 0.18f * input_box.h;
             box_eye_left.x = eye_left.x - (0.50f*box_eye_left.w);
             box_eye_left.y = eye_left.y - (0.50f*box_eye_left.h);
-            box_eye_left.confidence = input_box->confidence;
-            box_eye_left.landmarks[0] = input_box->landmarks[0];
+            box_eye_left.confidence = input_box.confidence;
+            box_eye_left.landmarks[0] = input_box.landmarks[0];
             box_eye_left.type = DETECT_TYPE_EYE;
 
-            box_eye_right.w = 0.32f * input_box->w;
-            box_eye_right.h = 0.18f * input_box->h;
+            box_eye_right.w = 0.32f * input_box.w;
+            box_eye_right.h = 0.18f * input_box.h;
             box_eye_right.x = eye_right.x - (0.50f*box_eye_left.w);
             box_eye_right.y = eye_right.y - (0.50f*box_eye_left.h);
-            box_eye_right.confidence = input_box->confidence;
-            box_eye_right.landmarks[0] = input_box->landmarks[1];
+            box_eye_right.confidence = input_box.confidence;
+            box_eye_right.landmarks[0] = input_box.landmarks[1];
             box_eye_right.type = DETECT_TYPE_EYE;
 
             output.boxes[output.box_count++] = box_eye_left;    
@@ -273,15 +282,15 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 facial_
         {
             Box box_nose = {0};
 
-            f32 nose_ratio_x = ABS(nose.x - input_box->x) / (f32)input_box->w;
+            f32 nose_ratio_x = ABS(nose.x - input_box.x) / (f32)input_box.w;
 
-            box_nose.w = 0.30f * input_box->w;
-            box_nose.h = 0.20f * input_box->h;
+            box_nose.w = 0.30f * input_box.w;
+            box_nose.h = 0.20f * input_box.h;
             box_nose.x = nose.x - nose_ratio_x * box_nose.w;
             box_nose.y = nose.y - 0.75f * box_nose.h;
 
-            box_nose.confidence = input_box->confidence;
-            box_nose.landmarks[0] = input_box->landmarks[2];
+            box_nose.confidence = input_box.confidence;
+            box_nose.landmarks[0] = input_box.landmarks[2];
             box_nose.type = DETECT_TYPE_NOSE;
 
             output.boxes[output.box_count++] = box_nose;
@@ -300,17 +309,63 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, u8 facial_
                 .y = MIN(mouth_left.y, mouth_right.y) + 0.50f*mouth_dist_y
             };
 
-            box_mouth.w = ABS(mouth_right.x - mouth_left.x) + 0.2f*input_box->w;
-            box_mouth.h = ABS(mouth_right.y - mouth_left.y) + 0.2f*input_box->h;
+            box_mouth.w = ABS(mouth_right.x - mouth_left.x) + 0.2f*input_box.w;
+            box_mouth.h = ABS(mouth_right.y - mouth_left.y) + 0.2f*input_box.h;
             box_mouth.x = mouth_middle.x - 0.50f*box_mouth.w;
             box_mouth.y = mouth_middle.y - 0.35f*box_mouth.h;
 
-            box_mouth.confidence = input_box->confidence;
-            box_mouth.landmarks[0] = input_box->landmarks[3];
-            box_mouth.landmarks[1] = input_box->landmarks[4];
+            box_mouth.confidence = input_box.confidence;
+            box_mouth.landmarks[0] = input_box.landmarks[3];
+            box_mouth.landmarks[1] = input_box.landmarks[4];
             box_mouth.type = DETECT_TYPE_MOUTH;
 
             output.boxes[output.box_count++] = box_mouth;
+        }
+
+        if(feature_cheeks)
+        {
+            Box box_cheek_left  = {0};
+            Box box_cheek_right = {0};
+
+            s32 eye_dist = (s32)vec2_distance(VEC2(eye_left.x, eye_left.y), VEC2(eye_right.x, eye_right.y));
+
+            box_cheek_left.w = 0.32f * input_box.w;
+            box_cheek_left.h = 0.20f * input_box.h;
+            box_cheek_left.x = (eye_left.x - 0.20*eye_dist)- (0.5f*box_cheek_left.w);
+            box_cheek_left.y = (eye_left.y + 0.18f*input_box.h) - (0.5f*box_cheek_left.h);
+            box_cheek_left.confidence = input_box.confidence;
+            box_cheek_left.type = DETECT_TYPE_CHEEK;
+
+            box_cheek_right.w = 0.35f * input_box.w;
+            box_cheek_right.h = 0.20f * input_box.h;
+            box_cheek_right.x = (eye_right.x + 0.20*eye_dist) - (0.5f*box_cheek_left.w);
+            box_cheek_right.y = (eye_right.y + 0.18f*input_box.h) - (0.5f*box_cheek_left.h);
+            box_cheek_right.confidence = input_box.confidence;
+            box_cheek_right.type = DETECT_TYPE_CHEEK;
+
+            output.boxes[output.box_count++] = box_cheek_left;    
+            output.boxes[output.box_count++] = box_cheek_right;
+        }
+
+        if(feature_forehead)
+        {
+            Box box_forehead = {0};
+
+            Point forehead_midpoint =
+            {
+                .x = MIN(eye_left.x, eye_right.x) + ABS(eye_right.x - eye_right.x),
+                .y = MIN(eye_left.y, eye_right.y) + ABS(eye_right.y - eye_right.y) - (0.25*input_box.h)
+            };
+
+            box_forehead.w = 0.80f * input_box.w;
+            box_forehead.h = 0.25f * input_box.h;
+            box_forehead.x = forehead_midpoint.x - 0.5f * box_forehead.w;
+            box_forehead.y = forehead_midpoint.y - 0.5f * box_forehead.h;
+
+            box_forehead.confidence = input_box.confidence;
+            box_forehead.type = DETECT_TYPE_FOREHEAD;
+
+            output.boxes[output.box_count++] = box_forehead;
         }
     }
 
@@ -1121,6 +1176,8 @@ String detect_type_to_string(DetectType type)
         case DETECT_TYPE_EYE:           return S("eye");
         case DETECT_TYPE_NOSE:          return S("nose");
         case DETECT_TYPE_MOUTH:         return S("mouth");
+        case DETECT_TYPE_CHEEK:         return S("cheek");
+        case DETECT_TYPE_FOREHEAD:      return S("forehead");
         case DETECT_TYPE_NONE:
         default: break;
     }
@@ -1150,6 +1207,12 @@ DetectType detect_type_from_string(String str)
     
     if(string_equal(str, S("mouth")))
         return DETECT_TYPE_MOUTH;
+
+    if(string_equal(str, S("cheek")))
+        return DETECT_TYPE_MOUTH;
+
+    if(string_equal(str, S("forehead")))
+        return DETECT_TYPE_FOREHEAD;
 
     return DETECT_TYPE_NONE;
 }
