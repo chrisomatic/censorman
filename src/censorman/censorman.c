@@ -89,6 +89,7 @@ int main(int argc, char **args)
     {
         // load texture
         g_texture_image = image_load(arena_perm, settings.texture_path, NULL);
+        image_print(&g_texture_image, LOG_LEVEL_VERBOSE);
     }
 
     s_thread_context.count = settings.thread_count;
@@ -146,6 +147,7 @@ s64 entry_point(void *params)
                 arena_reset(arena_frame);
 
                 Image img_src = image_load(arena_frame, asset->path, &sw);
+                image_print(&img_src, LOG_LEVEL_VERBOSE);
 
                 bbx_file_write_asset_header(bbx_file, i, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
                 List box_list = list_create(arena_frame, sizeof(Box));
@@ -165,7 +167,7 @@ s64 entry_point(void *params)
 
                 BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
 
-                box_frame = box_frame_divide_into_features(arena_frame, box_frame, img_src.props.rotation, settings.facial_features);
+                box_frame = box_frame_divide_into_features(arena_frame, box_frame, &img_src.props, settings.facial_features);
                 box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
 
                 bbx_file_write_box_frame(bbx_file, &box_frame);
@@ -294,7 +296,7 @@ s64 entry_point(void *params)
 
                       BoxFrame *box_frame = &box_frames[frame];
                       *box_frame = box_frame_from_list(arena_chunk, box_list, vid.frames_processed + frame);
-                      *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, vid.rotation, settings.facial_features);
+                      *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, &img_src.props, settings.facial_features);
                       box_frame_apply_padding(*box_frame, &img_src.props, settings.box_padding);
 
                     mutex_unlock(&arena_chunk_mutex);

@@ -187,7 +187,7 @@ BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number)
     return bf;
 }
 
-BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation rotation, u8 facial_features)
+BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps *props, u8 facial_features)
 {
     BoxFrame output = input;
 
@@ -227,16 +227,15 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation r
 
     // Deconstruct a face box into 5 small boxes for each facial feature
     // for all face boxes in a box frame
-    //
-    // [ left_eye, right_eye, nose, left_mouth, right_mouth ]
-    //      |          |        |       |            |
-    //      0          1        2       3            4      
 
     for(s64 i = 0; i < input.box_count; ++i)
     {
+        //Box input_box = input.boxes[i];
         Box input_box = input.boxes[i];
 
-        if(rotation == ROTATE_90 || rotation == ROTATE_270)
+        b32 sideways = (props->rotation == ROTATE_90 || props->rotation == ROTATE_270);
+
+        if(sideways)
         {
             SWAP(s32, input_box.w, input_box.h);
         }
@@ -255,24 +254,48 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation r
 
         if(feature_eyes)
         {
+            // Left eye
+
             Box box_eye_left  = {0};
-            Box box_eye_right = {0};
 
             box_eye_left.w = 0.32f * input_box.w;
             box_eye_left.h = 0.18f * input_box.h;
+
+            if(sideways)
+            {
+                SWAP(s32, box_eye_left.w, box_eye_left.h);
+            }
+
             box_eye_left.x = eye_left.x - (0.50f*box_eye_left.w);
             box_eye_left.y = eye_left.y - (0.50f*box_eye_left.h);
+
             box_eye_left.confidence = input_box.confidence;
             box_eye_left.landmarks[0] = input_box.landmarks[0];
             box_eye_left.type = DETECT_TYPE_EYE;
 
+            // Right eye
+
+            Box box_eye_right = {0};
+
             box_eye_right.w = 0.32f * input_box.w;
             box_eye_right.h = 0.18f * input_box.h;
-            box_eye_right.x = eye_right.x - (0.50f*box_eye_left.w);
-            box_eye_right.y = eye_right.y - (0.50f*box_eye_left.h);
+
+            if(sideways)
+            {
+                SWAP(s32, box_eye_right.w, box_eye_right.h);
+            }
+
+            box_eye_right.x = eye_right.x - (0.50f*box_eye_right.w);
+            box_eye_right.y = eye_right.y - (0.50f*box_eye_right.h);
+
             box_eye_right.confidence = input_box.confidence;
             box_eye_right.landmarks[0] = input_box.landmarks[1];
             box_eye_right.type = DETECT_TYPE_EYE;
+
+            if(sideways)
+            {
+                SWAP(s32, box_eye_right.w, box_eye_right.h);
+            }
 
             output.boxes[output.box_count++] = box_eye_left;    
             output.boxes[output.box_count++] = box_eye_right;
@@ -286,6 +309,12 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation r
 
             box_nose.w = 0.30f * input_box.w;
             box_nose.h = 0.20f * input_box.h;
+
+            if(sideways)
+            {
+                SWAP(s32, box_nose.w, box_nose.h);
+            }
+
             box_nose.x = nose.x - nose_ratio_x * box_nose.w;
             box_nose.y = nose.y - 0.75f * box_nose.h;
 
@@ -309,14 +338,25 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation r
                 .y = MIN(mouth_left.y, mouth_right.y) + 0.50f*mouth_dist_y
             };
 
-            box_mouth.w = ABS(mouth_right.x - mouth_left.x) + 0.2f*input_box.w;
-            box_mouth.h = ABS(mouth_right.y - mouth_left.y) + 0.2f*input_box.h;
-            box_mouth.x = mouth_middle.x - 0.50f*box_mouth.w;
-            box_mouth.y = mouth_middle.y - 0.35f*box_mouth.h;
+            if(sideways)
+            {
+                box_mouth.w = ABS(mouth_right.x - mouth_left.x) + 0.2f*input_box.h;
+                box_mouth.h = ABS(mouth_right.y - mouth_left.y) + 0.2f*input_box.w;
+                box_mouth.x = mouth_middle.x - 0.35f*box_mouth.w;
+                box_mouth.y = mouth_middle.y - 0.50f*box_mouth.h;
+            }
+            else
+            {
+                box_mouth.w = ABS(mouth_right.x - mouth_left.x) + 0.2f*input_box.w;
+                box_mouth.h = ABS(mouth_right.y - mouth_left.y) + 0.2f*input_box.h;
+                box_mouth.x = mouth_middle.x - 0.50f*box_mouth.w;
+                box_mouth.y = mouth_middle.y - 0.35f*box_mouth.h;
+            }
 
             box_mouth.confidence = input_box.confidence;
             box_mouth.landmarks[0] = input_box.landmarks[3];
             box_mouth.landmarks[1] = input_box.landmarks[4];
+            box_mouth.landmarks[2] = mouth_middle;
             box_mouth.type = DETECT_TYPE_MOUTH;
 
             output.boxes[output.box_count++] = box_mouth;
@@ -331,15 +371,36 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation r
 
             box_cheek_left.w = 0.32f * input_box.w;
             box_cheek_left.h = 0.20f * input_box.h;
-            box_cheek_left.x = (eye_left.x - 0.20*eye_dist)- (0.5f*box_cheek_left.w);
-            box_cheek_left.y = (eye_left.y + 0.18f*input_box.h) - (0.5f*box_cheek_left.h);
+
+            if(sideways)
+            {
+                box_cheek_left.x = (eye_left.x + 0.18f*input_box.h)  - (0.5f*box_cheek_left.h);
+                box_cheek_left.y = (eye_left.y - 0.20f*eye_dist)     - (0.5f*box_cheek_left.w);
+            }
+            else
+            {
+                box_cheek_left.x = (eye_left.x - 0.20f*eye_dist)    - (0.5f*box_cheek_left.w);
+                box_cheek_left.y = (eye_left.y + 0.18f*input_box.h) - (0.5f*box_cheek_left.h);
+            }
+
             box_cheek_left.confidence = input_box.confidence;
             box_cheek_left.type = DETECT_TYPE_CHEEK;
 
             box_cheek_right.w = 0.35f * input_box.w;
             box_cheek_right.h = 0.20f * input_box.h;
-            box_cheek_right.x = (eye_right.x + 0.20*eye_dist) - (0.5f*box_cheek_left.w);
-            box_cheek_right.y = (eye_right.y + 0.18f*input_box.h) - (0.5f*box_cheek_left.h);
+
+            if(sideways)
+            {
+                box_cheek_right.x = (eye_right.x + 0.18f*input_box.h) - (0.5f*box_cheek_left.h);
+                box_cheek_right.y = (eye_right.y - 0.20f*eye_dist)    - (0.5f*box_cheek_left.w);
+            }
+            else
+            {
+                box_cheek_right.x = (eye_right.x + 0.20f*eye_dist)    - (0.5f*box_cheek_right.w);
+                box_cheek_right.y = (eye_right.y + 0.18f*input_box.h) - (0.5f*box_cheek_right.h);
+            }
+
+
             box_cheek_right.confidence = input_box.confidence;
             box_cheek_right.type = DETECT_TYPE_CHEEK;
 
@@ -351,19 +412,33 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, Rotation r
         {
             Box box_forehead = {0};
 
-            Point forehead_midpoint =
+            Point forehead_midpoint = {0};
+
+            if(sideways)
             {
-                .x = MIN(eye_left.x, eye_right.x) + ABS(eye_right.x - eye_right.x),
-                .y = MIN(eye_left.y, eye_right.y) + ABS(eye_right.y - eye_right.y) - (0.25*input_box.h)
-            };
+                forehead_midpoint.x = MIN(eye_left.x, eye_right.x) + ABS(eye_right.x - eye_left.x)*0.5f - (0.25*input_box.h);
+                forehead_midpoint.y = MIN(eye_left.y, eye_right.y) + ABS(eye_right.y - eye_left.y)*0.5f;
+            }
+            else
+            {
+                forehead_midpoint.x = MIN(eye_left.x, eye_right.x) + ABS(eye_right.x - eye_left.x)*0.5f;
+                forehead_midpoint.y = MIN(eye_left.y, eye_right.y) + ABS(eye_right.y - eye_left.y)*0.5f - (0.25*input_box.h);
+            }
 
             box_forehead.w = 0.80f * input_box.w;
             box_forehead.h = 0.25f * input_box.h;
-            box_forehead.x = forehead_midpoint.x - 0.5f * box_forehead.w;
-            box_forehead.y = forehead_midpoint.y - 0.5f * box_forehead.h;
+
+            if(sideways)
+            {
+                SWAP(s32, box_forehead.w, box_forehead.h);
+            }
+
+            box_forehead.x = forehead_midpoint.x - (0.5f * box_forehead.w);
+            box_forehead.y = forehead_midpoint.y - (0.5f * box_forehead.h);
 
             box_forehead.confidence = input_box.confidence;
             box_forehead.type = DETECT_TYPE_FOREHEAD;
+            box_forehead.landmarks[0] = forehead_midpoint;
 
             output.boxes[output.box_count++] = box_forehead;
         }
@@ -748,7 +823,7 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
                     }
 
                     box = box_unscale(box, image);
-                    box = box_rotate(box, image, image->props_orig.rotation, CW);
+                    box = box_rotate(box, &image->props_orig, CW);
 
                     box_print(&box,LOG_LEVEL_VERBOSE);
 
@@ -864,7 +939,7 @@ List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 th
                 }
 
                 box = box_unscale(box, image);
-                box = box_rotate(box, image, image->props_orig.rotation, CW);
+                box = box_rotate(box, &image->props_orig, CW);
 
                 list_add(&boxes, &box);
             }
@@ -943,7 +1018,7 @@ List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence,
         box.type = DETECT_TYPE_LICENSE_PLATE;
 
         box = box_unscale(box, image);
-        box = box_rotate(box, image, image->props_orig.rotation, CW);
+        box = box_rotate(box, &image->props_orig, CW);
 
         list_add(&boxes, &box);
     }
@@ -1016,7 +1091,7 @@ List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 thr
         box.type     = DETECT_TYPE_NUDITY;
 
         box = box_unscale(box, image);
-        box = box_rotate(box, image, image->props_orig.rotation, CW);
+        box = box_rotate(box, &image->props_orig, CW);
 
         list_add(&boxes, &box);
     }
@@ -1055,20 +1130,20 @@ Box box_unscale(Box box, Image *image)
     return box;
 }
 
-Box box_rotate(Box box, Image *image, Rotation rotation, ClockDir dir)
+Box box_rotate(Box box, ImageProps *props, ClockDir dir)
 {
-    if(rotation == ROTATE_0) return box;
+    if(props->rotation == ROTATE_0) return box;
 
-    b32 swap_dimensions = (image->props_orig.rotation == ROTATE_90 || image->props_orig.rotation == ROTATE_270);
+    b32 swap_dimensions = (props->rotation == ROTATE_90 || props->rotation == ROTATE_270);
 
-    s32 src_w = swap_dimensions ? image->props_orig.h : image->props_orig.w;
-    s32 src_h = swap_dimensions ? image->props_orig.w : image->props_orig.h;
+    s32 src_w = swap_dimensions ? props->h : props->w;
+    s32 src_h = swap_dimensions ? props->w : props->h;
 
     // normalize to CW
-    Rotation effective = rotation;
+    Rotation effective = props->rotation;
     if(dir == CCW)
     {
-        switch(rotation)
+        switch(props->rotation)
         {
             case ROTATE_90:  effective = ROTATE_270; break;
             case ROTATE_270: effective = ROTATE_90;  break;

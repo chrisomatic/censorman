@@ -290,13 +290,13 @@ Rotation image_get_rotation_from_file(char *file_path)
     return rotation;
 }
 
-void image_print(Image *image)
+void image_print(Image *image, LogLevel ll)
 {
-    logi("===================");
-    logi("Image %p:", image);
-    logi("        w: %u", image->props.w);
-    logi("        h: %u", image->props.h);
-    logi("      rot: %u", image->props.rotation);
-    logi("    arena: %p", image->arena);
-    logi("===================");
+    os_log(ll, __FILE__, __LINE__, "===================");
+    os_log(ll, __FILE__, __LINE__, "Image %p:", image);
+    os_log(ll, __FILE__, __LINE__, "        w: %u", image->props.w);
+    os_log(ll, __FILE__, __LINE__, "        h: %u", image->props.h);
+    os_log(ll, __FILE__, __LINE__, "      rot: %u", image->props.rotation);
+    os_log(ll, __FILE__, __LINE__, "    arena: %p", image->arena);
+    os_log(ll, __FILE__, __LINE__, "===================");
 }

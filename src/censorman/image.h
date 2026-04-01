@@ -57,4 +57,4 @@ Image image_scale(Image source, u32 target_w, u32 target_h);
 
 Rotation image_get_rotation_from_file(char *file_path);
 
-void image_print(Image *image);
+void image_print(Image *image, LogLevel ll);
