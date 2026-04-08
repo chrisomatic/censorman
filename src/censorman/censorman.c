@@ -331,35 +331,38 @@ s64 entry_point(void *params)
 
                 range = thread_range(vid.frame_count);
 
-                // [apply filters]
-                for(s64 i = range.min; i < range.max; ++i)
+                if(!settings.no_encode)
                 {
-                    arena_reset(arena_frame);
-
-                    Image img_src = 
+                    // [apply filters]
+                    for(s64 i = range.min; i < range.max; ++i)
                     {
-                        .props.w = vid.w,
-                        .props.h = vid.h,
-                        .props.rotation = vid.rotation,
-                        .data = &vid.data[i*vid.w*vid.h],
-                        .arena = arena_frame
-                    };
+                        arena_reset(arena_frame);
 
-                    BoxFrame *box_frame = &box_frames[i];
-
-                    for(s64 j = 0; j < box_frame->box_count; ++j)
-                    {
-                        Box *box = &box_frame->boxes[j];
-
-                        for(s64 k = 0; k < settings.filter_count; ++k)
+                        Image img_src = 
                         {
-                            filter_apply(settings.filters[k], &img_src, box);
-                        }
-                    }
+                            .props.w = vid.w,
+                            .props.h = vid.h,
+                            .props.rotation = vid.rotation,
+                            .data = &vid.data[i*vid.w*vid.h],
+                            .arena = arena_frame
+                        };
 
-                    if(settings.debug)
-                    {
-                        filter_draw_debug_info(&img_src, box_frame, settings.box_padding, settings.no_labels);
+                        BoxFrame *box_frame = &box_frames[i];
+
+                        for(s64 j = 0; j < box_frame->box_count; ++j)
+                        {
+                            Box *box = &box_frame->boxes[j];
+
+                            for(s64 k = 0; k < settings.filter_count; ++k)
+                            {
+                                filter_apply(settings.filters[k], &img_src, box);
+                            }
+                        }
+
+                        if(settings.debug)
+                        {
+                            filter_draw_debug_info(&img_src, box_frame, settings.box_padding, settings.no_labels);
+                        }
                     }
                 }
 
@@ -370,8 +373,9 @@ s64 entry_point(void *params)
                     // [output]
                     stopwatch_begin(&sw, S("save video"));
                     video_save_frames(&vid);
-                    logi("Progress: %3d%% [%5d / %d]", (s32)(100*vid.frames_processed / (f32)vid.frame_count_total), vid.frames_processed, vid.frame_count_total);
                     stopwatch_end(&sw, S("save video"));
+
+                    logi("Progress: %3d%% [%5d / %d]", (s32)(100*vid.frames_processed / (f32)vid.frame_count_total), vid.frames_processed, vid.frame_count_total);
                 }
 
                 barrier_sync(&barrier);
@@ -391,7 +395,8 @@ s64 entry_point(void *params)
         // bbx_file_parse_and_print(settings.bbx_output); // @TEMP
         if(settings.stopwatch) stopwatch_print(&sw, LOG_LEVEL_INFO);
 
-        logi("Complete! Processed files in folder: '" STR_FMT "'", STR_ARG(settings.output_folder));
+        if(settings.no_encode) logi("Complete!");
+        else logi("Complete! Processed files in folder: '" STR_FMT "'", STR_ARG(settings.output_folder));
     }
 
     return 0;

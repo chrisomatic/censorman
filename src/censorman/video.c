@@ -507,6 +507,12 @@ b32 video_load_frames(Video *vid)
 
 b32 video_save_frames(Video *vid)
 {
+    if(vid->settings.no_encode)
+    {
+        vid->frames_processed += vid->frame_count;
+        return true;
+    }
+
     if(!vid->data || vid->frame_count == 0)
         return false;
 
@@ -678,6 +684,9 @@ b32 video_save_frames(Video *vid)
 
 void video_save_done(Video *vid)
 {
+    if(vid->settings.no_encode)
+        return;
+
     if(video_is_empty(vid))
         return;
 
