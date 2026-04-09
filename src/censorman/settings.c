@@ -59,6 +59,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_bbx_output       = string_array_create(scratch.arena, 2, S("bbx_file"),         S("bbx"));
     StringArray ids_bbx_file_format  = string_array_create(scratch.arena, 2, S("bbx_file_format"),  S("bff"));
     StringArray ids_facial_features  = string_array_create(scratch.arena, 2, S("facial_features"),  S("ff"));
+    StringArray ids_thumbnail        = string_array_create(scratch.arena, 2, S("thumbnail"),        S("tn"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
     String str_detect_types     = cmdline_get_value_first_match(&cmdline, ids_detect_types);
@@ -98,6 +99,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     b32 f_no_labels  = cmdline_has_any_flags(&cmdline, ids_no_labels);
     b32 f_verbose    = cmdline_has_any_flags(&cmdline, ids_verbose);
     b32 f_stopwatch  = cmdline_has_any_flags(&cmdline, ids_stopwatch);
+    b32 f_thumbnail  = cmdline_has_any_flags(&cmdline, ids_thumbnail);
     b32 f_quiet      = cmdline_has_any_flags(&cmdline, ids_quiet);
 
     if(f_help)       settings.help      = true;
@@ -107,6 +109,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(f_no_labels)  settings.no_labels = true;
     if(f_verbose)    settings.verbose   = true;
     if(f_stopwatch)  settings.stopwatch = true;
+    if(f_thumbnail)  settings.thumbnail = true;
     if(f_quiet)      settings.quiet     = true;
     
     // create output directory if needed
@@ -370,6 +373,7 @@ void settings_print(Settings *settings)
     logi("%-22s %s",            "No Encoding",          STR_BOOL(settings->no_encode));
     logi("%-22s %s",            "Debug",                STR_BOOL(settings->debug));
     logi("%-22s %s",            "Verbose",              STR_BOOL(settings->verbose));
+    logi("%-22s %s",            "Thumbnail",            STR_BOOL(settings->thumbnail));
     logi("%-22s " STR_FMT,      "Output Folder",        STR_ARG(settings->output_folder));
     logi("%-22s " STR_FMT,      "Texture Path",         STR_ARG(settings->texture_path));
     logi("%-22s " STR_FMT,      "Bounding Box Output",  STR_ARG(settings->bbx_output));
@@ -469,6 +473,7 @@ void settings_print_help(void)
     os_printf("    --debug [-db]             Enable debug info markout on output. Draws boxes on output with labels\n");
     os_printf("    --no_labels [-nl]         Use with --debug flag to exclude the labels on the debug markup\n");
     os_printf("    --verbose [-vb]           Turn on verbose console prints\n");
+    os_printf("    --thumbnail [-tn]         Produce a _thumbnail.png for each asset\n");
     os_printf("    --stopwatch [-sw]         Turn on stopwatch prints for timing information\n");
     os_printf("    --quiet [-q]              Disable all console prints\n");
     os_printf("    --help [-h]               Display this help output\n");

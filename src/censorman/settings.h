@@ -51,6 +51,7 @@ typedef struct
     b8 no_labels;
     b8 verbose;
     b8 stopwatch;
+    b8 thumbnail;
     b8 quiet;
     b8 distort_audio;
     b8 bbx_print_format;

@@ -242,7 +242,9 @@ FLAGS
     --bbx_file_format [-bff]  Print information about the file format for BBX files
     --no_encode [-ne]         Disable the writing of the processed output file(s)
     --debug [-db]             Enable debug info markout on output. Draws boxes on output with labels
+    --no_labels [-nl]         Use with --debug flag to exclude the labels on the debug markup
     --verbose [-vb]           Turn on verbose console prints
+    --thumbnail [-tn]         Produce a _thumbnail.png for each asset
     --stopwatch [-sw]         Turn on stopwatch prints for timing information
     --quiet [-q]              Disable all console prints
     --help [-h]               Display this help output

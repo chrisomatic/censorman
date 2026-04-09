@@ -177,7 +177,7 @@ Image image_rotate(Image source, u32 degrees, ClockDir direction)
 // preserves aspect ratio
 // bilinear scaling for now
 
-Image image_scale(Image source, u32 target_width, u32 target_height)
+Image image_scale(Image source, u32 target_width, u32 target_height, b32 remove_margins)
 {
     stopwatch_begin(source.stopwatch, S(__func__));
 
@@ -189,14 +189,16 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
     {
         output.props.scale = (f32)target_width / source.props.w;
         output.props.w = target_width;
-        output.props.h = source.props.h * output.props.scale;
+        output.props.h = ceil(source.props.h * output.props.scale);
+        if(remove_margins) target_height = output.props.h;
         output.props.pad_y = ABS(target_height - output.props.h) / 2;
     }
     else
     {
         output.props.scale = (f32)target_height / source.props.h;
         output.props.h = target_height;
-        output.props.w = source.props.w * output.props.scale;
+        output.props.w = ceil(source.props.w * output.props.scale);
+        if(remove_margins) target_width = output.props.w;
         output.props.pad_x = ABS(target_width - output.props.w) / 2;
     }
 
@@ -253,6 +255,139 @@ Image image_scale(Image source, u32 target_width, u32 target_height)
 
     output.props.w = landscape ? output.props.w : target_width;
     output.props.h = landscape ? target_height  : output.props.h;
+
+    stopwatch_end(source.stopwatch, S(__func__));
+
+    return output;
+}
+
+static f32 lanczos_kernel(f32 x, u32 a)
+{
+    if(x == 0.0f)                 return 1.0f;
+    if(x < -(f32)a || x > (f32)a) return 0.0f;
+    f32 pi_x = PI * x;
+    return ((f32)a * sinf(pi_x) * sinf(pi_x / (f32)a)) / (pi_x * pi_x);
+}
+
+static LanczosFilter *lanczos_precompute(Arena *arena, u32 src_len, u32 dst_len, u32 a)
+{
+    f32 ratio         = (f32)src_len / (f32)dst_len;
+    f32 filter_scale  = MAX(1.0f, ratio);
+    f32 filter_radius = (f32)a * filter_scale;
+    s32 tap_count     = (s32)ceilf(filter_radius * 2.0f);
+
+    LanczosFilter *filters = PUSH_ARRAY(arena, LanczosFilter, dst_len);
+    for(u32 i = 0; i < dst_len; ++i)
+    {
+        f32 src_center     = (i + 0.5f) * ratio - 0.5f;
+        s32 start          = (s32)floorf(src_center - filter_radius);
+        filters[i].start   = start;
+        filters[i].count   = tap_count;
+        filters[i].weights = PUSH_ARRAY(arena, f32, tap_count);
+
+        f32 weight_sum = 0.0f;
+        for(s32 t = 0; t < tap_count; ++t)
+        {
+            f32 dist               = (src_center - (start + t)) / filter_scale;
+            f32 w                  = lanczos_kernel(dist, a);
+            filters[i].weights[t]  = w;
+            weight_sum            += w;
+        }
+        if(weight_sum == 0.0f) weight_sum = 1.0f;
+        f32 inv_sum = 1.0f / weight_sum;
+        for(s32 t = 0; t < tap_count; ++t)
+            filters[i].weights[t] *= inv_sum;
+    }
+    return filters;
+}
+
+Image image_scale_lanczos(Image source, u32 target_width, u32 target_height, u32 a, b32 remove_margins)
+{
+    stopwatch_begin(source.stopwatch, S(__func__));
+
+    Image output  = source;
+    b32 landscape = (source.props.w >= source.props.h);
+    if(landscape)
+    {
+        output.props.scale = (f32)target_width / source.props.w;
+        output.props.w     = target_width;
+        output.props.h     = (u32)ceilf(source.props.h * output.props.scale);
+        if(remove_margins) target_height = output.props.h;
+        output.props.pad_y = ABS(target_height - output.props.h) / 2;
+    }
+    else
+    {
+        output.props.scale = (f32)target_height / source.props.h;
+        output.props.h     = target_height;
+        output.props.w     = (u32)ceilf(source.props.w * output.props.scale);
+        if(remove_margins) target_width = output.props.w;
+        output.props.pad_x = ABS(target_width - output.props.w) / 2;
+    }
+
+    u32 src_w = source.props.w;
+    u32 src_h = source.props.h;
+    u32 out_w = output.props.w;
+    u32 out_h = output.props.h;
+
+    LanczosFilter *filters_x = lanczos_precompute(source.arena, src_w, out_w, a);
+    LanczosFilter *filters_y = lanczos_precompute(source.arena, src_h, out_h, a);
+
+    // Horizontal pass: source -> intermediate (out_w x src_h)
+    f32 *intermediate = PUSH_ARRAY(source.arena, f32, out_w * src_h * 3);
+    for(u32 j = 0; j < src_h; ++j)
+    {
+        for(u32 i = 0; i < out_w; ++i)
+        {
+            LanczosFilter fx = filters_x[i];
+            f32 acc_r = 0.0f, acc_g = 0.0f, acc_b = 0.0f;
+            for(s32 t = 0; t < fx.count; ++t)
+            {
+                s32 sx     = fx.start + t;
+                s32 csx    = sx < 0 ? 0 : (sx >= (s32)src_w ? (s32)src_w - 1 : sx);
+                RGBColor p = source.data[j * src_w + csx];
+                f32 w      = fx.weights[t];
+                acc_r     += p.r * w;
+                acc_g     += p.g * w;
+                acc_b     += p.b * w;
+            }
+            u32 idx             = (j * out_w + i) * 3;
+            intermediate[idx+0] = acc_r;
+            intermediate[idx+1] = acc_g;
+            intermediate[idx+2] = acc_b;
+        }
+    }
+
+    // Vertical pass: intermediate -> output (out_w x out_h)
+    output.data = PUSH_ARRAY(source.arena, RGBColor, target_width * target_height);
+    for(u32 j = 0; j < out_h; ++j)
+    {
+        LanczosFilter fy = filters_y[j];
+        for(u32 i = 0; i < out_w; ++i)
+        {
+            f32 acc_r = 0.0f, acc_g = 0.0f, acc_b = 0.0f;
+            for(s32 t = 0; t < fy.count; ++t)
+            {
+                s32 sy  = fy.start + t;
+                s32 csy = sy < 0 ? 0 : (sy >= (s32)src_h ? (s32)src_h - 1 : sy);
+                u32 idx = (csy * out_w + i) * 3;
+                f32 w   = fy.weights[t];
+                acc_r  += intermediate[idx+0] * w;
+                acc_g  += intermediate[idx+1] * w;
+                acc_b  += intermediate[idx+2] * w;
+            }
+            u32 dst_i  = i + output.props.pad_x;
+            u32 dst_j  = j + output.props.pad_y;
+            RGBColor p = {
+                (u8)(acc_r < 0.0f ? 0 : acc_r > 255.0f ? 255 : (u8)acc_r),
+                (u8)(acc_g < 0.0f ? 0 : acc_g > 255.0f ? 255 : (u8)acc_g),
+                (u8)(acc_b < 0.0f ? 0 : acc_b > 255.0f ? 255 : (u8)acc_b),
+            };
+            MemoryCopy(&output.data[dst_j * target_width + dst_i], &p, sizeof(RGBColor));
+        }
+    }
+
+    output.props.w = landscape ? out_w : target_width;
+    output.props.h = landscape ? target_height : out_h;
 
     stopwatch_end(source.stopwatch, S(__func__));
 

@@ -411,6 +411,28 @@ String os_path_remove_trailing_slashes(String path)
     return path;
 }
 
+String os_path_remove_extension(String path)
+{
+    s64 i = 0;
+    b32 found = false;
+
+    for(i = path.len - 1; i >= 0; --i)
+    {
+        u8 c = path.data[i];
+        if(c == '.')
+        {
+            found = true;
+            break;
+        }
+    }
+
+    String ret = {0};
+    ret.len = i;
+    ret.data = &path.data[0];
+
+    return ret;
+}
+
 String os_path_get_file_part(String path)
 {
     s64 i = 0;

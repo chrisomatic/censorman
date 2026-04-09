@@ -33,6 +33,13 @@ typedef struct
 
 typedef struct
 {
+    s32  start;
+    s32  count;
+    f32 *weights;
+} LanczosFilter;
+
+typedef struct
+{
     RGBColor *data;
 
     ImageProps props;
@@ -53,7 +60,8 @@ Image image_load(Arena *arena, String path, Stopwatch *stopwatch);
 b32 image_save(Image *image, String path);
 
 Image image_rotate(Image source, u32 degrees, ClockDir direction);
-Image image_scale(Image source, u32 target_w, u32 target_h);
+Image image_scale(Image source, u32 target_width, u32 target_height, b32 remove_margins);
+Image image_scale_lanczos(Image source, u32 target_width, u32 target_height, u32 a, b32 remove_margins);
 
 Rotation image_get_rotation_from_file(char *file_path);
 

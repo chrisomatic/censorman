@@ -159,7 +159,7 @@ s64 entry_point(void *params)
                     Model model = detect_get_model_by_type(cfg->type);
 
                     Image img = img_src;
-                    img = image_scale(img, model.net_w, model.net_h);
+                    img = image_scale_lanczos(img, model.net_w, model.net_h, 2, false);
                     img = image_rotate(img, img.props.rotation, CCW);
 
                     detect(cfg, &img, &box_list);
@@ -193,8 +193,17 @@ s64 entry_point(void *params)
 
                     // [output]
                     image_save(&img_src, asset->output_path);
-                }
 
+                    if(settings.thumbnail)
+                    {
+                        Image thumbnail = image_scale_lanczos(img_src, 150, 150, 3, true);
+
+                        String path_without_extension = os_path_remove_extension(asset->output_path);
+                        String thumbnail_output_path = string_concat(arena_frame, 3, path_without_extension, S("_thumbnail"), S(".png"));
+
+                        image_save(&thumbnail, thumbnail_output_path);
+                    }
+                }
             }
         }
         else if(asset->type == TYPE_VIDEO)
@@ -206,10 +215,12 @@ s64 entry_point(void *params)
 
                 VideoSettings vs = 
                 {
+                    .output_path              = asset->output_path,
                     .max_buffer_size          = settings.buffer_size,
                     .distort_audio_carrier_hz = settings.distort_audio_carrier_hz,
                     .distort_audio            = settings.distort_audio,
-                    .no_encode                = settings.no_encode
+                    .no_encode                = settings.no_encode,
+                    .thumbnail                = settings.thumbnail
                 };
 
                 vid = video_begin(arena_chunk, asset->path, asset->output_path, &vs);
@@ -286,7 +297,7 @@ s64 entry_point(void *params)
                         Model model = detect_get_model_by_type(cfg->type);
 
                         Image img = img_src;
-                        img = image_scale(img, model.net_w, model.net_h);
+                        img = image_scale_lanczos(img, model.net_w, model.net_h, 2, false);
                         img = image_rotate(img, vid.rotation, CCW);
 
                         detect(cfg, &img, &box_list);
@@ -395,8 +406,14 @@ s64 entry_point(void *params)
         // bbx_file_parse_and_print(settings.bbx_output); // @TEMP
         if(settings.stopwatch) stopwatch_print(&sw, LOG_LEVEL_INFO);
 
-        if(settings.no_encode) logi("Complete!");
-        else logi("Complete! Processed files in folder: '" STR_FMT "'", STR_ARG(settings.output_folder));
+        if(settings.no_encode)
+        {
+            logi("Complete!");
+        }
+        else
+        {
+            logi("Complete! Processed files in folder: '" STR_FMT "'", STR_ARG(settings.output_folder));
+        }
     }
 
     return 0;

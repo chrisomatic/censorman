@@ -55,10 +55,12 @@ typedef struct
 
 typedef struct
 {
+    String output_path;
     u64 max_buffer_size;
     f32 distort_audio_carrier_hz;
     b8  distort_audio;
     b8  no_encode;
+    b8  thumbnail;
 } VideoSettings;
 
 typedef struct
@@ -77,6 +79,7 @@ typedef struct
     u64 frame_count_total; // Total number of frames in the video
     u32 frames_processed;  // Used during encoding
     b32 load_complete;     // Set when frame decoding is done
+    u32 thumbnail_frame;   // frame to take thumbnail of
 
     VideoContext context;  // Used by FFMPEG
 

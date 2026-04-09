@@ -168,6 +168,12 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     vid.frame_count_max   = max_frames;
     vid.frame_count_total = (stream->nb_frames > 0 ? stream->nb_frames : -1);
 
+    vid.thumbnail_frame = floor(2.0*vid.fps);
+    if(vid.thumbnail_frame > vid.frame_count_total)
+    {
+        vid.thumbnail_frame = 0;
+    }
+
     if(!vid.data || !vid.pts_buffer)
     {
         loge("Failed to allocate RGB buffer of size %lu", (u64)frame_rgb_size * max_frames);
@@ -526,6 +532,24 @@ b32 video_save_frames(Video *vid)
 
     for(u32 i = 0; i < vid->frame_count; ++i)
     {
+        if(vid->settings.thumbnail)
+        {
+            if(vid->frames_processed + i == vid->thumbnail_frame)
+            {
+                // capture thumbnail!
+                Image thumbnail = {
+                    .props.w = vid->w,
+                    .props.h = vid->h,
+                    .data = &vid->data[i*vid->w*vid->h]
+                };
+
+                String path_without_extension = os_path_remove_extension(vid->settings.output_path);
+                String thumbnail_output_path  = string_concat(vid->arena, 3, path_without_extension, S("_thumbnail"), S(".png"));
+
+                image_save(&thumbnail, thumbnail_output_path);
+            }
+        }
+
         av_frame_make_writable(ctx->enc_frame);
 
         ctx->enc_frame_src->data[0]     = ((u8 *)vid->data) + ((u64)i * frame_rgb_size);
