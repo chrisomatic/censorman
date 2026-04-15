@@ -12,6 +12,7 @@
 #include "censorman/filter.h"
 #include "censorman/settings.h"
 #include "censorman/bbx_file.h"
+#include "censorman/pdf.h"
 
 #include "base/base.c"
 #include "os/os.c"
@@ -21,6 +22,7 @@
 #include "censorman/filter.c"
 #include "censorman/settings.c"
 #include "censorman/bbx_file.c"
+#include "censorman/pdf.c"
 
 #define CENSORMAN_VERSION 2
 
@@ -96,6 +98,9 @@ int main(int argc, char **args)
 
     // initialize models
     detect_init(settings.detect_configs, settings.detect_config_count);
+
+    // @TEMP
+    // pdf_open(arena_perm, S("assets/pdf/highlights.pdf"));
 
     // setup threads
     threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);

@@ -37,7 +37,7 @@ case "$PLATFORM" in
     LIB_DIR="third_party/lib/macos"
     LIBS="-L$LIB_DIR -lncnn -lncnn_shim \
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
-          -lexif -lx264 -lvpx \
+          -lexif -lx264 -lvpx -lmupdf -lmupdf-third \
           -lm -lz -lc++ -lpthread -liconv"
     FRAMEWORKS="-framework CoreFoundation \
                 -framework CoreMedia \
@@ -55,7 +55,7 @@ case "$PLATFORM" in
     LIB_DIR="third_party/lib/linux"
     LIBS="-L$LIB_DIR -lncnn -lncnn_shim \
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
-          -lexif -lm -lz \
+          -lexif -lm -lz -lmupdf -lmupdf-third \
           -lva -lva-drm -lvdpau -lX11 -lva-x11 \
           -lx264 -lvpx -lpthread -lstdc++"
     FRAMEWORKS=""
@@ -68,7 +68,7 @@ case "$PLATFORM" in
     LIB_DIR="third_party/lib/win"
     LIBS="-L$LIB_DIR -lncnn -lncnn_shim \
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
-          -lexif -lm -lx264 -lvpx \
+          -lexif -lm -lx264 -lvpx -lmupdf -lmupdf-third \
           -lpthread -lstdc++ -lws2_32 -lbcrypt \
           -static -liconv -lz"
     FRAMEWORKS=""

@@ -1,13 +1,13 @@
 #!/bin/bash
 # build_deps.sh - Build third-party dependencies for the current platform
 # Usage: ./build_deps.sh <target>
-#   target: all | ffmpeg | ncnn | exif
+#   target: all | ffmpeg | ncnn | exif | mupdf
 
 set -e
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 if [ -z "$1" ]; then
-  echo "Usage: $0 <all|ffmpeg|ncnn|exif>"
+  echo "Usage: $0 <all|ffmpeg|ncnn|exif|mupdf>"
   exit 1
 fi
 
@@ -393,6 +393,68 @@ build_exif() {
   echo "exif libs installed to $LIB_DEST"
 }
 
+build_mupdf() {
+  echo "════════════════════════════════════"
+  echo " Building libmupdf"
+  echo "════════════════════════════════════"
+
+  BUILD_DIR="$PWD/build_mupdf"
+
+  rm -rf "$BUILD_DIR"
+  mkdir -p "$BUILD_DIR"
+
+  cd "$BUILD_DIR"
+  git clone --recursive --branch 1.27.2 git://git.ghostscript.com/mupdf.git
+  cd mupdf
+
+  make build=release \
+    libs \
+    XCFLAGS="\
+      -DFZ_ENABLE_XPS=0 \
+      -DFZ_ENABLE_SVG=0 \
+      -DFZ_ENABLE_CBZ=0 \
+      -DFZ_ENABLE_IMG=0 \
+      -DFZ_ENABLE_HTML=0 \
+      -DFZ_ENABLE_HTML_ENGINE=0 \
+      -DFZ_ENABLE_EPUB=0 \
+      -DFZ_ENABLE_FB2=0 \
+      -DFZ_ENABLE_MOBI=0 \
+      -DFZ_ENABLE_TXT=0 \
+      -DFZ_ENABLE_OFFICE=0 \
+      -DFZ_ENABLE_OCR_OUTPUT=0 \
+      -DFZ_ENABLE_DOCX_OUTPUT=0 \
+      -DFZ_ENABLE_ODT_OUTPUT=0 \
+      -DFZ_ENABLE_JS=0 \
+      -DFZ_ENABLE_ICC=0 \
+      -DFZ_ENABLE_JPX=0 \
+      -DFZ_ENABLE_BROTLI=0 \
+      -DFZ_ENABLE_BARCODE=0 \
+      -DFZ_ENABLE_SPOT_RENDERING=0 \
+      -DFZ_PLOTTERS_CMYK=0 \
+      -DFZ_PLOTTERS_N=0 \
+      -DTOFU \
+      -DTOFU_CJK \
+      -DTOFU_EMOJI \
+      -DTOFU_HISTORIC \
+      -DTOFU_SYMBOL \
+      -DTOFU_SIL \
+      -DTOFU_BASE14 \
+      -Os \
+      -ffunction-sections \
+      -fdata-sections" \
+    LDFLAGS="-Wl,--gc-sections" \
+    USE_SYSTEM_ZLIB=yes \
+    USE_SYSTEM_HARFBUZZ=yes
+
+  mv "build/release/libmupdf.a" "$LIB_DEST/"
+  mv "build/release/libmupdf-third.a" "$LIB_DEST/"
+  cd ../..
+
+  rm -rf "$BUILD_DIR"
+  echo "mupdf libs installed to $LIB_DEST"
+}
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # DISPATCH
 # ═════════════════════════════════════════════════════════════════════════════
@@ -402,10 +464,12 @@ case "$TARGET" in
     build_ffmpeg
     build_ncnn
     build_exif
+    build_mupdf
     ;;
   ffmpeg) build_ffmpeg ;;
   ncnn)   build_ncnn   ;;
   exif)   build_exif   ;;
+  mupdf)  build_mupdf  ;;
   *)
     echo "ERROR: Unknown target '$TARGET'"
     echo "Usage: $0 <all|ffmpeg|ncnn|exif>"
