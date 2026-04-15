@@ -124,7 +124,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     // handle input assets
     
     StringArray exts_image = string_array_create(scratch.arena, 10, S("png"), S("jpg"), S("jpeg"), S("bmp"), S("gif"), S("psd"), S("tga"), S("hdr"), S("pic"), S("pnm"));
-    StringArray exts_video = string_array_create(scratch.arena, 2, S("mp4"), S("mov"));
+    StringArray exts_video = string_array_create(scratch.arena, 2, S("mp4"), S("mov"), S("avi"), S("wmv"), S("mpegps"), S("flv"));
     
     for(int i = 0; i < strs_assets.count; ++i)
     {
