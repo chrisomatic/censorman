@@ -124,7 +124,8 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     // handle input assets
     
     StringArray exts_image = string_array_create(scratch.arena, 10, S("png"), S("jpg"), S("jpeg"), S("bmp"), S("gif"), S("psd"), S("tga"), S("hdr"), S("pic"), S("pnm"));
-    StringArray exts_video = string_array_create(scratch.arena, 2, S("mp4"), S("mov"), S("avi"), S("wmv"), S("mpegps"), S("flv"));
+    StringArray exts_video = string_array_create(scratch.arena, 6, S("mp4"), S("mov"), S("avi"), S("wmv"), S("mpegps"), S("flv"));
+    StringArray exts_pdf   = string_array_create(scratch.arena, 1, S("pdf"));
     
     for(int i = 0; i < strs_assets.count; ++i)
     {
@@ -162,6 +163,13 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             else if(string_in_array(ext, exts_video))
             {
                 asset->type = TYPE_VIDEO;
+                asset->path = file_str;
+                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part(file_str));
+                settings.asset_count++;
+            }
+            else if(string_in_array(ext, exts_pdf))
+            {
+                asset->type = TYPE_PDF;
                 asset->path = file_str;
                 asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part(file_str));
                 settings.asset_count++;
@@ -390,6 +398,9 @@ AssetType asset_type_from_string(String str)
     if(string_equal(str, S("video")))
         return TYPE_VIDEO;
 
+    if(string_equal(str, S("pdf")))
+        return TYPE_PDF;
+
     return TYPE_UNSUPPORTED;
 }
 
@@ -399,6 +410,7 @@ String asset_type_to_string(AssetType type)
     {
         case TYPE_IMAGE: return S("image");
         case TYPE_VIDEO: return S("video");
+        case TYPE_PDF:   return S("pdf");
         case TYPE_UNSUPPORTED:
         default: break;
     }

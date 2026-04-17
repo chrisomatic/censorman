@@ -33,13 +33,6 @@ typedef struct
 
 typedef struct
 {
-    s32  start;
-    s32  count;
-    f32 *weights;
-} LanczosFilter;
-
-typedef struct
-{
     RGBColor *data;
 
     ImageProps props;
@@ -52,6 +45,13 @@ typedef struct
     Stopwatch *stopwatch;
 
 } Image;
+
+typedef struct
+{
+    s32  start;
+    s32  count;
+    f32 *weights;
+} LanczosFilter;
 
 Image image_nil(void);
 b32 image_is_empty(Image *image);

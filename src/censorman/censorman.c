@@ -99,9 +99,6 @@ int main(int argc, char **args)
     // initialize models
     detect_init(settings.detect_configs, settings.detect_config_count);
 
-    // @TEMP
-    // pdf_open(arena_perm, S("assets/pdf/highlights.pdf"));
-
     // setup threads
     threads = PUSH_ARRAY(arena_perm, Thread, settings.thread_count);
     barrier = barrier_create(settings.thread_count);
@@ -403,12 +400,82 @@ s64 entry_point(void *params)
                 video_end(&vid);
             }
         }
+        else if(asset->type == TYPE_PDF)
+        {
+            NARROW
+            {
+                arena_reset(arena_frame);
+                PDF pdf = pdf_open(arena_frame, asset->path);
+
+#if 0
+                List image_list = pdf_read_images(&pdf);
+
+                logi("Image count: %d", image_list.count);
+
+                for(s64 i = 0; i < image_list.count; ++i)
+                {
+                    PDFImage* img_pdf = (PDFImage *)list_get(&image_list, i);
+                    if(!img_pdf) continue;
+
+                    Image img_src = img_pdf->image;
+                    bbx_file_write_asset_header(bbx_file, i, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
+                    List box_list = list_create(arena_frame, sizeof(Box));
+
+                    // [detections]
+                    for(u32 j = 0; j < settings.detect_config_count; ++j)
+                    {
+                        DetectConfig *cfg = &settings.detect_configs[j];
+                        Model model = detect_get_model_by_type(cfg->type);
+
+                        Image img = img_src;
+                        img = image_scale_lanczos(img, model.net_w, model.net_h, 2, false);
+                        img = image_rotate(img, img.props.rotation, CCW);
+
+                        detect(cfg, &img, &box_list);
+                    }
+
+                    BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
+
+                    box_frame = box_frame_divide_into_features(arena_frame, box_frame, &img_src.props, settings.facial_features);
+                    box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
+
+                    bbx_file_write_box_frame(bbx_file, &box_frame);
+
+                    if(!settings.no_encode)
+                    {
+                        // [apply filters]
+                        for(s64 j = 0; j < settings.filter_count; ++j)
+                        {
+                            Filter filter = settings.filters[j];
+
+                            for(s64 k = 0; k < box_frame.box_count; ++k)
+                            {
+                                Box *box = &box_frame.boxes[k];
+                                filter_apply(filter, &img_src, box);
+                            }
+                        }
+
+                        if(settings.debug)
+                        {
+                            filter_draw_debug_info(&img_src, &box_frame, settings.box_padding, settings.no_labels);
+                        }
+                    }
+
+                    img_pdf->image = img_src;
+                }
+                
+                pdf_write_images(&pdf, &image_list);
+#endif
+
+                pdf_save(&pdf, asset->output_path);
+                pdf_close(&pdf);
+            }
+        }
     }
 
     NARROW 
     {
         bbx_file_close(bbx_file);
-        // bbx_file_parse_and_print(settings.bbx_output); // @TEMP
         if(settings.stopwatch) stopwatch_print(&sw, LOG_LEVEL_INFO);
 
         if(settings.no_encode)
