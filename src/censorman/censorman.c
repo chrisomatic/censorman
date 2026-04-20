@@ -404,68 +404,78 @@ s64 entry_point(void *params)
         {
             NARROW
             {
-                arena_reset(arena_frame);
                 PDF pdf = pdf_open(arena_frame, asset->path);
 
-#if 0
-                List image_list = pdf_read_images(&pdf);
-
-                logi("Image count: %d", image_list.count);
-
-                for(s64 i = 0; i < image_list.count; ++i)
+                for(s32 i = 0; i < pdf.page_count; ++i)
                 {
-                    PDFImage* img_pdf = (PDFImage *)list_get(&image_list, i);
-                    if(!img_pdf) continue;
+                    arena_reset(pdf.arena);
 
-                    Image img_src = img_pdf->image;
-                    bbx_file_write_asset_header(bbx_file, i, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
-                    List box_list = list_create(arena_frame, sizeof(Box));
+                    logi("Reading Page %d", i);
+                    PDFPage page = pdf_open_page(&pdf, i);
 
-                    // [detections]
-                    for(u32 j = 0; j < settings.detect_config_count; ++j)
+                    // get image list from page
+                    List image_list = pdf_read_images_from_page(&pdf, page);
+
+                    for(s64 j = 0; j < image_list.count; ++j)
                     {
-                        DetectConfig *cfg = &settings.detect_configs[j];
-                        Model model = detect_get_model_by_type(cfg->type);
+                        PDFImage* img_pdf = (PDFImage *)list_get(&image_list, j);
+                        if(!img_pdf) continue;
+                        
+                        Image img_src = img_pdf->image;
+                        bbx_file_write_asset_header(bbx_file, j, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
+                        List box_list = list_create(arena_frame, sizeof(Box));
 
-                        Image img = img_src;
-                        img = image_scale_lanczos(img, model.net_w, model.net_h, 2, false);
-                        img = image_rotate(img, img.props.rotation, CCW);
-
-                        detect(cfg, &img, &box_list);
-                    }
-
-                    BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
-
-                    box_frame = box_frame_divide_into_features(arena_frame, box_frame, &img_src.props, settings.facial_features);
-                    box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
-
-                    bbx_file_write_box_frame(bbx_file, &box_frame);
-
-                    if(!settings.no_encode)
-                    {
-                        // [apply filters]
-                        for(s64 j = 0; j < settings.filter_count; ++j)
+                        // [detections]
+                        for(u32 k = 0; k < settings.detect_config_count; ++k)
                         {
-                            Filter filter = settings.filters[j];
+                            DetectConfig *cfg = &settings.detect_configs[k];
+                            Model model = detect_get_model_by_type(cfg->type);
 
-                            for(s64 k = 0; k < box_frame.box_count; ++k)
+                            Image img = img_src;
+                            img = image_scale_lanczos(img, model.net_w, model.net_h, 2, false);
+                            img = image_rotate(img, img.props.rotation, CCW);
+
+                            detect(cfg, &img, &box_list);
+                        }
+
+                        BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
+
+                        box_frame = box_frame_divide_into_features(arena_frame, box_frame, &img_src.props, settings.facial_features);
+                        box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
+
+                        bbx_file_write_box_frame(bbx_file, &box_frame);
+
+                        if(!settings.no_encode)
+                        {
+                            // [apply filters]
+                            for(s64 k = 0; k < settings.filter_count; ++k)
                             {
-                                Box *box = &box_frame.boxes[k];
-                                filter_apply(filter, &img_src, box);
+                                Filter filter = settings.filters[k];
+
+                                for(s64 l = 0; l < box_frame.box_count; ++l)
+                                {
+                                    Box *box = &box_frame.boxes[l];
+                                    filter_apply(filter, &img_src, box);
+
+                                    img_pdf->total_changes++;
+                                }
+                            }
+
+                            if(settings.debug)
+                            {
+                                filter_draw_debug_info(&img_src, &box_frame, settings.box_padding, settings.no_labels);
                             }
                         }
 
-                        if(settings.debug)
-                        {
-                            filter_draw_debug_info(&img_src, &box_frame, settings.box_padding, settings.no_labels);
-                        }
+
+                        img_pdf->image = img_src;
+
                     }
 
-                    img_pdf->image = img_src;
+                    pdf_write_images_to_page(&pdf,  image_list, page);
+
+                    pdf_close_page(&pdf, page);
                 }
-                
-                pdf_write_images(&pdf, &image_list);
-#endif
 
                 pdf_save(&pdf, asset->output_path);
                 pdf_close(&pdf);
