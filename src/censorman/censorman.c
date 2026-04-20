@@ -477,6 +477,20 @@ s64 entry_point(void *params)
                     pdf_close_page(&pdf, page);
                 }
 
+                if(settings.thumbnail)
+                {
+                    PDFPage page = pdf_open_page(&pdf, 0);
+
+                    // grab first page for thumbnail
+                    Image img = pdf_get_full_image_of_page(&pdf, page);
+                    Image thumbnail = image_scale_lanczos(img, 150, 150, 3, true);
+
+                    String path_without_extension = os_path_remove_extension(asset->output_path);
+                    String thumbnail_output_path = string_concat(pdf.arena, 3, path_without_extension, S("_thumbnail"), S(".png"));
+
+                    image_save(&thumbnail, thumbnail_output_path);
+                }
+
                 pdf_save(&pdf, asset->output_path);
                 pdf_close(&pdf);
             }

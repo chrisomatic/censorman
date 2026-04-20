@@ -31,6 +31,8 @@ void pdf_close_page(PDF *pdf, PDFPage page);
 
 List pdf_read_images_from_page(PDF *pdf, PDFPage page);
 void pdf_write_images_to_page(PDF *pdf,  List images, PDFPage page);
+Image pdf_get_full_image_of_page(PDF *pdf, PDFPage page);
+
 void pdf_save(PDF *pdf, String pdf_path);
 void pdf_close(PDF *pdf);
 

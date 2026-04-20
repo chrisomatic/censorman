@@ -121,6 +121,44 @@ PDFPage pdf_open_page(PDF *pdf, s32 page_index)
     return page;
 }
 
+Image pdf_get_full_image_of_page(PDF *pdf, PDFPage page)
+{
+    Image img = {0};
+    if(!pdf_is_valid) return img;
+    if(!page.ref) return img;
+
+    fz_matrix ctm  = fz_identity;
+    fz_pixmap *pix = fz_new_pixmap_from_page(pdf->ctx, page.ref, ctm, fz_device_rgb(pdf->ctx), 0);
+
+    s32 w = fz_pixmap_width(pdf->ctx, pix);
+    s32 h = fz_pixmap_height(pdf->ctx, pix);
+    u32 n = fz_pixmap_components(pdf->ctx, pix); // should be 3
+
+    RGBColor *data = PUSH_ARRAY(pdf->arena, RGBColor, w * h);
+    for(u32 y = 0; y < h; ++y)
+    {
+        u8 *src = pix->samples + y * pix->stride;
+        RGBColor *dst = data + y * w;
+        for(u32 x = 0; x < w; ++x)
+        {
+            dst[x].r = src[x * n + 0];
+            dst[x].g = src[x * n + 1];
+            dst[x].b = src[x * n + 2];
+        }
+    }
+
+    fz_drop_pixmap(pdf->ctx, pix);
+
+    img.data = data;
+    img.props.w = w;
+    img.props.h = h;
+    img.props.scale = 1.0f;
+    img.props_orig = img.props;
+    img.arena = pdf->arena;
+
+    return img;
+}
+
 void pdf_close_page(PDF *pdf, PDFPage page)
 {
     fz_drop_page(pdf->ctx, page.ref);
