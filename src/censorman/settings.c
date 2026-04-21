@@ -12,7 +12,7 @@ Settings settings_default(void)
     settings.thread_count         = os_system_info.logical_processor_count;
     settings.buffer_size          = MB(512);
     settings.box_padding          = 0.15f;
-    settings.blur_strength        = 0.60f;
+    settings.blur_strength        = 0.50f;
     settings.block_scale          = 0.12f;
     settings.smoothing_window     = 0.200f; // 200ms
 

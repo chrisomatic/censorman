@@ -24,8 +24,8 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 | Filter Type   | Parameter     | Value Range | Default Value | Example                |
 |:-------------:|:-------------:|:-----------:|:-------------:|:----------------------:|
-| Box Blur      | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur.png) |
-| Gaussian Blur | Blur Strength | 0.0 - 1.0   | 0.60          | ![](img/face_blur_gaussian.png) |
+| Box Blur      | Blur Strength | 0.0 - 1.0   | 0.50          | ![](img/face_blur.png) |
+| Gaussian Blur | Blur Strength | 0.0 - 1.0   | 0.50          | ![](img/face_blur_gaussian.png) |
 | Pixelate      | Block Scale   | 0.0 - 1.0   | 0.12          | ![](img/face_pixelate.png) |
 | Scramble      | -             | -           | -             | ![](img/face_scramble.png) |
 | Blackout      | -             | -           | -             | ![](img/face_blackout.png) |
@@ -34,10 +34,7 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 ## Supported Formats
 
 - Image: JPG, PNG, BMP, PSD, TGA, HDR, PIC, GIF(unanimated), PNM
-- Video: MP4, MOV
-
-> [!NOTE]
-> Output videos are written in MP4/AAC format. Images retain their format
+- Video: MP4, MOV, AVI, WMV
 
 ## Details
 
@@ -237,6 +234,9 @@ OPTIONS
 
     --bbx_file [-bbx] <bbx_file_path>
         Bounding-box output file. If specified, the detect box data will be written to a file
+
+    --facial_features [-ff] <facial_features>
+        Break the facial box into sub-boxes. Comma-delimited list of ['eyes','nose','mouth','cheeks','forehead']
 
 FLAGS
     --bbx_file_format [-bff]  Print information about the file format for BBX files
