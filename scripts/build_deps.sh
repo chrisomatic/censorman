@@ -104,7 +104,7 @@ build_ffmpeg() {
   esac
 
   # ── x264 ───────────────────────────────────────────────────────────────────
-  echo "  → Cloning x264..."
+  echo "- Cloning x264..."
   cd "$BUILD_DIR"
   git clone https://code.videolan.org/videolan/x264.git x264
   cd x264
@@ -135,7 +135,7 @@ build_ffmpeg() {
   make install
 
   # ── libvpx ─────────────────────────────────────────────────────────────────
-  echo "  → Cloning libvpx..."
+  echo "- Cloning libvpx..."
   cd "$BUILD_DIR"
   git clone https://chromium.googlesource.com/webm/libvpx.git libvpx
   cd libvpx
@@ -169,8 +169,18 @@ build_ffmpeg() {
   make -j$NCPU
   make install
 
+  # ── Z-Lib ──────────────────────────────────────────────────────────────────
+  echo "- Cloning ZLib..."
+  cd "$BUILD_DIR"
+  git clone --depth 1 --branch v1.3.2 https://github.com/madler/zlib.git zlib
+  cd zlib
+  ./configure --static --prefix="$PREFIX"
+
+  make -j$NCPU
+  make install
+
   # ── FFmpeg ─────────────────────────────────────────────────────────────────
-  echo "  → Cloning FFmpeg..."
+  echo "- Cloning FFmpeg..."
   cd "$BUILD_DIR/ffmpeg_source"
 
   export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
@@ -198,6 +208,11 @@ build_ffmpeg() {
     --disable-programs \
     --disable-network \
     --disable-debug \
+    --disable-avdevice \
+    --disable-vaapi \
+    --disable-vdpau \
+    --disable-libxcb \
+    --disable-xlib \
     --enable-small \
     --enable-avformat \
     --enable-avcodec \
@@ -303,7 +318,7 @@ build_ncnn() {
   cmake --build . --config Release --target install
 
   # ── Build ncnn_shim ────────────────────────────────────────────────────────
-  echo "  → Building ncnn_shim..."
+  echo "- Building ncnn_shim..."
   cd "$OLDPWD"
 
   case "$PLATFORM" in

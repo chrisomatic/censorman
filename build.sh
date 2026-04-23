@@ -50,8 +50,8 @@ case "$PLATFORM" in
     ;;
   linux)
     CC="gcc"
-    OPTS_PROD="-march=x86-64 -O3 -ffast-math"
-    OPTS_DEBUG="-march=x86-64 -O1 -Wall -pedantic"
+    OPTS_PROD="-march=x86-64 -O3 -ffast-math -s -static-libgcc -static-libstdc++"
+    OPTS_DEBUG="-march=x86-64 -O1 -Wall -pedantic -static-libgcc -static-libstdc++"
     LIB_DIR="third_party/lib/linux"
     # Linux/gcc: use -Wl,-Bstatic for your libs, -Bdynamic for system libs
     # -lva -lva-drm etc. are GPU/display libs; keep dynamic (no static versions typically)
@@ -62,15 +62,15 @@ case "$PLATFORM" in
           -lexif \
           -lx264 -lvpx \
           -lmupdf -lmupdf-third \
+          -lz -lstdc++ \
           -Wl,-Bdynamic \
-          -lva -lva-drm -lvdpau -lX11 -lva-x11 \
-          -lm -lz -lpthread -lstdc++"
+          -lm -lpthread"
     FRAMEWORKS=""
     APP_NAME=censorman
     ;;
   win32)
     CC="gcc"
-    OPTS_PROD="-march=x86-64-v2 -O3 -ffast-math -static-libgcc -static-libstdc++"
+    OPTS_PROD="-march=x86-64-v2 -O3 -ffast-math -s -static-libgcc -static-libstdc++"
     OPTS_DEBUG="-march=x86-64-v2 -O1 -Wall -pedantic -static-libgcc -static-libstdc++" 
     LIB_DIR="third_party/lib/win"
     LIBS="-L$LIB_DIR \
