@@ -12,11 +12,11 @@ Automatically detect **faces**, **people**, **license plates**, or **nudity** in
 
 ## Latest Binaries
 
-Censorman V2
+Censorman V2.1
 
 | Windows | MacOS | Linux |
 |---------|--------|-------|
-| [censorman.zip (x86\_64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-win-x86_64.zip) | [censorman.tar.gz (amd64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-darwin-amd64.tar.gz) | [censorman.tar.gz (x86\_64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2-linux-x86_64.tar.gz)
+| [censorman.zip (x86\_64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2_1-win-x86_64.zip) | [censorman.tar.gz (amd64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2_1-darwin-amd64.tar.gz) | [censorman.tar.gz (x86\_64)](https://github.com/chrisomatic/censorman/releases/latest/download/censorman-v2_1-linux-x86_64.tar.gz)
 
 ## Filters
 
@@ -35,6 +35,7 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 - Image: JPG, PNG, BMP, PSD, TGA, HDR, PIC, GIF(unanimated), PNM
 - Video: MP4, MOV, AVI, WMV
+- Misc: PDF
 
 ## Details
 
@@ -95,7 +96,7 @@ bin/censorman
 
 ## Dependencies
 
-All dependencies are built from source and statically linked to final binary
+All dependencies are built from source and statically linked to final binary (except GLIBC which requires >= 2.36)
 
 | Name              | Function               | Link                                              |
 |-------------------|------------------------|---------------------------------------------------|
@@ -105,7 +106,6 @@ All dependencies are built from source and statically linked to final binary
 | libexif           | EXIF Metadata          | https://github.com/libexif/libexif.git            |
 | ncnn              | CNN Inference Engine   | https://github.com/tencent/NCNN                   |
 | stb\_image        | Image Reading/Writing  | https://github.com/nothings/stb                   |
-
 
 # Example Commands
 
