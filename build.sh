@@ -99,7 +99,7 @@ else
   OPTS=$OPTS_DEBUG
 fi
 # ─── Build ───────────────────────────────────────────────────────────────────
-pushd . > /dev/null
+currdir=$PWD
 rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
 cd $SOURCE_DIR
@@ -110,4 +110,4 @@ echo ""
 echo "CMD: $CMD"
 echo ""
 exec $CMD
-popd > /dev/null
+cd $currdir

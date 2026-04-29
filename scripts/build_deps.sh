@@ -34,7 +34,7 @@ case "$PLATFORM" in
   *)     NCPU=$(nproc) ;;
 esac
 
-ROOT_DIR=$(git rev-parse --show-toplevel)
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ─── Output lib directory ────────────────────────────────────────────────────
 case "$PLATFORM" in
