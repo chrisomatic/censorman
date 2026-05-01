@@ -3,6 +3,7 @@
 #include "model_data/scrfd_person_bin.h"
 #include "model_data/license_plate_bin.h"
 #include "model_data/nudity_bin.h"
+#include "model_data/retina_face_bin.h"
 
 static Model model_face   = {0};
 static Model model_person = {0};
@@ -62,6 +63,12 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
                             scrfd_2_5g_gnkps_ncnn_param_bin,
                             scrfd_2_5g_gnkps_ncnn_bin
                     );
+                    /*
+                    model_face = model_create_mem(640, 640,
+                            mnet25_fp16_param_bin,
+                            mnet25_fp16_bin
+                    );
+                    */
                 }
             } break;
             case DETECT_TYPE_PERSON:
