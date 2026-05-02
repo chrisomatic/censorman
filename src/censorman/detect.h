@@ -70,7 +70,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames);
 Model detect_get_model_by_type(DetectType type);
 
 List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
-List detect_faces_retinaface(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
+List detect_faces_retina(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
 List detect_persons(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
 List detect_license_plates(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);
 List detect_nudity(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms);

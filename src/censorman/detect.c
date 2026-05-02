@@ -5,6 +5,8 @@
 #include "model_data/nudity_bin.h"
 #include "model_data/retina_face_bin.h"
 
+#define RETINA_FACE 0
+
 static Model model_face   = {0};
 static Model model_person = {0};
 static Model model_license_plate = {0};
@@ -59,16 +61,17 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_face.initialized)
                 {
-                    model_face = model_create_mem(640, 640,
-                            scrfd_2_5g_gnkps_ncnn_param_bin,
-                            scrfd_2_5g_gnkps_ncnn_bin
-                    );
-                    /*
+#if RETINA_FACE
                     model_face = model_create_mem(640, 640,
                             mnet25_fp16_param_bin,
                             mnet25_fp16_bin
                     );
-                    */
+#else
+                    model_face = model_create_mem(640, 640,
+                            scrfd_2_5g_gnkps_ncnn_param_bin,
+                            scrfd_2_5g_gnkps_ncnn_bin
+                    );
+#endif
                 }
             } break;
             case DETECT_TYPE_PERSON:
@@ -124,7 +127,11 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
     {
         case DETECT_TYPE_FACE:
         {
+#if RETINA_FACE
+            new_boxes = detect_faces_retina(scratch.arena, image, threshold_confidence, threshold_nms);
+#else
             new_boxes = detect_faces(scratch.arena, image, threshold_confidence, threshold_nms);
+#endif
         } break;
         case DETECT_TYPE_PERSON:
         {
@@ -694,10 +701,10 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
         Box *box_a = (Box *)(((u8 *)boxes_arr.items) + i*sizeof(Box));
         list_add(&boxes_curated, box_a);
 
-        u32 ax1 = box_a->x;
-        u32 ay1 = box_a->y;
-        u32 ax2 = box_a->x + box_a->w;
-        u32 ay2 = box_a->y + box_a->h;
+        s32 ax1 = box_a->x;
+        s32 ay1 = box_a->y;
+        s32 ax2 = box_a->x + box_a->w;
+        s32 ay2 = box_a->y + box_a->h;
 
         f64 a_area = box_a->w * box_a->h;
 
@@ -707,10 +714,10 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
 
             Box *box_b = (Box *)(((u8 *)boxes_arr.items) + j*sizeof(Box));
 
-            u32 bx1 = box_b->x;
-            u32 by1 = box_b->y;
-            u32 bx2 = box_b->x + box_b->w;
-            u32 by2 = box_b->y + box_b->h;
+            s32 bx1 = box_b->x;
+            s32 by1 = box_b->y;
+            s32 bx2 = box_b->x + box_b->w;
+            s32 by2 = box_b->y + box_b->h;
 
             f64 b_area = box_b->w * box_b->h;
 
@@ -730,6 +737,216 @@ List non_maximum_suppression(List boxes, f32 iou_threshold)
     }
 
     return boxes_curated;
+}
+
+// Anchor generation mirrors the reference retinaface C++ sample.
+// base_size=16, ratio=1.0 for all strides.
+// Scales per stride: stride32->[32,16], stride16->[8,4], stride8->[2,1]
+// anchor_w = anchor_h = round(base_size / sqrt(ratio)) * scale
+//                     = base_size * scale  (ratio==1 => sqrt==1)
+static void retinaface_anchors(s32 base_size, f32 scale0, f32 scale1,
+                                f32 out_anchors[2][4])
+{
+    // ratio == 1.0, so r_w = r_h = base_size
+    f32 r = (f32)base_size;
+    f32 cx = r * 0.5f;
+    f32 cy = r * 0.5f;
+
+    f32 scales[2] = {scale0, scale1};
+    for(s32 a = 0; a < 2; ++a)
+    {
+        f32 rs = r * scales[a];
+        out_anchors[a][0] = cx - rs * 0.5f; // x0
+        out_anchors[a][1] = cy - rs * 0.5f; // y0
+        out_anchors[a][2] = cx + rs * 0.5f; // x1
+        out_anchors[a][3] = cy + rs * 0.5f; // y1
+    }
+}
+
+List detect_faces_retina(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
+{
+    List boxes = list_create(arena, sizeof(Box));
+
+    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data,
+                                            //NCNN_MAT_PIXEL_X2Y(NCNN_MAT_PIXEL_RGB, NCNN_MAT_PIXEL_BGR),
+                                            NCNN_MAT_PIXEL_RGB,
+                                            image->props.w, image->props.h,
+                                            image->props.w * 3, 0);
+
+    // RetinaFace mnet.25 is trained without mean/norm subtraction.
+    // Raw [0,255] pixel values are expected.
+
+    ncnn_net_t net = model_face.net;
+    ncnn_extractor_t ex = ncnn_extractor_create(net);
+
+    ncnn_extractor_input_index(ex, RETINA_FACE_DATA, input);
+
+    // --- extract all six output blobs by name ---
+
+    // Stride 32 outputs
+    ncnn_mat_t score_32;
+    ncnn_mat_t bbox_32;
+    ncnn_mat_t landmark_32;
+    ncnn_extractor_extract_index(ex, RETINA_FACE_CLS_PROB_RESHAPE_STRIDE32,  &score_32);
+    ncnn_extractor_extract_index(ex, RETINA_FACE_BBOX_PRED_STRIDE32,         &bbox_32);
+    ncnn_extractor_extract_index(ex, RETINA_FACE_LANDMARK_PRED_STRIDE32,     &landmark_32);
+
+    // Stride 16 outputs
+    ncnn_mat_t score_16;
+    ncnn_mat_t bbox_16;
+    ncnn_mat_t landmark_16;
+    ncnn_extractor_extract_index(ex, RETINA_FACE_CLS_PROB_RESHAPE_STRIDE16,  &score_16);
+    ncnn_extractor_extract_index(ex, RETINA_FACE_BBOX_PRED_STRIDE16,         &bbox_16);
+    ncnn_extractor_extract_index(ex, RETINA_FACE_LANDMARK_PRED_STRIDE16,     &landmark_16);
+
+    // Stride 8 outputs
+    ncnn_mat_t score_8;
+    ncnn_mat_t bbox_8;
+    ncnn_mat_t landmark_8;
+    ncnn_extractor_extract_index(ex, RETINA_FACE_CLS_PROB_RESHAPE_STRIDE8,   &score_8);
+    ncnn_extractor_extract_index(ex, RETINA_FACE_BBOX_PRED_STRIDE8,          &bbox_8);
+    ncnn_extractor_extract_index(ex, RETINA_FACE_LANDMARK_PRED_STRIDE8,      &landmark_8);
+
+    const ncnn_mat_t score_mats[3]    = {score_32,    score_16,    score_8};
+    const ncnn_mat_t bbox_mats[3]     = {bbox_32,     bbox_16,     bbox_8};
+    const ncnn_mat_t landmark_mats[3] = {landmark_32, landmark_16, landmark_8};
+
+    // Anchor scales per stride (two anchors each, ratio=1.0, base_size=16)
+    const f32 anchor_scales[3][2] = {
+        {32.f, 16.f}, // stride 32
+        { 8.f,  4.f}, // stride 16
+        { 2.f,  1.f}, // stride 8
+    };
+    const s32 strides[3] = {32, 16, 8};
+    const s32 base_size  = 16;
+    const s32 num_anchors = 2;
+
+    f32 net_w = (f32)image->props.w;
+    f32 net_h = (f32)image->props.h;
+
+    for(s32 s = 0; s < 3; ++s)
+    {
+        s32 stride = strides[s];
+
+        ncnn_mat_t score_blob    = score_mats[s];
+        ncnn_mat_t bbox_blob     = bbox_mats[s];
+        ncnn_mat_t landmark_blob = landmark_mats[s];
+
+        // score_blob: dims=3, channels=4 (2 anchors x [bg,fg]), w x h spatial
+        // bbox_blob:  dims=3, channels=8 (2 anchors x 4 deltas)
+        // landmark_blob: dims=3, channels=20 (2 anchors x 10 coords)
+        s32 w = ncnn_mat_get_w(score_blob);
+        s32 h = ncnn_mat_get_h(score_blob);
+
+        // Precompute the two anchor shapes for this stride
+        f32 anchors[2][4];
+        retinaface_anchors(base_size,
+                           anchor_scales[s][0],
+                           anchor_scales[s][1],
+                           anchors);
+
+        for(s32 q = 0; q < num_anchors; ++q)
+        {
+            f32 anchor_w = anchors[q][2] - anchors[q][0]; // = base_size * scale
+            f32 anchor_h = anchors[q][3] - anchors[q][1]; // same, ratio==1
+
+            // Foreground score channel: fg is channel (q + num_anchors)
+            // score_blob layout after reshape: [4 ch, h, w]
+            const f32 *score_ch = (const f32 *)ncnn_mat_get_channel_data(score_blob,
+                                                                          q + num_anchors);
+
+            // bbox channels: anchor q occupies channels [q*4 .. q*4+3]
+            const f32 *bbox_dx = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 0);
+            const f32 *bbox_dy = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 1);
+            const f32 *bbox_dw = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 2);
+            const f32 *bbox_dh = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 3);
+
+            // landmark channels: anchor q occupies channels [q*10 .. q*10+9]
+            const f32 *lm[10];
+            for(s32 k = 0; k < 10; ++k)
+                lm[k] = (const f32 *)ncnn_mat_get_channel_data(landmark_blob, q * 10 + k);
+
+            for(s32 i = 0; i < h; ++i)
+            {
+                for(s32 j = 0; j < w; ++j)
+                {
+                    s32 idx = i * w + j;
+ 
+                    f32 prob = score_ch[idx];
+                    if(prob < threshold_confidence)
+                        continue;
+ 
+                    // Anchor centre for this spatial location.
+                    // Computed directly from (i,j) — no mutable walk variable,
+                    // so continue above can never skip the increment.
+                    f32 anchor_x0 = anchors[q][0] + j * stride;
+                    f32 anchor_y0 = anchors[q][1] + i * stride;
+                    f32 cx = anchor_x0 + anchor_w * 0.5f;
+                    f32 cy = anchor_y0 + anchor_h * 0.5f;
+ 
+                    // Standard RPN delta decode.
+                    f32 pb_cx = cx + anchor_w * bbox_dx[idx];
+                    f32 pb_cy = cy + anchor_h * bbox_dy[idx];
+                    f32 pb_w  = anchor_w * expf(bbox_dw[idx]);
+                    f32 pb_h  = anchor_h * expf(bbox_dh[idx]);
+ 
+                    f32 x0 = pb_cx - pb_w * 0.5f;
+                    f32 y0 = pb_cy - pb_h * 0.5f;
+                    f32 x1 = pb_cx + pb_w * 0.5f;
+                    f32 y1 = pb_cy + pb_h * 0.5f;
+
+                    x0 = CLAMP(x0, 0.0f, net_w - 1.0f);
+                    y0 = CLAMP(y0, 0.0f, net_h - 1.0f);
+                    x1 = CLAMP(x1, 0.0f, net_w - 1.0f);
+                    y1 = CLAMP(y1, 0.0f, net_h - 1.0f);
+ 
+                    Box box = {0};
+
+                    box.x          = (s32)x0;
+                    box.y          = (s32)y0;
+                    box.w          = (s32)(x1 - x0);
+                    box.h          = (s32)(y1 - y0);
+                    box.confidence = (u8)(prob * 100);
+                    box.type       = DETECT_TYPE_FACE;
+ 
+                    // Landmark decode: InsightFace convention uses (anchor_dim + 1)
+                    // as the scale factor, then map back to original image space.
+                    f32 lm_sx = (anchor_w + 1.0f);
+                    f32 lm_sy = (anchor_h + 1.0f);
+                    for(s32 k = 0; k < LANDMARK_COUNT; ++k)
+                    {
+                        box.landmarks[k].x = (s32)(cx + lm_sx * lm[k * 2 + 0][idx]);
+                        box.landmarks[k].y = (s32)(cy + lm_sy * lm[k * 2 + 1][idx]);
+                    }
+
+                    box = box_unscale(box, image);
+                    box = box_rotate(box, &image->props_orig, CW);
+ 
+                    box_print(&box, LOG_LEVEL_VERBOSE);
+ 
+                    list_add(&boxes, &box);
+                }
+            }
+        }
+    }
+
+    // cleanup
+    ncnn_mat_destroy(score_32);
+    ncnn_mat_destroy(score_16);
+    ncnn_mat_destroy(score_8);
+    ncnn_mat_destroy(bbox_32);
+    ncnn_mat_destroy(bbox_16);
+    ncnn_mat_destroy(bbox_8);
+    ncnn_mat_destroy(landmark_32);
+    ncnn_mat_destroy(landmark_16);
+    ncnn_mat_destroy(landmark_8);
+
+    ncnn_extractor_destroy(ex);
+    ncnn_mat_destroy(input);
+
+    boxes = non_maximum_suppression(boxes, threshold_nms);
+
+    return boxes;
 }
 
 List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
