@@ -1,19 +1,25 @@
 
-#define SCRFD_FACE_10G 0
-
-#if SCRFD_FACE_10G
-#include "model_data/scrfd_face_10g_bin.h"
-#else
 #include "model_data/scrfd_face_bin.h"
-#endif
+#include "model_data/scrfd_face_10g_bin.h"
 #include "model_data/scrfd_person_bin.h"
 #include "model_data/license_plate_bin.h"
 #include "model_data/nudity_bin.h"
 
-static Model model_face   = {0};
+static Model model_face      = {0};
 static Model model_person = {0};
 static Model model_license_plate = {0};
 static Model model_nudity = {0};
+
+static u32 scrfd_face_in0  = SCRFD_FACE_IN0;
+static u32 scrfd_face_out0 = SCRFD_FACE_OUT0;
+static u32 scrfd_face_out1 = SCRFD_FACE_OUT1;
+static u32 scrfd_face_out2 = SCRFD_FACE_OUT2;
+static u32 scrfd_face_out3 = SCRFD_FACE_OUT3;
+static u32 scrfd_face_out4 = SCRFD_FACE_OUT4;
+static u32 scrfd_face_out5 = SCRFD_FACE_OUT5;
+static u32 scrfd_face_out6 = SCRFD_FACE_OUT6;
+static u32 scrfd_face_out7 = SCRFD_FACE_OUT7;
+static u32 scrfd_face_out8 = SCRFD_FACE_OUT8;
 
 extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
 extern void ncnn_extractor_clear(ncnn_extractor_t ex);
@@ -65,20 +71,40 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
         {
             case DETECT_TYPE_FACE:
             {
-                if(!model_face.initialized)
-                {
-#if SCRFD_FACE_10G
-                    model_face = model_create_mem(640, 640,
-                            scrfd_10g_bnkps_opt_param_bin,
-                            scrfd_10g_bnkps_opt_bin
-                    );
-#else
-                    model_face = model_create_mem(640, 640,
-                            scrfd_2_5g_gnkps_ncnn_param_bin,
-                            scrfd_2_5g_gnkps_ncnn_bin
-                    );
-#endif
-                }
+                model_face = model_create_mem(640, 640,
+                        scrfd_2_5g_gnkps_ncnn_param_bin,
+                        scrfd_2_5g_gnkps_ncnn_bin
+                );
+
+                scrfd_face_in0  = SCRFD_FACE_IN0;
+                scrfd_face_out0 = SCRFD_FACE_OUT0;
+                scrfd_face_out1 = SCRFD_FACE_OUT1;
+                scrfd_face_out2 = SCRFD_FACE_OUT2;
+                scrfd_face_out3 = SCRFD_FACE_OUT3;
+                scrfd_face_out4 = SCRFD_FACE_OUT4;
+                scrfd_face_out5 = SCRFD_FACE_OUT5;
+                scrfd_face_out6 = SCRFD_FACE_OUT6;
+                scrfd_face_out7 = SCRFD_FACE_OUT7;
+                scrfd_face_out8 = SCRFD_FACE_OUT8;
+
+            } break;
+            case DETECT_TYPE_FACE_10G:
+            {
+                model_face = model_create_mem(640, 640,
+                        scrfd_10g_bnkps_opt_param_bin,
+                        scrfd_10g_bnkps_opt_bin
+                );
+
+                scrfd_face_in0  = SCRFD_FACE_10G_IN0;
+                scrfd_face_out0 = SCRFD_FACE_10G_OUT0;
+                scrfd_face_out1 = SCRFD_FACE_10G_OUT1;
+                scrfd_face_out2 = SCRFD_FACE_10G_OUT2;
+                scrfd_face_out3 = SCRFD_FACE_10G_OUT3;
+                scrfd_face_out4 = SCRFD_FACE_10G_OUT4;
+                scrfd_face_out5 = SCRFD_FACE_10G_OUT5;
+                scrfd_face_out6 = SCRFD_FACE_10G_OUT6;
+                scrfd_face_out7 = SCRFD_FACE_10G_OUT7;
+                scrfd_face_out8 = SCRFD_FACE_10G_OUT8;
             } break;
             case DETECT_TYPE_PERSON:
             {
@@ -132,6 +158,7 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
     switch(cfg->type)
     {
         case DETECT_TYPE_FACE:
+        case DETECT_TYPE_FACE_10G:
         {
             new_boxes = detect_faces(scratch.arena, image, threshold_confidence, threshold_nms);
         } break;
@@ -223,7 +250,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
     for(s64 i = 0; i < input.box_count; ++i)
     {
         Box *box = &input.boxes[i];
-        if(box->type == DETECT_TYPE_FACE)
+        if(box->type == DETECT_TYPE_FACE || box->type == DETECT_TYPE_FACE_10G)
         {
             box_count_new += (2*feature_eyes); // there are two eyes <o>_<o>
             box_count_new += feature_nose;
@@ -256,7 +283,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
             SWAP(s32, input_box.w, input_box.h);
         }
 
-        if(input_box.type != DETECT_TYPE_FACE)
+        if(input_box.type != DETECT_TYPE_FACE && input_box.type != DETECT_TYPE_FACE_10G)
         {
             output.boxes[output.box_count++] = input_box;
             continue;
@@ -659,6 +686,7 @@ Model detect_get_model_by_type(DetectType type)
     switch(type)
     {
         case DETECT_TYPE_FACE:          return model_face;
+        case DETECT_TYPE_FACE_10G:      return model_face;
         case DETECT_TYPE_PERSON:        return model_person;
         case DETECT_TYPE_LICENSE_PLATE: return model_license_plate;
         case DETECT_TYPE_NUDITY:        return model_nudity;
@@ -780,7 +808,7 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_net_t net = model_face.net;
     ncnn_extractor_t ex = ncnn_extractor_create(net);
 
-    ncnn_extractor_input_index(ex, SCRFD_FACE_IN0, input);
+    ncnn_extractor_input_index(ex, scrfd_face_in0, input);
 
     ncnn_mat_t score_8;
     ncnn_mat_t score_16;
@@ -792,15 +820,15 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_mat_t kps_16;
     ncnn_mat_t kps_32;
 
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT0, &score_8);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT1, &score_16);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT2, &score_32);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT3, &bbox_8);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT4, &bbox_16);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT5, &bbox_32);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT6, &kps_8);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT7, &kps_16);
-    ncnn_extractor_extract_index(ex, SCRFD_FACE_OUT8, &kps_32);
+    ncnn_extractor_extract_index(ex, scrfd_face_out0, &score_8);
+    ncnn_extractor_extract_index(ex, scrfd_face_out1, &score_16);
+    ncnn_extractor_extract_index(ex, scrfd_face_out2, &score_32);
+    ncnn_extractor_extract_index(ex, scrfd_face_out3, &bbox_8);
+    ncnn_extractor_extract_index(ex, scrfd_face_out4, &bbox_16);
+    ncnn_extractor_extract_index(ex, scrfd_face_out5, &bbox_32);
+    ncnn_extractor_extract_index(ex, scrfd_face_out6, &kps_8);
+    ncnn_extractor_extract_index(ex, scrfd_face_out7, &kps_16);
+    ncnn_extractor_extract_index(ex, scrfd_face_out8, &kps_32);
 
     const ncnn_mat_t scoreMats[] = {score_8, score_16, score_32};
     const ncnn_mat_t bboxMats[]  = {bbox_8, bbox_16, bbox_32};
@@ -1285,6 +1313,7 @@ String detect_type_to_string(DetectType type)
     switch(type)
     {
         case DETECT_TYPE_FACE:          return S("face");
+        case DETECT_TYPE_FACE_10G:      return S("face_10g");
         case DETECT_TYPE_PERSON:        return S("person");
         case DETECT_TYPE_LICENSE_PLATE: return S("license_plate");
         case DETECT_TYPE_NUDITY:        return S("nudity");
@@ -1304,6 +1333,9 @@ DetectType detect_type_from_string(String str)
 {
     if(string_equal(str, S("face")))
         return DETECT_TYPE_FACE;
+
+    if(string_equal(str, S("face_10g")))
+        return DETECT_TYPE_FACE_10G;
 
     if(string_equal(str, S("person")))
         return DETECT_TYPE_PERSON;
@@ -1330,4 +1362,27 @@ DetectType detect_type_from_string(String str)
         return DETECT_TYPE_FOREHEAD;
 
     return DETECT_TYPE_NONE;
+}
+
+String detect_model_to_string(ModelFace model)
+{
+    switch(model)
+    {
+        case MODEL_FACE_SCRFD_2_5G: return S("scrfd_2_5g");
+        case MODEL_FACE_SCRFD_10G:  return S("scrfd_10g");
+        default: break;
+    }
+
+    return S("scrfd_2_5g");
+}
+
+ModelFace detect_model_from_string(String str)
+{
+    if(string_equal(str, S("scrfd_2_5g")))
+        return MODEL_FACE_SCRFD_2_5G;
+
+    if(string_equal(str, S("scrfd_10g")))
+        return MODEL_FACE_SCRFD_10G;
+
+    return MODEL_FACE_SCRFD_2_5G;
 }

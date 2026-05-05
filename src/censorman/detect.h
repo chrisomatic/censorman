@@ -8,6 +8,7 @@ typedef enum
 {
     DETECT_TYPE_NONE = 0,
     DETECT_TYPE_FACE,
+    DETECT_TYPE_FACE_10G,
     DETECT_TYPE_PERSON,
     DETECT_TYPE_LICENSE_PLATE,
     DETECT_TYPE_NUDITY,
@@ -19,6 +20,12 @@ typedef enum
     DETECT_TYPE_CHEEK,
     DETECT_TYPE_FOREHEAD,
 } DetectType;
+
+typedef enum
+{
+    MODEL_FACE_SCRFD_2_5G = 0,
+    MODEL_FACE_SCRFD_10G  = 1,
+} ModelFace;
 
 typedef struct
 {
@@ -66,6 +73,9 @@ typedef struct
 
 String detect_type_to_string(DetectType type);
 DetectType detect_type_from_string(String str);
+
+String detect_model_to_string(ModelFace model);
+ModelFace detect_model_from_string(String str);
 
 void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames);
 Model detect_get_model_by_type(DetectType type);

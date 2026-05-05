@@ -217,6 +217,10 @@ Settings settings_parse(Arena *arena, int argc, char **args)
                     cfg->threshold_confidence = 0.40f;
                     cfg->threshold_nms        = 0.45f;
                     break;
+                case DETECT_TYPE_FACE_10G:
+                    cfg->threshold_confidence = 0.40f;
+                    cfg->threshold_nms        = 0.45f;
+                    break;
                 case DETECT_TYPE_PERSON:
                     cfg->threshold_confidence = 0.50f;
                     cfg->threshold_nms        = 0.50f;
@@ -428,7 +432,7 @@ void settings_print_help(void)
     os_printf("    * Supported video formats: [ MP4, MOV ]\n");
     os_printf("\nOPTIONS\n");
     os_printf("    --detect [-d] <detect-types>\n");
-    os_printf("        a comma-separated list of detect types [face,person,license_plate,nudity]\n");
+    os_printf("        a comma-separated list of detect types [face,face_10g,person,license_plate,nudity]\n");
     os_printf("        default: face\n");
     os_printf("        Each detect type can specify up to two optional parameters with ':' between them\n");
     os_printf("        The first parameter is confidence threshold\n");

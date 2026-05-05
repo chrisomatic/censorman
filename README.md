@@ -59,6 +59,7 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 | Class             | Model                                 | Confidence Threshold (Default) | NMS IoU Threshold (Default) |
 |-------------------|---------------------------------------|--------------------------------|-----------------------------|
 | Face (default)    | scrfd_2.5g_gnkps                      | 0.40 (40%)                     | 0.45 (45%)                  |
+| Face 10G          | scrfd_10g_bnkps                       | 0.40 (40%)                     | 0.45 (45%)                  |
 | Person            | InsightFace SCRFD 2.5g Person         | 0.50 (50%)                     | 0.50 (50%)                  |
 | License Plate     | YOLOv8 trained 2.5g                   | 0.50 (50%)                     | 0.45 (45%)                  |
 | Nudity            | NudeNET                               | 0.25 (25%)                     | 0.45 (45%)                  |
@@ -68,6 +69,7 @@ WIDER face benchmarks:
 | Model              | Easy  | Medium | Hard  |
 |--------------------|-------|--------|-------|
 | scrfd\_2.5g\_gnkps | 93.57 | 91.70  | 76.08 |
+| scrfd\_10g\_bnkps  | 95.16 | 93.87  | 83.05 |
 
 ## Install pre-made binaries
 
@@ -191,12 +193,11 @@ ASSET_PATH
 
 OPTIONS
     --detect [-d] <detect-types>
-        a comma-separated list of detect types [face,person,license_plate,nudity]
+        a comma-separated list of detect types [face,face_10g,person,license_plate,nudity]
         default: face
         Each detect type can specify up to two optional parameters with ':' between them
         The first parameter is confidence threshold
         The second parameter is NMS IOU threshold
-        Most of the models have 0.25 confidence threshold, and 0.45 NMS IOU threshold
 
     --filter [-f] <filters>
         a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]
