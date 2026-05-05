@@ -25,8 +25,8 @@ typedef struct
 {
     u32 w;
     u32 h;
-    u32 pad_x;
-    u32 pad_y;
+    s32 pad_x;
+    s32 pad_y;
     Rotation rotation;
     f32 scale;
 } ImageProps;

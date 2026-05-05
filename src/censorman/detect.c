@@ -16,6 +16,9 @@ extern void ncnn_net_set_lightmode(ncnn_net_t net, int enable);
 extern void ncnn_extractor_clear(ncnn_extractor_t ex);
 extern void ncnn_net_set_workspace_allocator(ncnn_net_t net);
 
+static b32  _validate_facial_geometry(Box *box);
+static List _filter_on_facial_geometry(List boxes);
+
 static Model model_create_mem(s32 net_w, s32 net_h, const u8 *param_bin, const u8 *model_bin)
 {
     Model model = {0};
@@ -1047,10 +1050,8 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
                     }
 
                     box = box_unscale(box, image);
-                    box = box_rotate(box, &image->props_orig, CW);
 
                     box_print(&box,LOG_LEVEL_VERBOSE);
-
                     list_add(&boxes, &box);
                 }
             }
@@ -1072,6 +1073,15 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_mat_destroy(input);
 
     boxes = non_maximum_suppression(boxes, threshold_nms);
+    boxes = _filter_on_facial_geometry(boxes);
+
+    // doing the un-rotation at the end so that the geometry filter
+    // doesn't have to worry about rotated face boxes
+    for(s64 i = 0; i < boxes.count; ++i)
+    {
+        Box *box = (Box *)list_get(&boxes, i);
+        *box = box_rotate(*box, &image->props_orig, CW);
+    }
 
     return boxes;
 }
@@ -1464,6 +1474,7 @@ void box_print(Box *b, LogLevel ll)
         );
 }
 
+
 String detect_type_to_string(DetectType type)
 {
     switch(type)
@@ -1516,3 +1527,166 @@ DetectType detect_type_from_string(String str)
     return DETECT_TYPE_NONE;
 }
 
+static b32 _validate_facial_geometry(Box *box)
+{
+    Vec2 eye_left    = VEC2(box->landmarks[0].x, box->landmarks[0].y);
+    Vec2 eye_right   = VEC2(box->landmarks[1].x, box->landmarks[1].y);
+    Vec2 nose        = VEC2(box->landmarks[2].x, box->landmarks[2].y);
+    Vec2 mouth_left  = VEC2(box->landmarks[3].x, box->landmarks[3].y);
+    Vec2 mouth_right = VEC2(box->landmarks[4].x, box->landmarks[4].y);
+
+    f32 bbox_w = (f32)box->w;
+    f32 bbox_h = (f32)box->h;
+    f32 bbox_x = (f32)box->x;
+    f32 bbox_y = (f32)box->y;
+
+    if(bbox_w < 40.0f || bbox_h < 40.0f)
+    {
+        logv("Box too small for landmark validation (%.0fx%.0f), passing through", bbox_w, bbox_h);
+        return true;
+    } 
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 1: Eye x-ordering
+
+    f32 eye_dx = eye_right.x - eye_left.x;
+    if(eye_dx < -(0.05f * bbox_w))
+    {
+        logw("Eye x-order invalid (dx=%.1f)", eye_dx);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 2: Inter-ocular distance (IOD) vs bbox width
+
+    f32 iod = vec2_distance(eye_left, eye_right);
+    if(iod < EPSILON)
+    {
+        logw("facial geometry: IOD is zero, degenerate detection");
+        return false;
+    }
+
+    f32 iod_ratio = iod / bbox_w;
+    if(!BETWEEN(iod_ratio, 0.05f, 0.75f))
+    {
+        logw("IOD ratio out of range (%.2f), iod: %.2f, bbox_w: %.2f", iod_ratio, iod, bbox_w);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 3: Mouth x-ordering
+
+    f32 mouth_dx = mouth_right.x - mouth_left.x;
+    if(mouth_dx < -(0.05f * bbox_w))
+    {
+        logw("Mouth x-order invalid (dx=%.1f)", mouth_dx);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 4: Eyes must be above mouth (y increases downward)
+
+    f32 eye_mid_y   = (eye_left.y   + eye_right.y)   * 0.5f;
+    f32 mouth_mid_y = (mouth_left.y + mouth_right.y) * 0.5f;
+
+    if(mouth_mid_y <= eye_mid_y)
+    {
+        logw("Mouth is not below eyes (eye_mid_y=%.1f, mouth_mid_y=%.1f)", eye_mid_y, mouth_mid_y);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 5: Nose cross-product / signed area check
+
+    f32 bx = eye_right.x - eye_left.x;
+    f32 by = eye_right.y - eye_left.y;
+    f32 cx = nose.x      - eye_left.x;
+    f32 cy = nose.y      - eye_left.y;
+    f32 cross            = (bx * cy) - (by * cx);
+    f32 cross_normalised = cross / (iod * iod);
+
+    if(cross_normalised < -0.05f)
+    {
+        logw("Nose is above eye line (cross=%.3f)", cross_normalised);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 6: Mouth width vs IOD
+
+    f32 mouth_w         = vec2_distance(mouth_left, mouth_right);
+    f32 mouth_iod_ratio = mouth_w / iod;
+
+    if(!BETWEEN(mouth_iod_ratio, 0.30f, 2.20f))
+    {
+        logw("Mouth/IOD ratio out of range (%.2f)", mouth_iod_ratio);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 7: Mouth corners vertical symmetry.
+
+    f32 mouth_dy = ABS(mouth_left.y - mouth_right.y);
+    if(mouth_dy > 0.35f * bbox_h)
+    {
+        logw("Mouth corners too asymmetric vertically (dy=%.1f, bbox_h=%.1f)", mouth_dy, bbox_h);
+        return false;
+    } 
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 8: All keypoints must lie within (or near) the bounding box
+
+    f32 box_x1 = bbox_x - (0.10f * bbox_w);
+    f32 box_x2 = bbox_x + bbox_w + (0.10f * bbox_w);
+    f32 box_y1 = bbox_y - (0.10f * bbox_h);
+    f32 box_y2 = bbox_y + bbox_h + (0.10f * bbox_h);
+
+    Vec2 kps[5] = { eye_left, eye_right, nose, mouth_left, mouth_right };
+    for(s32 i = 0; i < 5; ++i)
+    {
+        if(!BETWEEN(kps[i].x, box_x1, box_x2) || !BETWEEN(kps[i].y, box_y1, box_y2))
+        {
+            logw("Keypoint[%d] outside bbox (%.1f, %.1f)", i, kps[i].x, kps[i].y);
+            return false;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////
+    // Check 9: Keypoints must not all be degenerate / clustered together
+
+    f32 kp_min_x = kps[0].x, kp_max_x = kps[0].x;
+    f32 kp_min_y = kps[0].y, kp_max_y = kps[0].y;
+    for(s32 i = 1; i < 5; ++i)
+    {
+        kp_min_x = MIN(kp_min_x, kps[i].x);
+        kp_max_x = MAX(kp_max_x, kps[i].x);
+        kp_min_y = MIN(kp_min_y, kps[i].y);
+        kp_max_y = MAX(kp_max_y, kps[i].y);
+    }
+
+    f32 kp_span_x = kp_max_x - kp_min_x;
+    f32 kp_span_y = kp_max_y - kp_min_y;
+
+    if(kp_span_x < (0.10f * bbox_w) && kp_span_y < (0.10f * bbox_h))
+    {
+        logw("Keypoints are degenerate cluster (span_x=%.1f, span_y=%.1f)", kp_span_x, kp_span_y);
+        return false;
+    }
+
+    return true;
+}
+
+static List _filter_on_facial_geometry(List boxes)
+{
+    List boxes_filtered = list_create(boxes.arena, sizeof(Box));
+
+    for(s64 i = 0; i < boxes.count; ++i)
+    {
+        Box *box = (Box *)list_get(&boxes, i);
+        b32 geometry_check = _validate_facial_geometry(box);
+        if(!geometry_check) continue;
+        list_add(&boxes_filtered, box);
+    }
+
+    return boxes_filtered;
+}

@@ -25,9 +25,9 @@ f32 vec2_distance(Vec2 a, Vec2 b)
 
 f32 vec2_distance_squared(Vec2 a, Vec2 b)
 {
-    Vec2 s = vec2_subtract(b, a);
-    f32 l = vec2_length(s);
-    return l;
+    f32 dx = b.x - a.x;
+    f32 dy = b.y - a.y;
+    return (dx*dx + dy*dy);
 }
 
 f32 vec2_length(Vec2 v)
@@ -199,9 +199,11 @@ f32 vec3_distance(Vec3 a, Vec3 b)
 
 f32 vec3_distance_squared(Vec3 a, Vec3 b)
 {
-    Vec3 s = vec3_subtract(b, a);
-    f32 l = vec3_length(s);
-    return l;
+    f32 dx = b.x - a.x;
+    f32 dy = b.y - a.y;
+    f32 dz = b.z - a.z;
+
+    return (dx*dx + dy*dy + dz*dz);
 }
 
 void vec2_print(Vec2 v, const char *name)
