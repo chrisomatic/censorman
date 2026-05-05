@@ -17,7 +17,7 @@ Settings settings_default(void)
     settings.smoothing_window     = 0.200f; // 200ms
 
     settings.detect_configs[0].type = DETECT_TYPE_FACE;
-    settings.detect_configs[0].threshold_confidence = 0.25f;
+    settings.detect_configs[0].threshold_confidence = 0.40f;
     settings.detect_configs[0].threshold_nms        = 0.45f;
     settings.detect_config_count = 1;
 
@@ -214,7 +214,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             switch(type)
             {
                 case DETECT_TYPE_FACE:
-                    cfg->threshold_confidence = 0.25f;
+                    cfg->threshold_confidence = 0.40f;
                     cfg->threshold_nms        = 0.45f;
                     break;
                 case DETECT_TYPE_PERSON:
@@ -433,7 +433,6 @@ void settings_print_help(void)
     os_printf("        Each detect type can specify up to two optional parameters with ':' between them\n");
     os_printf("        The first parameter is confidence threshold\n");
     os_printf("        The second parameter is NMS IOU threshold\n");
-    os_printf("        Most of the models have 0.25 confidence threshold, and 0.45 NMS IOU threshold\n");
     os_printf("\n");
     os_printf("    --filter [-f] <filters>\n");
     os_printf("        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]\n");

@@ -37,6 +37,10 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 - Video: MP4, MOV, AVI, WMV
 - Misc: PDF
 
+> [!NOTE]
+> Output video is encoded as MPEG-4 YUV420p
+> Audio if distored is re-encoded as AAC, otherwise it is passthrough
+
 ## Details
 
 - Command-Line Tool
@@ -54,7 +58,7 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 | Class             | Model                                 | Confidence Threshold (Default) | NMS IoU Threshold (Default) |
 |-------------------|---------------------------------------|--------------------------------|-----------------------------|
-| Face (default)    | scrfd_2.5g_gnkps                      | 0.25 (25%)                     | 0.45 (45%)                  |
+| Face (default)    | scrfd_2.5g_gnkps                      | 0.40 (40%)                     | 0.45 (45%)                  |
 | Person            | InsightFace SCRFD 2.5g Person         | 0.50 (50%)                     | 0.50 (50%)                  |
 | License Plate     | YOLOv8 trained 2.5g                   | 0.50 (50%)                     | 0.45 (45%)                  |
 | Nudity            | NudeNET                               | 0.25 (25%)                     | 0.45 (45%)                  |
@@ -104,6 +108,7 @@ All dependencies are built from source and statically linked to final binary (ex
 | libx264           | H.264 Video Encoding   | https://code.videolan.org/videolan/x264.git       |
 | libvpx            | VPX Video Encoding     | https://chromium.googlesource.com/webm/libvpx.git |
 | libexif           | EXIF Metadata          | https://github.com/libexif/libexif.git            |
+| mupdf             | PDF Processing         | https://github.com/ArtifexSoftware/mupdf          |
 | ncnn              | CNN Inference Engine   | https://github.com/tencent/NCNN                   |
 | stb\_image        | Image Reading/Writing  | https://github.com/nothings/stb                   |
 

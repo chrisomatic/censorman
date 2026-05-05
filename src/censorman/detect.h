@@ -44,6 +44,7 @@ typedef struct
 
     u32 frame_number;
     b32 interpolated;
+    b32 detections_run;
 } BoxFrame;
 
 typedef struct

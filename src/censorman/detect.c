@@ -1,11 +1,14 @@
 
+#define SCRFD_FACE_10G 0
+
+#if SCRFD_FACE_10G
+#include "model_data/scrfd_face_10g_bin.h"
+#else
 #include "model_data/scrfd_face_bin.h"
+#endif
 #include "model_data/scrfd_person_bin.h"
 #include "model_data/license_plate_bin.h"
 #include "model_data/nudity_bin.h"
-#include "model_data/retina_face_bin.h"
-
-#define RETINA_FACE 0
 
 static Model model_face   = {0};
 static Model model_person = {0};
@@ -64,10 +67,10 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
             {
                 if(!model_face.initialized)
                 {
-#if RETINA_FACE
+#if SCRFD_FACE_10G
                     model_face = model_create_mem(640, 640,
-                            mnet25_fp16_param_bin,
-                            mnet25_fp16_bin
+                            scrfd_10g_bnkps_opt_param_bin,
+                            scrfd_10g_bnkps_opt_bin
                     );
 #else
                     model_face = model_create_mem(640, 640,
@@ -130,11 +133,7 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
     {
         case DETECT_TYPE_FACE:
         {
-#if RETINA_FACE
-            new_boxes = detect_faces_retina(scratch.arena, image, threshold_confidence, threshold_nms);
-#else
             new_boxes = detect_faces(scratch.arena, image, threshold_confidence, threshold_nms);
-#endif
         } break;
         case DETECT_TYPE_PERSON:
         {
@@ -499,7 +498,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
         // set previous frame
         f0 = f1;
 
-        if(curr->box_count > 0)
+        if(curr->detections_run)
         {
             // filled
             f1 = curr;
@@ -517,7 +516,7 @@ void detect_interpolate_boxes(Video *vid, BoxFrame *box_frames)
         {
             if(j >= vid->frame_count) break;
             box_frame_j = &box_frames[j];
-            if(box_frame_j && box_frame_j->box_count > 0) break;
+            if(box_frame_j && box_frame_j->detections_run) break;
             j++;
         }
 
@@ -766,192 +765,6 @@ static void retinaface_anchors(s32 base_size, f32 scale0, f32 scale1,
     }
 }
 
-List detect_faces_retina(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
-{
-    List boxes = list_create(arena, sizeof(Box));
-
-    ncnn_mat_t input = ncnn_mat_from_pixels((const u8 *)image->data,
-                                            //NCNN_MAT_PIXEL_X2Y(NCNN_MAT_PIXEL_RGB, NCNN_MAT_PIXEL_BGR),
-                                            NCNN_MAT_PIXEL_RGB,
-                                            image->props.w, image->props.h,
-                                            image->props.w * 3, 0);
-
-    // RetinaFace mnet.25 is trained without mean/norm subtraction.
-    // Raw [0,255] pixel values are expected.
-
-    ncnn_net_t net = model_face.net;
-    ncnn_extractor_t ex = ncnn_extractor_create(net);
-
-    ncnn_extractor_input_index(ex, RETINA_FACE_DATA, input);
-
-    // --- extract all six output blobs by name ---
-
-    // Stride 32 outputs
-    ncnn_mat_t score_32;
-    ncnn_mat_t bbox_32;
-    ncnn_mat_t landmark_32;
-    ncnn_extractor_extract_index(ex, RETINA_FACE_CLS_PROB_RESHAPE_STRIDE32,  &score_32);
-    ncnn_extractor_extract_index(ex, RETINA_FACE_BBOX_PRED_STRIDE32,         &bbox_32);
-    ncnn_extractor_extract_index(ex, RETINA_FACE_LANDMARK_PRED_STRIDE32,     &landmark_32);
-
-    // Stride 16 outputs
-    ncnn_mat_t score_16;
-    ncnn_mat_t bbox_16;
-    ncnn_mat_t landmark_16;
-    ncnn_extractor_extract_index(ex, RETINA_FACE_CLS_PROB_RESHAPE_STRIDE16,  &score_16);
-    ncnn_extractor_extract_index(ex, RETINA_FACE_BBOX_PRED_STRIDE16,         &bbox_16);
-    ncnn_extractor_extract_index(ex, RETINA_FACE_LANDMARK_PRED_STRIDE16,     &landmark_16);
-
-    // Stride 8 outputs
-    ncnn_mat_t score_8;
-    ncnn_mat_t bbox_8;
-    ncnn_mat_t landmark_8;
-    ncnn_extractor_extract_index(ex, RETINA_FACE_CLS_PROB_RESHAPE_STRIDE8,   &score_8);
-    ncnn_extractor_extract_index(ex, RETINA_FACE_BBOX_PRED_STRIDE8,          &bbox_8);
-    ncnn_extractor_extract_index(ex, RETINA_FACE_LANDMARK_PRED_STRIDE8,      &landmark_8);
-
-    const ncnn_mat_t score_mats[3]    = {score_32,    score_16,    score_8};
-    const ncnn_mat_t bbox_mats[3]     = {bbox_32,     bbox_16,     bbox_8};
-    const ncnn_mat_t landmark_mats[3] = {landmark_32, landmark_16, landmark_8};
-
-    // Anchor scales per stride (two anchors each, ratio=1.0, base_size=16)
-    const f32 anchor_scales[3][2] = {
-        {32.f, 16.f}, // stride 32
-        { 8.f,  4.f}, // stride 16
-        { 2.f,  1.f}, // stride 8
-    };
-    const s32 strides[3] = {32, 16, 8};
-    const s32 base_size  = 16;
-    const s32 num_anchors = 2;
-
-    f32 net_w = (f32)image->props.w;
-    f32 net_h = (f32)image->props.h;
-
-    for(s32 s = 0; s < 3; ++s)
-    {
-        s32 stride = strides[s];
-
-        ncnn_mat_t score_blob    = score_mats[s];
-        ncnn_mat_t bbox_blob     = bbox_mats[s];
-        ncnn_mat_t landmark_blob = landmark_mats[s];
-
-        // score_blob: dims=3, channels=4 (2 anchors x [bg,fg]), w x h spatial
-        // bbox_blob:  dims=3, channels=8 (2 anchors x 4 deltas)
-        // landmark_blob: dims=3, channels=20 (2 anchors x 10 coords)
-        s32 w = ncnn_mat_get_w(score_blob);
-        s32 h = ncnn_mat_get_h(score_blob);
-
-        // Precompute the two anchor shapes for this stride
-        f32 anchors[2][4];
-        retinaface_anchors(base_size,
-                           anchor_scales[s][0],
-                           anchor_scales[s][1],
-                           anchors);
-
-        for(s32 q = 0; q < num_anchors; ++q)
-        {
-            f32 anchor_w = anchors[q][2] - anchors[q][0]; // = base_size * scale
-            f32 anchor_h = anchors[q][3] - anchors[q][1]; // same, ratio==1
-
-            // Foreground score channel: fg is channel (q + num_anchors)
-            // score_blob layout after reshape: [4 ch, h, w]
-            const f32 *score_ch = (const f32 *)ncnn_mat_get_channel_data(score_blob,
-                                                                          q + num_anchors);
-
-            // bbox channels: anchor q occupies channels [q*4 .. q*4+3]
-            const f32 *bbox_dx = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 0);
-            const f32 *bbox_dy = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 1);
-            const f32 *bbox_dw = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 2);
-            const f32 *bbox_dh = (const f32 *)ncnn_mat_get_channel_data(bbox_blob, q * 4 + 3);
-
-            // landmark channels: anchor q occupies channels [q*10 .. q*10+9]
-            const f32 *lm[10];
-            for(s32 k = 0; k < 10; ++k)
-                lm[k] = (const f32 *)ncnn_mat_get_channel_data(landmark_blob, q * 10 + k);
-
-            for(s32 i = 0; i < h; ++i)
-            {
-                for(s32 j = 0; j < w; ++j)
-                {
-                    s32 idx = i * w + j;
- 
-                    f32 prob = score_ch[idx];
-                    if(prob < threshold_confidence)
-                        continue;
- 
-                    // Anchor centre for this spatial location.
-                    // Computed directly from (i,j) — no mutable walk variable,
-                    // so continue above can never skip the increment.
-                    f32 anchor_x0 = anchors[q][0] + j * stride;
-                    f32 anchor_y0 = anchors[q][1] + i * stride;
-                    f32 cx = anchor_x0 + anchor_w * 0.5f;
-                    f32 cy = anchor_y0 + anchor_h * 0.5f;
- 
-                    // Standard RPN delta decode.
-                    f32 pb_cx = cx + anchor_w * bbox_dx[idx];
-                    f32 pb_cy = cy + anchor_h * bbox_dy[idx];
-                    f32 pb_w  = anchor_w * expf(bbox_dw[idx]);
-                    f32 pb_h  = anchor_h * expf(bbox_dh[idx]);
- 
-                    f32 x0 = pb_cx - pb_w * 0.5f;
-                    f32 y0 = pb_cy - pb_h * 0.5f;
-                    f32 x1 = pb_cx + pb_w * 0.5f;
-                    f32 y1 = pb_cy + pb_h * 0.5f;
-
-                    x0 = CLAMP(x0, 0.0f, net_w - 1.0f);
-                    y0 = CLAMP(y0, 0.0f, net_h - 1.0f);
-                    x1 = CLAMP(x1, 0.0f, net_w - 1.0f);
-                    y1 = CLAMP(y1, 0.0f, net_h - 1.0f);
- 
-                    Box box = {0};
-
-                    box.x          = (s32)x0;
-                    box.y          = (s32)y0;
-                    box.w          = (s32)(x1 - x0);
-                    box.h          = (s32)(y1 - y0);
-                    box.confidence = (u8)(prob * 100);
-                    box.type       = DETECT_TYPE_FACE;
- 
-                    // Landmark decode: InsightFace convention uses (anchor_dim + 1)
-                    // as the scale factor, then map back to original image space.
-                    f32 lm_sx = (anchor_w + 1.0f);
-                    f32 lm_sy = (anchor_h + 1.0f);
-                    for(s32 k = 0; k < LANDMARK_COUNT; ++k)
-                    {
-                        box.landmarks[k].x = (s32)(cx + lm_sx * lm[k * 2 + 0][idx]);
-                        box.landmarks[k].y = (s32)(cy + lm_sy * lm[k * 2 + 1][idx]);
-                    }
-
-                    box = box_unscale(box, image);
-                    box = box_rotate(box, &image->props_orig, CW);
- 
-                    box_print(&box, LOG_LEVEL_VERBOSE);
- 
-                    list_add(&boxes, &box);
-                }
-            }
-        }
-    }
-
-    // cleanup
-    ncnn_mat_destroy(score_32);
-    ncnn_mat_destroy(score_16);
-    ncnn_mat_destroy(score_8);
-    ncnn_mat_destroy(bbox_32);
-    ncnn_mat_destroy(bbox_16);
-    ncnn_mat_destroy(bbox_8);
-    ncnn_mat_destroy(landmark_32);
-    ncnn_mat_destroy(landmark_16);
-    ncnn_mat_destroy(landmark_8);
-
-    ncnn_extractor_destroy(ex);
-    ncnn_mat_destroy(input);
-
-    boxes = non_maximum_suppression(boxes, threshold_nms);
-
-    return boxes;
-}
-
 List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 threshold_nms)
 {
     List boxes = list_create(arena, sizeof(Box));
@@ -1050,6 +863,7 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
                     }
 
                     box = box_unscale(box, image);
+                    box = box_rotate(box, &image->props_orig, CW);
 
                     box_print(&box,LOG_LEVEL_VERBOSE);
                     list_add(&boxes, &box);
@@ -1073,15 +887,6 @@ List detect_faces(Arena *arena, Image *image, f32 threshold_confidence, f32 thre
     ncnn_mat_destroy(input);
 
     boxes = non_maximum_suppression(boxes, threshold_nms);
-    boxes = _filter_on_facial_geometry(boxes);
-
-    // doing the un-rotation at the end so that the geometry filter
-    // doesn't have to worry about rotated face boxes
-    for(s64 i = 0; i < boxes.count; ++i)
-    {
-        Box *box = (Box *)list_get(&boxes, i);
-        *box = box_rotate(*box, &image->props_orig, CW);
-    }
 
     return boxes;
 }
@@ -1525,168 +1330,4 @@ DetectType detect_type_from_string(String str)
         return DETECT_TYPE_FOREHEAD;
 
     return DETECT_TYPE_NONE;
-}
-
-static b32 _validate_facial_geometry(Box *box)
-{
-    Vec2 eye_left    = VEC2(box->landmarks[0].x, box->landmarks[0].y);
-    Vec2 eye_right   = VEC2(box->landmarks[1].x, box->landmarks[1].y);
-    Vec2 nose        = VEC2(box->landmarks[2].x, box->landmarks[2].y);
-    Vec2 mouth_left  = VEC2(box->landmarks[3].x, box->landmarks[3].y);
-    Vec2 mouth_right = VEC2(box->landmarks[4].x, box->landmarks[4].y);
-
-    f32 bbox_w = (f32)box->w;
-    f32 bbox_h = (f32)box->h;
-    f32 bbox_x = (f32)box->x;
-    f32 bbox_y = (f32)box->y;
-
-    if(bbox_w < 40.0f || bbox_h < 40.0f)
-    {
-        logv("Box too small for landmark validation (%.0fx%.0f), passing through", bbox_w, bbox_h);
-        return true;
-    } 
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 1: Eye x-ordering
-
-    f32 eye_dx = eye_right.x - eye_left.x;
-    if(eye_dx < -(0.05f * bbox_w))
-    {
-        logw("Eye x-order invalid (dx=%.1f)", eye_dx);
-        return false;
-    }
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 2: Inter-ocular distance (IOD) vs bbox width
-
-    f32 iod = vec2_distance(eye_left, eye_right);
-    if(iod < EPSILON)
-    {
-        logw("facial geometry: IOD is zero, degenerate detection");
-        return false;
-    }
-
-    f32 iod_ratio = iod / bbox_w;
-    if(!BETWEEN(iod_ratio, 0.05f, 0.75f))
-    {
-        logw("IOD ratio out of range (%.2f), iod: %.2f, bbox_w: %.2f", iod_ratio, iod, bbox_w);
-        return false;
-    }
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 3: Mouth x-ordering
-
-    f32 mouth_dx = mouth_right.x - mouth_left.x;
-    if(mouth_dx < -(0.05f * bbox_w))
-    {
-        logw("Mouth x-order invalid (dx=%.1f)", mouth_dx);
-        return false;
-    }
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 4: Eyes must be above mouth (y increases downward)
-
-    f32 eye_mid_y   = (eye_left.y   + eye_right.y)   * 0.5f;
-    f32 mouth_mid_y = (mouth_left.y + mouth_right.y) * 0.5f;
-
-    if(mouth_mid_y <= eye_mid_y)
-    {
-        logw("Mouth is not below eyes (eye_mid_y=%.1f, mouth_mid_y=%.1f)", eye_mid_y, mouth_mid_y);
-        return false;
-    }
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 5: Nose cross-product / signed area check
-
-    f32 bx = eye_right.x - eye_left.x;
-    f32 by = eye_right.y - eye_left.y;
-    f32 cx = nose.x      - eye_left.x;
-    f32 cy = nose.y      - eye_left.y;
-    f32 cross            = (bx * cy) - (by * cx);
-    f32 cross_normalised = cross / (iod * iod);
-
-    if(cross_normalised < -0.05f)
-    {
-        logw("Nose is above eye line (cross=%.3f)", cross_normalised);
-        return false;
-    }
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 6: Mouth width vs IOD
-
-    f32 mouth_w         = vec2_distance(mouth_left, mouth_right);
-    f32 mouth_iod_ratio = mouth_w / iod;
-
-    if(!BETWEEN(mouth_iod_ratio, 0.30f, 2.20f))
-    {
-        logw("Mouth/IOD ratio out of range (%.2f)", mouth_iod_ratio);
-        return false;
-    }
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 7: Mouth corners vertical symmetry.
-
-    f32 mouth_dy = ABS(mouth_left.y - mouth_right.y);
-    if(mouth_dy > 0.35f * bbox_h)
-    {
-        logw("Mouth corners too asymmetric vertically (dy=%.1f, bbox_h=%.1f)", mouth_dy, bbox_h);
-        return false;
-    } 
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 8: All keypoints must lie within (or near) the bounding box
-
-    f32 box_x1 = bbox_x - (0.10f * bbox_w);
-    f32 box_x2 = bbox_x + bbox_w + (0.10f * bbox_w);
-    f32 box_y1 = bbox_y - (0.10f * bbox_h);
-    f32 box_y2 = bbox_y + bbox_h + (0.10f * bbox_h);
-
-    Vec2 kps[5] = { eye_left, eye_right, nose, mouth_left, mouth_right };
-    for(s32 i = 0; i < 5; ++i)
-    {
-        if(!BETWEEN(kps[i].x, box_x1, box_x2) || !BETWEEN(kps[i].y, box_y1, box_y2))
-        {
-            logw("Keypoint[%d] outside bbox (%.1f, %.1f)", i, kps[i].x, kps[i].y);
-            return false;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////
-    // Check 9: Keypoints must not all be degenerate / clustered together
-
-    f32 kp_min_x = kps[0].x, kp_max_x = kps[0].x;
-    f32 kp_min_y = kps[0].y, kp_max_y = kps[0].y;
-    for(s32 i = 1; i < 5; ++i)
-    {
-        kp_min_x = MIN(kp_min_x, kps[i].x);
-        kp_max_x = MAX(kp_max_x, kps[i].x);
-        kp_min_y = MIN(kp_min_y, kps[i].y);
-        kp_max_y = MAX(kp_max_y, kps[i].y);
-    }
-
-    f32 kp_span_x = kp_max_x - kp_min_x;
-    f32 kp_span_y = kp_max_y - kp_min_y;
-
-    if(kp_span_x < (0.10f * bbox_w) && kp_span_y < (0.10f * bbox_h))
-    {
-        logw("Keypoints are degenerate cluster (span_x=%.1f, span_y=%.1f)", kp_span_x, kp_span_y);
-        return false;
-    }
-
-    return true;
-}
-
-static List _filter_on_facial_geometry(List boxes)
-{
-    List boxes_filtered = list_create(boxes.arena, sizeof(Box));
-
-    for(s64 i = 0; i < boxes.count; ++i)
-    {
-        Box *box = (Box *)list_get(&boxes, i);
-        b32 geometry_check = _validate_facial_geometry(box);
-        if(!geometry_check) continue;
-        list_add(&boxes_filtered, box);
-    }
-
-    return boxes_filtered;
 }
