@@ -162,9 +162,10 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             }
             else if(string_in_array(ext, exts_video))
             {
+                // forcing the output extension to be mp4
                 asset->type = TYPE_VIDEO;
                 asset->path = file_str;
-                asset->output_path = string_concat(arena, 3, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part(file_str));
+                asset->output_path = string_concat(arena, 4, settings.output_folder, OS_PATH_SLASH_STR, os_path_get_file_part_without_ext(file_str), S(".mp4"));
                 settings.asset_count++;
             }
             else if(string_in_array(ext, exts_pdf))

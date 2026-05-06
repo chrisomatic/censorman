@@ -459,6 +459,14 @@ String os_path_get_file_part(String path)
     return file;
 }
 
+String os_path_get_file_part_without_ext(String path)
+{
+    String file_part = os_path_get_file_part(path);
+    String file_without_ext = os_path_remove_extension(file_part);
+
+    return file_without_ext;
+}
+
 ///////////////////////////////////////
 // Threads
 ///////////////////////////////////////

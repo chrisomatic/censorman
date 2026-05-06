@@ -272,6 +272,7 @@ String os_path_remove_trailing_slashes(String path);
 String os_path_remove_extension(String path);
 String os_path_get_folder_part(String path);
 String os_path_get_file_part(String path);
+String os_path_get_file_part_without_ext(String path);
 
 ///////////////////////////////////////
 // Threads
