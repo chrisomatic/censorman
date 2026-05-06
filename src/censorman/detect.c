@@ -91,8 +91,8 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
             case DETECT_TYPE_FACE_10G:
             {
                 model_face = model_create_mem(640, 640,
-                        scrfd_10g_bnkps_opt_param_bin,
-                        scrfd_10g_bnkps_opt_bin
+                        scrfd_10g_gnkps_ncnn_param_bin,
+                        scrfd_10g_gnkps_ncnn_bin
                 );
 
                 scrfd_face_in0  = SCRFD_FACE_10G_IN0;

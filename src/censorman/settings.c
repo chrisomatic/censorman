@@ -17,7 +17,7 @@ Settings settings_default(void)
     settings.smoothing_window     = 0.200f; // 200ms
 
     settings.detect_configs[0].type = DETECT_TYPE_FACE;
-    settings.detect_configs[0].threshold_confidence = 0.40f;
+    settings.detect_configs[0].threshold_confidence = 0.42f;
     settings.detect_configs[0].threshold_nms        = 0.45f;
     settings.detect_config_count = 1;
 
@@ -214,11 +214,11 @@ Settings settings_parse(Arena *arena, int argc, char **args)
             switch(type)
             {
                 case DETECT_TYPE_FACE:
-                    cfg->threshold_confidence = 0.40f;
+                    cfg->threshold_confidence = 0.42f;
                     cfg->threshold_nms        = 0.45f;
                     break;
                 case DETECT_TYPE_FACE_10G:
-                    cfg->threshold_confidence = 0.40f;
+                    cfg->threshold_confidence = 0.42f;
                     cfg->threshold_nms        = 0.45f;
                     break;
                 case DETECT_TYPE_PERSON:
