@@ -241,6 +241,8 @@ build_ffmpeg() {
     --enable-decoder=aac \
     --enable-decoder=aac_latm \
     --enable-decoder=opus \
+    --enable-decoder=vp8 \
+    --enable-decoder=vorbis \
     --enable-parser=h264 \
     --enable-parser=hevc \
     --enable-parser=mpeg4video \
@@ -250,6 +252,8 @@ build_ffmpeg() {
     --enable-parser=aac_latm \
     --enable-parser=mp3 \
     --enable-parser=opus \
+    --enable-parser=vp8 \
+    --enable-parser=vorbis \
     --enable-muxer=mp4 \
     --enable-encoder=libx264 \
     --enable-encoder=aac \
