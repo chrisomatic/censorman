@@ -24,11 +24,12 @@
 #include "censorman/bbx_file.c"
 #include "censorman/pdf.c"
 
-#define CENSORMAN_VERSION 2
+#define CENSORMAN_VERSION_MAJOR 2
+#define CENSORMAN_VERSION_MINOR 2
 
 void censorman_version(void)
 {
-    os_printf("[CENSORMAN V%d]\n", CENSORMAN_VERSION);
+    os_printf("[CENSORMAN V%d.%d]\n", CENSORMAN_VERSION_MAJOR, CENSORMAN_VERSION_MINOR);
     os_printf("    _O_\n");
     os_printf("  /|-X-|\\\n");
     os_printf(" /  \\_/  \\\n");

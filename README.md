@@ -34,11 +34,11 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 ## Supported Formats
 
 - Image: JPG, PNG, BMP, PSD, TGA, HDR, PIC, GIF(unanimated), PNM
-- Video: MP4, MOV, AVI, WMV
+- Video: MP4, MOV, AVI, WMV, WEBM
 - Misc: PDF
 
 > [!NOTE]
-> Output video is encoded as MPEG-4 YUV420p
+> Output video is encoded as MP4 (MPEG-4 YUV420p)
 > Audio if distored is re-encoded as AAC, otherwise it is passthrough
 
 ## Details

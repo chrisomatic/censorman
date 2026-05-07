@@ -222,29 +222,43 @@ build_ffmpeg() {
     --enable-protocol=file \
     --enable-demuxer=mov \
     --enable-demuxer=aac \
+    --enable-demuxer=avi \
+    --enable-demuxer=asf \
+    --enable-demuxer=matroska \
     --enable-decoder=h264 \
     --enable-decoder=hevc \
     --enable-decoder=vp9 \
+    --enable-decoder=mpeg4 \
+    --enable-decoder=msmpeg4v2 \
+    --enable-decoder=msmpeg4v3 \
+    --enable-decoder=wmv1 \
+    --enable-decoder=wmv2 \
+    --enable-decoder=wmv3 \
+    --enable-decoder=vc1  \
+    --enable-decoder=wmav1 \
+    --enable-decoder=wmav2 \
+    --enable-decoder=mp3 \
     --enable-decoder=aac \
     --enable-decoder=aac_latm \
-    --enable-decoder=mp3 \
     --enable-decoder=opus \
-    --enable-decoder=vorbis \
     --enable-parser=h264 \
     --enable-parser=hevc \
+    --enable-parser=mpeg4video \
+    --enable-parser=vc1 \
+    --enable-parser=mpegaudio \
     --enable-parser=aac \
     --enable-parser=aac_latm \
     --enable-parser=mp3 \
     --enable-parser=opus \
     --enable-muxer=mp4 \
     --enable-encoder=libx264 \
-    --enable-encoder=mpeg4 \
-    --enable-encoder=libvpx_vp9 \
     --enable-encoder=aac \
     --enable-gpl \
     --enable-libx264 \
     --enable-libvpx \
-    --enable-bsfs \
+    --enable-bsf=aac_adtstoasc \
+    --enable-bsf=h264_mp4toannexb \
+    --enable-bsf=hevc_mp4toannexb \
     --cc=$FFMPEG_CC \
     $FFMPEG_CONFIGURE_EXTRA
 

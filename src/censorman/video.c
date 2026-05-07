@@ -26,7 +26,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     s32 open_input = avformat_open_input(&ctx->fmt_ctx, path_cstr, NULL, NULL);
     if(open_input < 0)
     {
-        loge("Failed to open input file '%s'",path_cstr);
+        loge("Failed to open input file '%s' (err: %d)",path_cstr, open_input);
         return vid;
     }
 
@@ -257,6 +257,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
 
     av_dict_set(&ctx->enc_opts, "preset", "superfast", 0);
     av_dict_set(&ctx->enc_opts, "tune", "zerolatency", 0);
+    av_dict_set(&ctx->enc_opts, "movflags", "faststart", 0);
 
     // audio stream setup
     if(ctx->audio_stream_index >= 0)
