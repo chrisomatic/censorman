@@ -1,6 +1,6 @@
 
-#include "model_data/scrfd_face_bin.h"
-#include "model_data/scrfd_face_10g_bin.h"
+#include "model_data/scrfd_face_2.5g_bnkps_bin.h"
+#include "model_data/scrfd_face_10g_bnkps_bin.h"
 #include "model_data/scrfd_person_bin.h"
 #include "model_data/license_plate_bin.h"
 #include "model_data/nudity_bin.h"
@@ -72,8 +72,8 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
             case DETECT_TYPE_FACE:
             {
                 model_face = model_create_mem(640, 640,
-                        scrfd_2_5g_gnkps_ncnn_param_bin,
-                        scrfd_2_5g_gnkps_ncnn_bin
+                        scrfd_2_5g_bnkps_opt_ncnn_param_bin,
+                        scrfd_2_5g_bnkps_opt_ncnn_bin
                 );
 
                 scrfd_face_in0  = SCRFD_FACE_IN0;
@@ -91,8 +91,8 @@ b32 detect_init(DetectConfig *detect_cfgs, s64 config_count)
             case DETECT_TYPE_FACE_10G:
             {
                 model_face = model_create_mem(640, 640,
-                        scrfd_10g_gnkps_ncnn_param_bin,
-                        scrfd_10g_gnkps_ncnn_bin
+                        scrfd_10g_bnkps_opt_param_bin,
+                        scrfd_10g_bnkps_opt_bin
                 );
 
                 scrfd_face_in0  = SCRFD_FACE_10G_IN0;
@@ -181,7 +181,9 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes)
 
     if(os_get_log_level() == LOG_LEVEL_VERBOSE)
     {
-        logv("Found %d boxes", new_boxes.count);
+        if(new_boxes.count > 0)
+            logv("Found %d boxes", new_boxes.count);
+
         for(s64 i = 0; i < new_boxes.count; ++i)
         {
             Box *box = (Box *)list_get(&new_boxes, i);
@@ -1385,4 +1387,97 @@ ModelFace detect_model_from_string(String str)
         return MODEL_FACE_SCRFD_10G;
 
     return MODEL_FACE_SCRFD_2_5G;
+}
+
+DetectReport detect_report_create(Arena *arena, s64 item_count)
+{
+    DetectReport report = {0};
+
+    report.enabled              = true;
+    report.item_count           = item_count;
+    report.items                = PUSH_ARRAY(arena, DetectReportItem, item_count);
+
+    return report;
+}
+
+void detect_report_init_item(DetectReport *report, s64 item_index, u64 frame_count_total, f32 fps)
+{
+    if(!report->enabled)
+        return;
+
+    if(item_index < 0 || item_index >= report->item_count)
+        return;
+
+    DetectReportItem *item = &report->items[item_index];
+    item->frame_count_total = frame_count_total;
+    item->frames_per_second = fps;
+}
+
+void detect_report_update_item(DetectReport *report, s64 item_index, BoxFrame *box_frame)
+{
+    if(!report->enabled)
+        return;
+
+    if(item_index < 0 || item_index >= report->item_count)
+        return;
+
+    DetectReportItem *item = &report->items[item_index];
+
+    item->total_detect_boxes += box_frame->box_count;
+
+    for(u32 i = 0; i < box_frame->box_count; ++i)
+    {
+        Box *box = &box_frame->boxes[i];
+
+        item->sum_box_width  += box->w;
+        item->sum_box_height += box->h;
+        item->sum_confidence += box->confidence;
+        
+        if(box->confidence > item->highest_confidence)
+        {
+            item->highest_confidence = box->confidence;
+        }
+    }
+}
+
+void detect_report_print(DetectReport *report, void *settings_v, LogLevel ll)
+{
+    if(!report->enabled)
+        return;
+
+    Settings *settings = (Settings *)settings_v;
+    DetectConfig *cfg  = &settings->detect_configs[0];
+
+    os_log(ll, __FILE__, __LINE__, "============== Report ==============");
+    os_log(ll, __FILE__, __LINE__, "Model                 %s", "");
+    os_log(ll, __FILE__, __LINE__, "Confidence Threshold  %.2f", cfg->threshold_confidence);
+    os_log(ll, __FILE__, __LINE__, "NMS Threshold         %.2f", cfg->threshold_nms);
+    os_log(ll, __FILE__, __LINE__, "Total Asset Count     %u",   report->item_count);
+    os_log(ll, __FILE__, __LINE__, "Total Detection Boxes %u",   0);
+    os_log(ll, __FILE__, __LINE__, "====================================");
+    os_log(ll, __FILE__, __LINE__, "| Filename | Duration | Frame Count | Total Boxes | Avg Box Width | Avg Box Height | Highest Confidence | Avg Confidence |");
+    os_log(ll, __FILE__, __LINE__, "|----------|----------|-------------|-------------|---------------|----------------|--------------------|----------------|");
+
+    for(s64 i = 0; i < report->item_count; ++i)
+    {
+        DetectReportItem *item = &report->items[i];
+        Asset *asset = &settings->assets[i];
+
+        f32 avg_box_width  = item->total_detect_boxes == 0 ? 0 : item->sum_box_width / (f32)item->total_detect_boxes;
+        f32 avg_box_height = item->total_detect_boxes == 0 ? 0 : item->sum_box_height / (f32)item->total_detect_boxes;
+        f32 avg_confidence = item->total_detect_boxes == 0 ? 0 : item->sum_confidence / (f32)item->total_detect_boxes;
+
+        os_log(ll, __FILE__, __LINE__, "|" STR_FMT "|%f|%u|%u|%f|%f|%f|%f|",
+                STR_ARG(asset->path),
+                item->frames_per_second == 0.0 ? 0.0 : item->frame_count_total / item->frames_per_second,
+                item->frame_count_total,
+                item->total_detect_boxes,
+                avg_box_width,
+                avg_box_height,
+                item->highest_confidence,
+                avg_confidence
+        );
+    }
+
+    os_log(ll, __FILE__, __LINE__, "====================================");
 }

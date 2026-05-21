@@ -16,6 +16,9 @@ Settings settings_default(void)
     settings.block_scale          = 0.12f;
     settings.smoothing_window     = 0.200f; // 200ms
 
+    settings.thumbnail_width  = 250;
+    settings.thumbnail_height = 250;
+
     settings.detect_configs[0].type = DETECT_TYPE_FACE;
     settings.detect_configs[0].threshold_confidence = 0.42f;
     settings.detect_configs[0].threshold_nms        = 0.45f;
@@ -27,6 +30,7 @@ Settings settings_default(void)
     settings.verbose   = false;
     settings.stopwatch = false;
     settings.quiet     = false;
+    settings.report    = false;
     settings.help      = false;
 
     return settings;
@@ -60,6 +64,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_bbx_file_format  = string_array_create(scratch.arena, 2, S("bbx_file_format"),  S("bff"));
     StringArray ids_facial_features  = string_array_create(scratch.arena, 2, S("facial_features"),  S("ff"));
     StringArray ids_thumbnail        = string_array_create(scratch.arena, 2, S("thumbnail"),        S("tn"));
+    StringArray ids_report           = string_array_create(scratch.arena, 2, S("report"),           S("r"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
     String str_detect_types     = cmdline_get_value_first_match(&cmdline, ids_detect_types);
@@ -100,6 +105,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     b32 f_verbose    = cmdline_has_any_flags(&cmdline, ids_verbose);
     b32 f_stopwatch  = cmdline_has_any_flags(&cmdline, ids_stopwatch);
     b32 f_thumbnail  = cmdline_has_any_flags(&cmdline, ids_thumbnail);
+    b32 f_report     = cmdline_has_any_flags(&cmdline, ids_report);
     b32 f_quiet      = cmdline_has_any_flags(&cmdline, ids_quiet);
 
     if(f_help)       settings.help      = true;
@@ -110,6 +116,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(f_verbose)    settings.verbose   = true;
     if(f_stopwatch)  settings.stopwatch = true;
     if(f_thumbnail)  settings.thumbnail = true;
+    if(f_report)     settings.report    = true;
     if(f_quiet)      settings.quiet     = true;
     
     // create output directory if needed

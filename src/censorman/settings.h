@@ -39,6 +39,9 @@ typedef struct
     u32 thread_count;
     u64 buffer_size;
 
+    u32 thumbnail_width;
+    u32 thumbnail_height;
+
     f32 nms_threshold;        // [0.0 - 1.0]
     f32 box_padding;          // [0.0 - 1.0]
     f32 smoothing_window;     // [0.0 - 1.0]
@@ -53,6 +56,7 @@ typedef struct
     b8 verbose;
     b8 stopwatch;
     b8 thumbnail;
+    b8 report;
     b8 quiet;
     b8 distort_audio;
     b8 bbx_print_format;

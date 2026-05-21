@@ -541,8 +541,13 @@ b32 video_save_frames(Video *vid)
                 Image thumbnail = {
                     .props.w = vid->w,
                     .props.h = vid->h,
-                    .data = &vid->data[i*vid->w*vid->h]
+                    .data = &vid->data[i*vid->w*vid->h],
+                    .arena = vid->arena
                 };
+
+                // resize and rotate if needed
+                thumbnail = image_rotate(thumbnail, vid->rotation, CCW);
+                thumbnail = image_scale_lanczos(thumbnail, 1280, 720, 3, true);
 
                 String path_without_extension = os_path_remove_extension(vid->settings.output_path);
                 String thumbnail_output_path  = string_concat(vid->arena, 3, path_without_extension, S("_thumbnail"), S(".png"));

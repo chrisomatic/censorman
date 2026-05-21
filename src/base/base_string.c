@@ -205,7 +205,7 @@ String string_concat(Arena *arena, u64 count, ...)
     for(s64 i = 0; i < count; ++i)
     {
         String s = va_arg(args2, String);
-        memcpy(&str.data[str.len],s.data, s.len);
+        MemoryCopy(&str.data[str.len],s.data, s.len);
         str.len += s.len;
     }
     va_end(args2);
@@ -741,7 +741,7 @@ String string_list_collapse(StringList *sl)
     for(;;)
     {
         String *it = &sn->str;
-        memcpy(&str.data[str.len], it->data, it->len);
+        MemoryCopy(&str.data[str.len], it->data, it->len);
         str.len += it->len;
 
         if(!sn->next)
@@ -907,7 +907,7 @@ StringArray string_split(Arena *arena, String base, String split)
         str->data = PUSH_ARRAY(arena, u8, string_len);
         str->len = string_len;
 
-        memcpy(str->data, &base.data[split_indices[i]], string_len);
+        MemoryCopy(str->data, &base.data[split_indices[i]], string_len);
     }
 
     return sa;

@@ -43,14 +43,15 @@ Arena *arena_chunk; // used for video frame chunks
 Mutex arena_chunk_mutex = {0};
 
 // Shared variables for threads
-Barrier   barrier        = {0};
-Thread    *threads       = NULL;
-Settings  settings       = {0};
-OS_File   bbx_file       = {0};
-Video     vid            = {0};
-ListArray frames         = {0};
-BoxFrame  *box_frames    = NULL;
-b32       video_complete = false;
+Barrier      barrier        = {0};
+Thread       *threads       = NULL;
+Settings     settings       = {0};
+OS_File      bbx_file       = {0};
+Video        vid            = {0};
+ListArray    frames         = {0};
+BoxFrame     *box_frames    = NULL;
+DetectReport report         = {0};
+b32          video_complete = false;
 
 s64 entry_point(void *params);
 
@@ -108,6 +109,11 @@ int main(int argc, char **args)
     if(settings.bbx_output.len > 0)
     {
         bbx_file = bbx_file_create(settings.bbx_output);
+    }
+
+    if(settings.report)
+    {
+        report = detect_report_create(arena_perm, settings.asset_count);
     }
 
     // launch threads
@@ -199,7 +205,8 @@ s64 entry_point(void *params)
 
                     if(settings.thumbnail)
                     {
-                        Image thumbnail = image_scale_lanczos(img_src, 150, 150, 3, true);
+                        Image thumbnail = image_rotate(img_src, thumbnail.props.rotation, CCW);
+                        thumbnail = image_scale_lanczos(thumbnail, settings.thumbnail_width, settings.thumbnail_height, 3, true);
 
                         String path_without_extension = os_path_remove_extension(asset->output_path);
                         String thumbnail_output_path = string_concat(arena_frame, 3, path_without_extension, S("_thumbnail"), S(".png"));
@@ -233,6 +240,7 @@ s64 entry_point(void *params)
                 logi("Progress: %3d%% [%5d / %d]", (s32)(100*vid.frames_processed / (f32)vid.frame_count_total), vid.frames_processed, vid.frame_count_total);
 
                 bbx_file_write_asset_header(bbx_file, i, asset, vid.w, vid.h, vid.fps, vid.frame_count_total);
+                detect_report_init_item(&report, i, vid.frame_count_total, vid.fps);
             }
 
             for(;;)
@@ -272,11 +280,11 @@ s64 entry_point(void *params)
                 range = thread_range(frames.count);
 
                 // detect on frames
-                for(u32 i = range.min; i < range.max; ++i)
+                for(u32 j = range.min; j < range.max; ++j)
                 {
                     arena_reset(arena_frame);
 
-                    u32 frame = *(((u32 *)frames.items) + i);
+                    u32 frame = *(((u32 *)frames.items) + j);
 
                     // put frame into an image
                     Image img_src = 
@@ -294,9 +302,9 @@ s64 entry_point(void *params)
                     List box_list = list_create(arena_frame, sizeof(Box));
 
                     // [detections]
-                    for(u32 j = 0; j < settings.detect_config_count; ++j)
+                    for(u32 k = 0; k < settings.detect_config_count; ++k)
                     {
-                        DetectConfig *cfg = &settings.detect_configs[j];
+                        DetectConfig *cfg = &settings.detect_configs[k];
                         Model model = detect_get_model_by_type(cfg->type);
 
                         Image img = img_src;
@@ -330,10 +338,11 @@ s64 entry_point(void *params)
 
                     stopwatch_begin(&sw, S("write bbx"));
 
-                    // write bbx box frames
-                    for(s64 i = 0; i < vid.frame_count; ++i)
+                    // write bbx box frames or update report
+                    for(s64 j = 0; j < vid.frame_count; ++j)
                     {
-                        bbx_file_write_box_frame(bbx_file, &box_frames[i]);
+                        bbx_file_write_box_frame(bbx_file, &box_frames[j]);
+                        detect_report_update_item(&report, i, &box_frames[j]); // i is asset index
                     }
 
                     stopwatch_end(&sw, S("write bbx"));
@@ -349,7 +358,7 @@ s64 entry_point(void *params)
                 if(!settings.no_encode)
                 {
                     // [apply filters]
-                    for(s64 i = range.min; i < range.max; ++i)
+                    for(s64 j = range.min; j < range.max; ++j)
                     {
                         arena_reset(arena_frame);
 
@@ -358,19 +367,19 @@ s64 entry_point(void *params)
                             .props.w = vid.w,
                             .props.h = vid.h,
                             .props.rotation = vid.rotation,
-                            .data = &vid.data[i*vid.w*vid.h],
+                            .data = &vid.data[j*vid.w*vid.h],
                             .arena = arena_frame
                         };
 
-                        BoxFrame *box_frame = &box_frames[i];
+                        BoxFrame *box_frame = &box_frames[j];
 
-                        for(s64 j = 0; j < box_frame->box_count; ++j)
+                        for(s64 k = 0; k < box_frame->box_count; ++k)
                         {
-                            Box *box = &box_frame->boxes[j];
+                            Box *box = &box_frame->boxes[k];
 
-                            for(s64 k = 0; k < settings.filter_count; ++k)
+                            for(s64 l = 0; l < settings.filter_count; ++l)
                             {
-                                filter_apply(settings.filters[k], &img_src, box);
+                                filter_apply(settings.filters[l], &img_src, box);
                             }
                         }
 
@@ -408,29 +417,29 @@ s64 entry_point(void *params)
             {
                 PDF pdf = pdf_open(arena_frame, asset->path);
 
-                for(s32 i = 0; i < pdf.page_count; ++i)
+                for(s32 j = 0; j < pdf.page_count; ++j)
                 {
                     arena_reset(pdf.arena);
 
-                    logi("Reading Page %d", i);
-                    PDFPage page = pdf_open_page(&pdf, i);
+                    logi("Reading Page %d", j);
+                    PDFPage page = pdf_open_page(&pdf, j);
 
                     // get image list from page
                     List image_list = pdf_read_images_from_page(&pdf, page);
 
-                    for(s64 j = 0; j < image_list.count; ++j)
+                    for(s64 k = 0; k < image_list.count; ++k)
                     {
-                        PDFImage* img_pdf = (PDFImage *)list_get(&image_list, j);
+                        PDFImage* img_pdf = (PDFImage *)list_get(&image_list, k);
                         if(!img_pdf) continue;
                         
                         Image img_src = img_pdf->image;
-                        bbx_file_write_asset_header(bbx_file, j, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
+                        bbx_file_write_asset_header(bbx_file, k, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
                         List box_list = list_create(arena_frame, sizeof(Box));
 
                         // [detections]
-                        for(u32 k = 0; k < settings.detect_config_count; ++k)
+                        for(u32 l = 0; l < settings.detect_config_count; ++l)
                         {
-                            DetectConfig *cfg = &settings.detect_configs[k];
+                            DetectConfig *cfg = &settings.detect_configs[l];
                             Model model = detect_get_model_by_type(cfg->type);
 
                             Image img = img_src;
@@ -450,13 +459,13 @@ s64 entry_point(void *params)
                         if(!settings.no_encode)
                         {
                             // [apply filters]
-                            for(s64 k = 0; k < settings.filter_count; ++k)
+                            for(s64 l = 0; l < settings.filter_count; ++l)
                             {
-                                Filter filter = settings.filters[k];
+                                Filter filter = settings.filters[l];
 
-                                for(s64 l = 0; l < box_frame.box_count; ++l)
+                                for(s64 m = 0; m < box_frame.box_count; ++m)
                                 {
-                                    Box *box = &box_frame.boxes[l];
+                                    Box *box = &box_frame.boxes[m];
                                     filter_apply(filter, &img_src, box);
 
                                     img_pdf->total_changes++;
@@ -485,7 +494,7 @@ s64 entry_point(void *params)
 
                     // grab first page for thumbnail
                     Image img = pdf_get_full_image_of_page(&pdf, page);
-                    Image thumbnail = image_scale_lanczos(img, 150, 150, 3, true);
+                    Image thumbnail = image_scale_lanczos(img, settings.thumbnail_width, settings.thumbnail_height, 3, true);
 
                     String path_without_extension = os_path_remove_extension(asset->output_path);
                     String thumbnail_output_path = string_concat(pdf.arena, 3, path_without_extension, S("_thumbnail"), S(".png"));
@@ -502,7 +511,9 @@ s64 entry_point(void *params)
     NARROW 
     {
         bbx_file_close(bbx_file);
+
         if(settings.stopwatch) stopwatch_print(&sw, LOG_LEVEL_INFO);
+        detect_report_print(&report, (void*)&settings, LOG_LEVEL_INFO);
 
         if(settings.no_encode)
         {

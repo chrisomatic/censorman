@@ -71,6 +71,30 @@ typedef struct
     u32 net_h;
 } Model;
 
+// These Report structs are used for 
+// diagnostics printing to help tune
+// the model and configuration
+typedef struct
+{
+    u64 frame_count_total;
+    f32 frames_per_second;
+
+    u64 total_detect_boxes;
+    u64 sum_box_width;
+    u64 sum_box_height;
+    f32 sum_confidence;
+    f32 highest_confidence;
+} DetectReportItem;
+
+typedef struct
+{
+    b32 enabled;
+    DetectType detect_type;
+
+    s64 item_count;
+    DetectReportItem *items;
+} DetectReport;
+
 String detect_type_to_string(DetectType type);
 DetectType detect_type_from_string(String str);
 
@@ -99,3 +123,8 @@ Box box_pad(Box box, ImageProps *props, f32 padding_percent);
 
 void box_print(Box *b, LogLevel ll);
 
+// Detect Report API
+DetectReport detect_report_create(Arena *arena, s64 item_count);
+void detect_report_init_item(DetectReport *report, s64 item_index, u64 frame_count_total, f32 fps);
+void detect_report_update_item(DetectReport *report, s64 item_index, BoxFrame *box_frame);
+void detect_report_print(DetectReport *report, void *settings_v, LogLevel ll);
