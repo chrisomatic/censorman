@@ -58,8 +58,8 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 | Class             | Model                                 | Confidence Threshold (Default) | NMS IoU Threshold (Default) |
 |-------------------|---------------------------------------|--------------------------------|-----------------------------|
-| Face (default)    | scrfd_2.5g_gnkps                      | 0.42 (42%)                     | 0.45 (45%)                  |
-| Face 10G          | scrfd_10g_gnkps                       | 0.42 (42%)                     | 0.45 (45%)                  |
+| Face (default)    | scrfd_2.5g_bnkps                      | 0.42 (42%)                     | 0.45 (45%)                  |
+| Face 10G          | scrfd_10g_bnkps                       | 0.42 (42%)                     | 0.45 (45%)                  |
 | Person            | InsightFace SCRFD 2.5g Person         | 0.50 (50%)                     | 0.50 (50%)                  |
 | License Plate     | YOLOv8 trained 2.5g                   | 0.50 (50%)                     | 0.45 (45%)                  |
 | Nudity            | NudeNET                               | 0.25 (25%)                     | 0.45 (45%)                  |
@@ -68,8 +68,8 @@ WIDER face benchmarks:
 
 | Model              | Easy  | Medium | Hard  |
 |--------------------|-------|--------|-------|
-| scrfd\_2.5g\_gnkps | 93.57 | 91.70  | 76.08 |
-| scrfd\_10g\_gnkps  | 95.16 | 93.87  | 83.05 |
+| scrfd\_2.5g\_bnkps | 93.80 | 92.02  | 77.13 |
+| scrfd\_10g\_bnkps  | 95.40 | 94.01  | 82.80 |
 
 ## Install pre-made binaries
 
