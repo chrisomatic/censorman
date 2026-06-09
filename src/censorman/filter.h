@@ -26,6 +26,7 @@ typedef struct
     FilterType type;
     f32 param; // typically in range [0.0, 1.0]
     String texture_path;
+    b32 elliptical;
 } Filter;
 
 String     filter_to_string(FilterType type);

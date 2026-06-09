@@ -29,31 +29,102 @@ void filter_apply(Filter filter, Image *image, Box *box)
 {
     if(image->props.w == 0 || image->props.h == 0)
         return;
-
+    
     stopwatch_begin(image->stopwatch, S(__func__));
+
+    Image temp_image = {0};
+    Box   temp_box   = {0};
+
+    Image *image_ = image;
+    Box   *box_   = box;
+
+    if(filter.elliptical)
+    {
+        // If we want an ellipse cutout of the filter
+        // We need to copy the box region to the image buffer
+        // And update the box dimensions
+        temp_image.data = PUSH_ARRAY(image->arena, RGBColor, box->w * box->h);
+        temp_image.props.w = box->w;
+        temp_image.props.h = box->h;
+        temp_image.props.rotation = image->props.rotation;
+        temp_image.props.scale = 1.0f;
+
+        image_copy_rect(image, box->x, box->y, &temp_image, 0,0, box->w, box->h);
+
+        MemoryCopyStruct(&temp_box, box);
+
+        temp_box.x = 0;
+        temp_box.y = 0;
+
+        image_ = &temp_image;
+        box_   = &temp_box;
+    }
+
     switch(filter.type)
     {
         case FILTER_TYPE_BLACKOUT:
-            filter_blackout(image, box);
+            filter_blackout(image_, box_);
             break;
         case FILTER_TYPE_BLUR_BOX:
-            filter_blur_box(image, box, filter.param);
+            filter_blur_box(image_, box_, filter.param);
             break;
         case FILTER_TYPE_BLUR_GAUSSIAN:
-            filter_blur_gaussian(image, box, filter.param);
+            filter_blur_gaussian(image_, box_, filter.param);
             break;
         case FILTER_TYPE_PIXELATE:
-            filter_pixelate(image, box, filter.param);
+            filter_pixelate(image_, box_, filter.param);
             break;
         case FILTER_TYPE_SCRAMBLE:
-            filter_scramble(image, box);
+            filter_scramble(image_, box_);
             break;
         case FILTER_TYPE_TEXTURE:
-            filter_texture(image, box);
+            filter_texture(image_, box_);
             break;
         case FILTER_TYPE_NONE:
         default:
             break;
+    }
+
+    if(filter.elliptical)
+    {
+        // Now we need to copy the temp image
+        // Back to the original image, but ignore 
+        // the pixels that are outside of the ellipse
+
+        RGBColor *src_pixel = temp_image.data;
+        RGBColor *dst_pixel = image->data + (box->y * image->props.w) + box->x;
+
+        f32 halfw = box->w/2.0f;
+        f32 halfh = box->h/2.0f;
+
+        f32 C_x = halfw;
+        f32 C_y = halfh;
+
+        for(s64 j = 0; j < box->h; ++j)
+        {
+            for(s64 i = 0; i < box->w; ++i)
+            {
+                // equation of rounded ellipse
+                // |(i-C_x)/a|^3 + |(j-C_y)/b|^3
+
+                f32 va = ABS((i - C_x) / halfw);
+                f32 vb = ABS((j - C_y) / halfh);
+                f32 v = (va*va*va )+ (vb*vb*vb);
+
+                b32 include = (v <= 1.0f);
+
+                if(include)
+                {
+                    MemoryCopyStruct(dst_pixel, src_pixel);
+                }
+
+                src_pixel++;
+                dst_pixel++;
+            }
+
+            src_pixel += 0;
+            dst_pixel += (image->props.w - box->w);
+        }
     }
 
     stopwatch_end(image->stopwatch, S(__func__));

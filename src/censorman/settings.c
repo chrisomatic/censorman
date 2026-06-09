@@ -3,9 +3,11 @@ Settings settings_default(void)
 {
     Settings settings = {0};
 
-    settings.filters[0].type  = FILTER_TYPE_BLUR_BOX;
-    settings.filters[0].param = 0.60f;
-    settings.filter_count     = 1;
+    settings.filters[0].type       = FILTER_TYPE_BLUR_BOX;
+    settings.filters[0].param      = 0.45f;
+    settings.filters[0].elliptical = false;
+
+    settings.filter_count = 1;
 
     settings.output_folder = S("output");
 
@@ -64,6 +66,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     StringArray ids_bbx_file_format  = string_array_create(scratch.arena, 2, S("bbx_file_format"),  S("bff"));
     StringArray ids_facial_features  = string_array_create(scratch.arena, 2, S("facial_features"),  S("ff"));
     StringArray ids_thumbnail        = string_array_create(scratch.arena, 2, S("thumbnail"),        S("tn"));
+    StringArray ids_elliptical       = string_array_create(scratch.arena, 2, S("elliptical"),       S("el"));
     StringArray ids_report           = string_array_create(scratch.arena, 2, S("report"),           S("r"));
 
     String str_assets           = cmdline_get_unflagged(&cmdline, 0);
@@ -105,19 +108,21 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     b32 f_verbose    = cmdline_has_any_flags(&cmdline, ids_verbose);
     b32 f_stopwatch  = cmdline_has_any_flags(&cmdline, ids_stopwatch);
     b32 f_thumbnail  = cmdline_has_any_flags(&cmdline, ids_thumbnail);
+    b32 f_elliptical = cmdline_has_any_flags(&cmdline, ids_elliptical);
     b32 f_report     = cmdline_has_any_flags(&cmdline, ids_report);
     b32 f_quiet      = cmdline_has_any_flags(&cmdline, ids_quiet);
 
-    if(f_help)       settings.help      = true;
+    if(f_help)       settings.help       = true;
     if(f_bbx_format) settings.bbx_print_format = true;
-    if(f_no_encode)  settings.no_encode = true;
-    if(f_debug)      settings.debug     = true;
-    if(f_no_labels)  settings.no_labels = true;
-    if(f_verbose)    settings.verbose   = true;
-    if(f_stopwatch)  settings.stopwatch = true;
-    if(f_thumbnail)  settings.thumbnail = true;
-    if(f_report)     settings.report    = true;
-    if(f_quiet)      settings.quiet     = true;
+    if(f_no_encode)  settings.no_encode  = true;
+    if(f_debug)      settings.debug      = true;
+    if(f_no_labels)  settings.no_labels  = true;
+    if(f_verbose)    settings.verbose    = true;
+    if(f_stopwatch)  settings.stopwatch  = true;
+    if(f_thumbnail)  settings.thumbnail  = true;
+    if(f_elliptical) settings.elliptical = true;
+    if(f_report)     settings.report     = true;
+    if(f_quiet)      settings.quiet      = true;
     
     // create output directory if needed
     char *output_folder_cstr = string_to_cstr(scratch.arena, settings.output_folder);
@@ -268,14 +273,23 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         {
             String filter_str = string_trim(strs_filters.items[i]);
 
-            // check for :<parameter>
+            // check for :<parameter>:<elliptical>
             StringArray filter_params = string_split(scratch.arena, filter_str, S(":"));
             filter_str = filter_params.items[0];
-            f64 param = 0.0;
+
+            f64 param1 = 0.0;
+            s64 param2 = 0;
+
             if(filter_params.count > 1)
             {
-                param = string_to_f64(filter_params.items[1]);
-                param = CLAMP(param, 0.0, 1.0);
+                param1 = string_to_f64(filter_params.items[1]);
+                param1 = CLAMP(param1, 0.0, 1.0);
+            }
+
+            if(filter_params.count > 2)
+            {
+                param2 = string_to_s64(filter_params.items[2]);
+                param2 = CLAMP(param2, 0.0, 1.0);
             }
 
             FilterType type = filter_from_string(filter_str);
@@ -286,15 +300,27 @@ Settings settings_parse(Arena *arena, int argc, char **args)
 
             if(type == FILTER_TYPE_BLUR_BOX || type == FILTER_TYPE_BLUR_GAUSSIAN)
             {
-                filter->param = param == 0.0 ? settings.blur_strength : param;
+                filter->param = param1 == 0.0 ? settings.blur_strength : param1;
             }
             else if(type == FILTER_TYPE_PIXELATE)
             {
-                filter->param = param == 0.0 ? settings.block_scale : param;
+                filter->param = param1 == 0.0 ? settings.block_scale : param1;
+            }
+
+            if(param2 > 0)
+            {
+                filter->elliptical = true;
+            }
+            else {
+                filter->elliptical = settings.elliptical;
             }
 
             settings.filter_count++;
         }
+    }
+    else
+    {
+        settings.filters[0].elliptical = settings.elliptical;
     }
     
     // Filter Features
@@ -449,7 +475,7 @@ void settings_print_help(void)
     os_printf("    --filter [-f] <filters>\n");
     os_printf("        a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]\n");
     os_printf("        default: blur\n");
-    os_printf("        Each filter can specify an optional parameter with ':' (e.g blur:0.20)\n");
+    os_printf("        Each filter can specify an optional parameter with ':' followed by an optional flag to enable an elliptical mask (e.g blur:0.20:1)\n");
     os_printf("        This parameter indicates 'blur_strength' for blur and gaussian_blur, or\n");
     os_printf("        'block_scale' with pixelate\n");
     os_printf("\n");
@@ -497,6 +523,7 @@ void settings_print_help(void)
     os_printf("    --no_labels [-nl]         Use with --debug flag to exclude the labels on the debug markup\n");
     os_printf("    --verbose [-vb]           Turn on verbose console prints\n");
     os_printf("    --thumbnail [-tn]         Produce a _thumbnail.png for each asset\n");
+    os_printf("    --elliptical [-el]        Mask all filters to a rounded elliptical shape\n");
     os_printf("    --stopwatch [-sw]         Turn on stopwatch prints for timing information\n");
     os_printf("    --quiet [-q]              Disable all console prints\n");
     os_printf("    --help [-h]               Display this help output\n");

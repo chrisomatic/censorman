@@ -425,6 +425,30 @@ Rotation image_get_rotation_from_file(char *file_path)
     return rotation;
 }
 
+b32 image_copy_rect(Image *src, s32 src_x, s32 src_y, Image *dst, s32 dst_x, s32 dst_y, s32 width, s32 height)
+{
+    if(src_x + width >= src->props.w || src_y + height >= src->props.h)
+        return false;
+
+    if(dst->props.w < width || dst->props.h < height)
+        return false;
+
+    RGBColor *src_pixel = src->data + (src_y * src->props.w) + src_x;
+    RGBColor *dst_pixel = dst->data + (dst_y * dst->props.w) + dst_x;
+
+    for(s64 j = 0; j < height; ++j)
+    {
+        // copy a row from src Image to dst Image
+        MemoryCopy(dst_pixel, src_pixel, sizeof(RGBColor)*width);
+
+        src_pixel += (src->props.w);
+        dst_pixel += (dst->props.w);
+    }
+
+    return true;
+}
+
+
 void image_print(Image *image, LogLevel ll)
 {
     os_log(ll, __FILE__, __LINE__, "===================");

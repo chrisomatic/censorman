@@ -176,7 +176,7 @@ You can modify settings.c to add support for your model on the command-line
 ## Help
 
 ```
-[CENSORMAN V2]
+[CENSORMAN V2.2]
     _O_
   /|-X-|\
  /  \_/  \
@@ -202,7 +202,7 @@ OPTIONS
     --filter [-f] <filters>
         a comma-separated list of filters [blur,gaussian_blur,pixelate,scramble,blackout,texture]
         default: blur
-        Each filter can specify an optional parameter with ':' (e.g blur:0.20)
+        Each filter can specify an optional parameter with ':' followed by an optional flag to enable an elliptical mask (e.g blur:0.20:1)
         This parameter indicates 'blur_strength' for blur and gaussian_blur, or
         'block_scale' with pixelate
 
@@ -251,6 +251,7 @@ FLAGS
     --no_labels [-nl]         Use with --debug flag to exclude the labels on the debug markup
     --verbose [-vb]           Turn on verbose console prints
     --thumbnail [-tn]         Produce a _thumbnail.png for each asset
+    --elliptical [-el]        Mask all filters to a rounded elliptical shape
     --stopwatch [-sw]         Turn on stopwatch prints for timing information
     --quiet [-q]              Disable all console prints
     --help [-h]               Display this help output

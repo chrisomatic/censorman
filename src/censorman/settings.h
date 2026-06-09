@@ -56,6 +56,7 @@ typedef struct
     b8 verbose;
     b8 stopwatch;
     b8 thumbnail;
+    b8 elliptical;
     b8 report;
     b8 quiet;
     b8 distort_audio;

@@ -64,5 +64,6 @@ Image image_scale(Image source, u32 target_width, u32 target_height, b32 remove_
 Image image_scale_lanczos(Image source, u32 target_width, u32 target_height, u32 a, b32 remove_margins);
 
 Rotation image_get_rotation_from_file(char *file_path);
+b32 image_copy_rect(Image *src, s32 src_x, s32 src_y, Image *dst, s32 dst_x, s32 dst_y, s32 width, s32 height);
 
 void image_print(Image *image, LogLevel ll);
