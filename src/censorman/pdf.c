@@ -124,7 +124,7 @@ PDFPage pdf_open_page(PDF *pdf, s32 page_index)
 Image pdf_get_full_image_of_page(PDF *pdf, PDFPage page)
 {
     Image img = {0};
-    if(!pdf_is_valid) return img;
+    if(!pdf_is_valid(pdf)) return img;
     if(!page.ref) return img;
 
     fz_matrix ctm  = fz_identity;

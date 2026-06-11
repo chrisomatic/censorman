@@ -251,7 +251,7 @@ FLAGS
     --no_labels [-nl]         Use with --debug flag to exclude the labels on the debug markup
     --verbose [-vb]           Turn on verbose console prints
     --thumbnail [-tn]         Produce a _thumbnail.png for each asset
-    --elliptical [-el]        Mask all filters to a rounded elliptical shape
+    --elliptical [-el]        Mask all filters to a rounded and rotated (for faces) elliptical shape
     --stopwatch [-sw]         Turn on stopwatch prints for timing information
     --quiet [-q]              Disable all console prints
     --help [-h]               Display this help output

@@ -427,27 +427,36 @@ Rotation image_get_rotation_from_file(char *file_path)
 
 b32 image_copy_rect(Image *src, s32 src_x, s32 src_y, Image *dst, s32 dst_x, s32 dst_y, s32 width, s32 height)
 {
-    if(src_x + width >= src->props.w || src_y + height >= src->props.h)
-        return false;
-
-    if(dst->props.w < width || dst->props.h < height)
-        return false;
-
-    RGBColor *src_pixel = src->data + (src_y * src->props.w) + src_x;
-    RGBColor *dst_pixel = dst->data + (dst_y * dst->props.w) + dst_x;
-
     for(s64 j = 0; j < height; ++j)
     {
-        // copy a row from src Image to dst Image
-        MemoryCopy(dst_pixel, src_pixel, sizeof(RGBColor)*width);
+        for(s64 i = 0; i < width; ++i)
+        {
+            s64 curr_src_x = src_x + i;
+            s64 curr_src_y = src_y + j;
 
-        src_pixel += (src->props.w);
-        dst_pixel += (dst->props.w);
+            s64 curr_dst_x = dst_x + i;
+            s64 curr_dst_y = dst_y + j;
+
+            b32 outside_of_src_range = (curr_src_x < 0 || curr_src_x >= src->props.w) || (curr_src_y < 0 || curr_src_y >= src->props.h);
+            b32 outside_of_dst_range = (curr_dst_x < 0 || curr_dst_x >= dst->props.w) || (curr_dst_y < 0 || curr_dst_y >= dst->props.h);
+
+            if(outside_of_src_range || outside_of_dst_range)
+            {
+                // pixel outside of one of the images
+                // ignore
+                continue;
+            }
+
+            // copy a pixel to the dst
+            RGBColor *src_pixel = src->data + (curr_src_y * src->props.w) + curr_src_x;
+            RGBColor *dst_pixel = dst->data + (curr_dst_y * dst->props.w) + curr_dst_x;
+
+            MemoryCopyStruct(dst_pixel, src_pixel);
+        }
     }
 
     return true;
 }
-
 
 void image_print(Image *image, LogLevel ll)
 {

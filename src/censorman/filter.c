@@ -41,8 +41,11 @@ void filter_apply(Filter filter, Image *image, Box *box)
     if(filter.elliptical)
     {
         // If we want an ellipse cutout of the filter
-        // We need to copy the box region to the image buffer
-        // And update the box dimensions
+        // We need to copy the box region to a temp image buffer
+        // And update the box dimensions first
+
+        s32 max_dim = MAX(box->w, box->h);
+
         temp_image.data = PUSH_ARRAY(image->arena, RGBColor, box->w * box->h);
         temp_image.props.w = box->w;
         temp_image.props.h = box->h;
@@ -50,7 +53,6 @@ void filter_apply(Filter filter, Image *image, Box *box)
         temp_image.props.scale = 1.0f;
 
         image_copy_rect(image, box->x, box->y, &temp_image, 0,0, box->w, box->h);
-
         MemoryCopyStruct(&temp_box, box);
 
         temp_box.x = 0;
@@ -58,6 +60,11 @@ void filter_apply(Filter filter, Image *image, Box *box)
 
         image_ = &temp_image;
         box_   = &temp_box;
+    }
+    else
+    {
+        // Clamp box since we are simply axis-aligned rectangular
+        *box_ = box_clamp(*box_, &image_->props);
     }
 
     switch(filter.type)
@@ -89,41 +96,73 @@ void filter_apply(Filter filter, Image *image, Box *box)
     {
         // Now we need to copy the temp image
         // Back to the original image, but ignore 
-        // the pixels that are outside of the ellipse
+        // the pixels that are outside of the rounded+rotated ellipse
 
-        RGBColor *src_pixel = temp_image.data;
-        RGBColor *dst_pixel = image->data + (box->y * image->props.w) + box->x;
+        f32 h = box->w/2.0f;
+        f32 k = box->h/2.0f;
 
-        f32 halfw = box->w/2.0f;
-        f32 halfh = box->h/2.0f;
+        f32 a = box->w/2.0f;
+        f32 b = box->h/2.0f;
 
-        f32 C_x = halfw;
-        f32 C_y = halfh;
+        // get angle between eyes
+        Point eye_left  = box->landmarks[0];
+        Point eye_right = box->landmarks[1];
 
+        f32 eye_angle = RAD((f32)image->props.rotation);
+
+        f32 eye_dist = vec2_distance(
+                VEC2(eye_left.x, eye_left.y), 
+                VEC2(eye_right.x, eye_right.y)
+        );
+
+        if(eye_dist > 20.0f)
+        {
+            // only consider eye angle if the eyes are at least 20px apart
+            eye_angle += atanf((eye_right.y - eye_left.y)/(f32)(eye_right.x - eye_left.x));
+        }
+
+        // filter out pixels if they fall outside of rounded+rotated ellipse
         for(s64 j = 0; j < box->h; ++j)
         {
             for(s64 i = 0; i < box->w; ++i)
             {
-                // equation of rounded ellipse
-                // |(i-C_x)/a|^3 + |(j-C_y)/b|^3
+                s64 curr_src_x = i;
+                s64 curr_src_y = j;
 
-                f32 va = ABS((i - C_x) / halfw);
-                f32 vb = ABS((j - C_y) / halfh);
-                f32 v = (va*va*va )+ (vb*vb*vb);
+                s64 curr_dst_x = box->x + i;
+                s64 curr_dst_y = box->y + j;
+
+                b32 outside_of_src_range = (curr_src_x < 0 || curr_src_x >= temp_image.props.w) || (curr_src_y < 0 || curr_src_y >= temp_image.props.h);
+                b32 outside_of_dst_range = (curr_dst_x < 0 || curr_dst_x >= image->props.w) || (curr_dst_y < 0 || curr_dst_y >= image->props.h);
+
+                if(outside_of_src_range || outside_of_dst_range)
+                {
+                    // pixel outside of destination range,
+                    // ignore
+                    continue;
+                }
+
+                // calculate ellipse value
+                // for this x,y
+                // |((x-h)cos(t)+(y-k)sin(t))/a|^r + |((x-h)sin(t)-(y-k)cos(t))/b|^r <= 1
+
+                f32 x = i;
+                f32 y = j;
+
+                f32 va = ABS(((x-h)*cosf(eye_angle) + (y-k)*sinf(eye_angle))/a);
+                f32 vb = ABS(((x-h)*sinf(eye_angle) - (y-k)*cosf(eye_angle))/b);
+                f32 v = (va*va*va) + (vb*vb*vb); // r = 3
 
                 b32 include = (v <= 1.0f);
 
                 if(include)
                 {
+                    RGBColor *src_pixel = temp_image.data + (curr_src_y * temp_image.props.w) + curr_src_x;
+                    RGBColor *dst_pixel = image->data + (curr_dst_y * image->props.w) + curr_dst_x;
+
                     MemoryCopyStruct(dst_pixel, src_pixel);
                 }
-
-                src_pixel++;
-                dst_pixel++;
             }
-
-            src_pixel += 0;
-            dst_pixel += (image->props.w - box->w);
         }
     }
 
@@ -496,6 +535,9 @@ void filter_draw_debug_info(Image *image, BoxFrame *box_frame, f32 box_padding, 
     for(s64 j = 0; j < box_frame->box_count; ++j)
     {
         Box *box = &box_frame->boxes[j];
+
+        // make sure box is clamped
+        *box = box_clamp(*box, &image->props);
 
         RGBColor color_list[LANDMARK_COUNT] = {0};
 

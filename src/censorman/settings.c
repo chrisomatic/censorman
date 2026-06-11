@@ -388,15 +388,16 @@ void settings_print(Settings *settings)
         {
             case FILTER_TYPE_BLUR_BOX:
             case FILTER_TYPE_BLUR_GAUSSIAN:
-                string_list_addf(&sl, ":%0.2f", filter.param);
+                string_list_addf(&sl, ":%0.2f:%d", filter.param, filter.elliptical);
                 break;
             case FILTER_TYPE_PIXELATE:
-                string_list_addf(&sl, ":%0.2f", filter.param);
+                string_list_addf(&sl, ":%0.2f:%d", filter.param, filter.elliptical);
                 break;
             case FILTER_TYPE_TEXTURE:
-                string_list_addf(&sl, ":" STR_FMT, STR_ARG(filter.texture_path));
+                string_list_addf(&sl, ":" STR_FMT ":%d", STR_ARG(filter.texture_path), filter.elliptical);
                 break;
             case FILTER_TYPE_BLACKOUT:
+                string_list_addf(&sl, ":%d", filter.elliptical);
             case FILTER_TYPE_NONE:
             default:
                 break;

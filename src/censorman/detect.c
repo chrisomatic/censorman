@@ -1183,8 +1183,8 @@ Box box_unscale(Box box, Image *image)
     s32 src_w = swap_dimensions ? image->props_orig.h : image->props_orig.w;
     s32 src_h = swap_dimensions ? image->props_orig.w : image->props_orig.h;
 
-    box.x = (s32)(MAX(0,(s32)(box.x - image->props.pad_x)) * scale_factor);
-    box.y = (s32)(MAX(0,(s32)(box.y - image->props.pad_y)) * scale_factor);
+    box.x = (s32)(box.x - image->props.pad_x) * scale_factor;
+    box.y = (s32)(box.y - image->props.pad_y) * scale_factor;
     box.w = (s32)(box.w * scale_factor);
     box.h = (s32)(box.h * scale_factor);
 
@@ -1192,8 +1192,8 @@ Box box_unscale(Box box, Image *image)
     {
         Point *lm = &box.landmarks[k];
 
-        lm->x = (s32)(MAX(0,lm->x - image->props.pad_x) * scale_factor);
-        lm->y = (s32)(MAX(0,lm->y - image->props.pad_y) * scale_factor);
+        lm->x = (s32)(lm->x - image->props.pad_x) * scale_factor;
+        lm->y = (s32)(lm->y - image->props.pad_y) * scale_factor;
     }
 
     return box;
@@ -1285,14 +1285,18 @@ Box box_pad(Box box, ImageProps *props, f32 padding_percent)
     padded.w = box.w + 2*pad_x;
     padded.h = box.h + 2*pad_y;
 
-    padded.x = CLAMP(padded.x, 0, (s32)(props->w - 1));
-    padded.y = CLAMP(padded.y, 0, (s32)(props->h - 1));
-    padded.w = CLAMP(padded.w, 1, (s32)(props->w - padded.x - 1));
-    padded.h = CLAMP(padded.h, 1, (s32)(props->h - padded.y - 1));
-
     return padded;
 }
 
+Box box_clamp(Box box, ImageProps *props)
+{
+    box.x = CLAMP(box.x, 0, (s32)(props->w - 1));
+    box.y = CLAMP(box.y, 0, (s32)(props->h - 1));
+    box.w = CLAMP(box.w, 1, (s32)(props->w - box.x - 1));
+    box.h = CLAMP(box.h, 1, (s32)(props->h - box.y - 1));
+
+    return box;
+}
 
 void box_print(Box *b, LogLevel ll)
 {

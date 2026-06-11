@@ -120,6 +120,7 @@ void     box_frame_apply_padding(BoxFrame input, ImageProps *props, f32 padding_
 Box box_unscale(Box box, Image *image);
 Box box_rotate(Box box, ImageProps *props, ClockDir dir);
 Box box_pad(Box box, ImageProps *props, f32 padding_percent);
+Box box_clamp(Box box, ImageProps *props);
 
 void box_print(Box *b, LogLevel ll);
 
