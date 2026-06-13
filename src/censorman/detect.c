@@ -37,26 +37,23 @@ static Model model_create_mem(s32 net_w, s32 net_h, const u8 *param_bin, const u
 
     s64 thread_count = s_thread_context.count;
 
-    for(s64 i = 0; i < thread_count; ++i)
-    {
-        model.net = ncnn_net_create();
+    model.net = ncnn_net_create();
 
-        // ncnn_net_set_workspace_allocator(model.net);
-        ncnn_net_set_lightmode(model.net, 1);
+    // ncnn_net_set_workspace_allocator(model.net);
+    ncnn_net_set_lightmode(model.net, 1);
 
-        ncnn_option_t opt = ncnn_net_get_option(model.net);
-        ncnn_option_set_num_threads(opt, 1);
-        ncnn_option_set_use_packing_layout(opt, 1); // faster SIMD on x86
-        ncnn_option_set_use_fp16_packed(opt, 1);
-        ncnn_option_set_use_fp16_storage(opt, 1);
-        ncnn_option_set_use_fp16_arithmetic(opt, 1);
-        ncnn_net_set_option(model.net, opt);
+    ncnn_option_t opt = ncnn_net_get_option(model.net);
+    ncnn_option_set_num_threads(opt, 1);
+    ncnn_option_set_use_packing_layout(opt, 1); // faster SIMD on x86
+    ncnn_option_set_use_fp16_packed(opt, 1);
+    ncnn_option_set_use_fp16_storage(opt, 1);
+    ncnn_option_set_use_fp16_arithmetic(opt, 1);
+    ncnn_net_set_option(model.net, opt);
 
-        size_t param_ret = ncnn_net_load_param_bin_memory(model.net, param_bin);
-        size_t model_ret = ncnn_net_load_model_memory(model.net, model_bin);
+    size_t param_ret = ncnn_net_load_param_bin_memory(model.net, param_bin);
+    size_t model_ret = ncnn_net_load_model_memory(model.net, model_bin);
 
-        model.initialized = (param_ret > 0 && model_ret > 0);
-    }
+    model.initialized = (param_ret > 0 && model_ret > 0);
 
     return model;
 }
