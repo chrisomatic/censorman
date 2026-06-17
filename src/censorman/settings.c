@@ -81,6 +81,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     String str_bbx_output       = cmdline_get_value_first_match(&cmdline, ids_bbx_output);
     String str_distort_audio    = cmdline_get_value_first_match(&cmdline, ids_distort_audio);
     String str_facial_features  = cmdline_get_value_first_match(&cmdline, ids_facial_features);
+    String str_thumbnail        = cmdline_get_value_first_match(&cmdline, ids_thumbnail);
 
     StringArray strs_assets          = string_split(scratch.arena, str_assets,          S(","));
     StringArray strs_detect_types    = string_split(scratch.arena, str_detect_types,    S(","));
@@ -123,7 +124,7 @@ Settings settings_parse(Arena *arena, int argc, char **args)
     if(f_elliptical) settings.elliptical = true;
     if(f_report)     settings.report     = true;
     if(f_quiet)      settings.quiet      = true;
-    
+
     // create output directory if needed
     char *output_folder_cstr = string_to_cstr(scratch.arena, settings.output_folder);
     b32 output_folder_exists = os_file_exists(output_folder_cstr);
@@ -133,11 +134,32 @@ Settings settings_parse(Arena *arena, int argc, char **args)
         os_file_create_directory(output_folder_cstr);
     }
 
+    if(!STR_EMPTY(str_thumbnail))
+    {
+        String str_thumbnail_lower = string_to_lower(scratch.arena, str_thumbnail);
+        StringArray dimensions = string_split(scratch.arena, str_thumbnail_lower, S("x"));
+
+        s64 dim[2] = {0};
+        if(dimensions.count == 1)
+        {
+            dim[0] = string_to_s64(dimensions.items[0]);
+            dim[1] = dim[0];
+        }
+        else if(dimensions.count == 2)
+        {
+            dim[0] = string_to_s64(dimensions.items[0]);
+            dim[1] = string_to_s64(dimensions.items[1]);
+        }
+
+        if(dim[0] > 0) settings.thumbnail_width  = dim[0];
+        if(dim[1] > 0) settings.thumbnail_height = dim[1];
+    }
+
     // handle input assets
 
     StringArray exts_image = string_array_create(scratch.arena, 10, S("png"), S("jpg"), S("jpeg"), S("bmp"), S("gif"), S("psd"), S("tga"), S("hdr"), S("pic"),  S("pnm"));
     StringArray exts_video = string_array_create(scratch.arena, 10, S("mp4"), S("m4v"), S("m4a"),  S("mov"), S("avi"), S("wmv"), S("wma"), S("asf"), S("webm"), S("mkv"));
-    StringArray exts_pdf   = string_array_create(scratch.arena, 1, S("pdf"));
+    StringArray exts_pdf   = string_array_create(scratch.arena, 1,  S("pdf"));
     
     for(int i = 0; i < strs_assets.count; ++i)
     {
@@ -420,7 +442,8 @@ void settings_print(Settings *settings)
     logi("%-22s %s",            "No Encoding",          STR_BOOL(settings->no_encode));
     logi("%-22s %s",            "Debug",                STR_BOOL(settings->debug));
     logi("%-22s %s",            "Verbose",              STR_BOOL(settings->verbose));
-    logi("%-22s %s",            "Thumbnail",            STR_BOOL(settings->thumbnail));
+    logi("%-22s %s (%dx%d)",    "Thumbnail",            STR_BOOL(settings->thumbnail), settings->thumbnail_width, settings->thumbnail_height);
+    logi("%-22s %s",            "Elliptical",           STR_BOOL(settings->elliptical));
     logi("%-22s " STR_FMT,      "Output Folder",        STR_ARG(settings->output_folder));
     logi("%-22s " STR_FMT,      "Texture Path",         STR_ARG(settings->texture_path));
     logi("%-22s " STR_FMT,      "Bounding Box Output",  STR_ARG(settings->bbx_output));
@@ -517,13 +540,17 @@ void settings_print_help(void)
     os_printf("\n");
     os_printf("    --facial_features [-ff] <facial_features>\n");
     os_printf("        Break the facial box into sub-boxes. Comma-delimited list of ['eyes','nose','mouth','cheeks','forehead']\n");
+    os_printf("\n");
+    os_printf("    --thumbnail [-tn] [<thumbnail_width>x<thumbnail_height>]\n");
+    os_printf("        Produce a *_thumbnail.png for each asset. Default thumbnail dimensions are 250x250\n");
+    os_printf("        Maintains aspect ratio, so the longest dimension will be set and the other\n");
+    os_printf("        adjusted to that\n");
     os_printf("\nFLAGS\n");
     os_printf("    --bbx_file_format [-bff]  Print information about the file format for BBX files\n");
     os_printf("    --no_encode [-ne]         Disable the writing of the processed output file(s)\n");
     os_printf("    --debug [-db]             Enable debug info markout on output. Draws boxes on output with labels\n");
     os_printf("    --no_labels [-nl]         Use with --debug flag to exclude the labels on the debug markup\n");
     os_printf("    --verbose [-vb]           Turn on verbose console prints\n");
-    os_printf("    --thumbnail [-tn]         Produce a _thumbnail.png for each asset\n");
     os_printf("    --elliptical [-el]        Mask all filters to a rounded elliptical shape\n");
     os_printf("    --stopwatch [-sw]         Turn on stopwatch prints for timing information\n");
     os_printf("    --quiet [-q]              Disable all console prints\n");

@@ -3,7 +3,8 @@
 #define S(literal)      (String){sizeof(literal)-1, (u8*)(literal)}
 #define STR(cstr)       (String){cstring_strlen(cstr),(u8*)(cstr)}
 
-#define STR_EMPTY(x)    ((x) == 0 || cstring_strlen(x) == 0)
+#define STR_EMPTY(x)    ((x).len == 0)
+#define CSTR_EMPTY(x)   ((x) == 0 || cstring_strlen(x) == 0)
 #define STR_BOOL(b)     ((b) ? "True" : "False")
 
 // Used for printing String type in printf-like functions
@@ -83,7 +84,7 @@ String string_to_upper(Arena *arena, String str);
 u32 string_hash(String s);
 
 // Returns null-terminated C String
-char* string_to_cstr(Arena *arena, String str);
+char *string_to_cstr(Arena *arena, String str);
 
 void string_print(String s);
 

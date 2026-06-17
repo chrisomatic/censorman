@@ -244,14 +244,18 @@ OPTIONS
     --facial_features [-ff] <facial_features>
         Break the facial box into sub-boxes. Comma-delimited list of ['eyes','nose','mouth','cheeks','forehead']
 
+    --thumbnail [-tn] [<thumbnail_width>x<thumbnail_height>]
+        Produce a *_thumbnail.png for each asset. Default thumbnail dimensions are 250x250
+        Maintains aspect ratio, so the longest dimension will be set and the other
+        adjusted to that
+
 FLAGS
     --bbx_file_format [-bff]  Print information about the file format for BBX files
     --no_encode [-ne]         Disable the writing of the processed output file(s)
     --debug [-db]             Enable debug info markout on output. Draws boxes on output with labels
     --no_labels [-nl]         Use with --debug flag to exclude the labels on the debug markup
     --verbose [-vb]           Turn on verbose console prints
-    --thumbnail [-tn]         Produce a _thumbnail.png for each asset
-    --elliptical [-el]        Mask all filters to a rounded and rotated (for faces) elliptical shape
+    --elliptical [-el]        Mask all filters to a rounded elliptical shape
     --stopwatch [-sw]         Turn on stopwatch prints for timing information
     --quiet [-q]              Disable all console prints
     --help [-h]               Display this help output
