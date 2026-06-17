@@ -12,7 +12,6 @@
 #include "censorman/filter.h"
 #include "censorman/settings.h"
 #include "censorman/bbx_file.h"
-#include "censorman/pdf.h"
 
 #include "base/base.c"
 #include "os/os.c"
@@ -22,7 +21,6 @@
 #include "censorman/filter.c"
 #include "censorman/settings.c"
 #include "censorman/bbx_file.c"
-#include "censorman/pdf.c"
 
 #define CENSORMAN_VERSION_MAJOR 2
 #define CENSORMAN_VERSION_MINOR 2
@@ -409,101 +407,6 @@ s64 entry_point(void *params)
             {
                 video_save_done(&vid);
                 video_end(&vid);
-            }
-        }
-        else if(asset->type == TYPE_PDF)
-        {
-            NARROW
-            {
-                PDF pdf = pdf_open(arena_frame, asset->path);
-
-                for(s32 j = 0; j < pdf.page_count; ++j)
-                {
-                    arena_reset(pdf.arena);
-
-                    logi("Reading Page %d", j);
-                    PDFPage page = pdf_open_page(&pdf, j);
-
-                    // get image list from page
-                    List image_list = pdf_read_images_from_page(&pdf, page);
-
-                    for(s64 k = 0; k < image_list.count; ++k)
-                    {
-                        PDFImage* img_pdf = (PDFImage *)list_get(&image_list, k);
-                        if(!img_pdf) continue;
-                        
-                        Image img_src = img_pdf->image;
-                        bbx_file_write_asset_header(bbx_file, k, asset, img_src.props.w, img_src.props.h, 0.0f, 1);
-                        List box_list = list_create(arena_frame, sizeof(Box));
-
-                        // [detections]
-                        for(u32 l = 0; l < settings.detect_config_count; ++l)
-                        {
-                            DetectConfig *cfg = &settings.detect_configs[l];
-                            Model model = detect_get_model_by_type(cfg->type);
-
-                            Image img = img_src;
-                            img = image_scale_lanczos(img, model.net_w, model.net_h, 2, false);
-                            img = image_rotate(img, img.props.rotation, CCW);
-
-                            detect(cfg, &img, &box_list);
-                        }
-
-                        BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
-
-                        box_frame = box_frame_divide_into_features(arena_frame, box_frame, &img_src.props, settings.facial_features);
-                        box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
-
-                        bbx_file_write_box_frame(bbx_file, &box_frame);
-
-                        if(!settings.no_encode)
-                        {
-                            // [apply filters]
-                            for(s64 l = 0; l < settings.filter_count; ++l)
-                            {
-                                Filter filter = settings.filters[l];
-
-                                for(s64 m = 0; m < box_frame.box_count; ++m)
-                                {
-                                    Box *box = &box_frame.boxes[m];
-                                    filter_apply(filter, &img_src, box);
-
-                                    img_pdf->total_changes++;
-                                }
-                            }
-
-                            if(settings.debug)
-                            {
-                                filter_draw_debug_info(&img_src, &box_frame, settings.box_padding, settings.no_labels);
-                            }
-                        }
-
-
-                        img_pdf->image = img_src;
-
-                    }
-
-                    pdf_write_images_to_page(&pdf,  image_list, page);
-
-                    pdf_close_page(&pdf, page);
-                }
-
-                if(settings.thumbnail)
-                {
-                    PDFPage page = pdf_open_page(&pdf, 0);
-
-                    // grab first page for thumbnail
-                    Image img = pdf_get_full_image_of_page(&pdf, page);
-                    Image thumbnail = image_scale_lanczos(img, settings.thumbnail_width, settings.thumbnail_height, 3, true);
-
-                    String path_without_extension = os_path_remove_extension(asset->output_path);
-                    String thumbnail_output_path = string_concat(pdf.arena, 3, path_without_extension, S("_thumbnail"), S(".png"));
-
-                    image_save(&thumbnail, thumbnail_output_path);
-                }
-
-                pdf_save(&pdf, asset->output_path);
-                pdf_close(&pdf);
             }
         }
     }

@@ -35,7 +35,6 @@ Filters can be applied to detected bounding boxes, and can be stacked to create 
 
 - Image: JPG, PNG, BMP, PSD, TGA, HDR, PIC, GIF(unanimated), PNM
 - Video: MP4, MOV, AVI, WMV, WEBM
-- Misc: PDF
 
 > [!NOTE]
 > Output video is encoded as MP4 (MPEG-4 YUV420p)
@@ -110,7 +109,6 @@ All dependencies are built from source and statically linked to final binary (ex
 | libx264           | H.264 Video Encoding   | https://code.videolan.org/videolan/x264.git       |
 | libvpx            | VPX Video Encoding     | https://chromium.googlesource.com/webm/libvpx.git |
 | libexif           | EXIF Metadata          | https://github.com/libexif/libexif.git            |
-| mupdf             | PDF Processing         | https://github.com/ArtifexSoftware/mupdf          |
 | ncnn              | CNN Inference Engine   | https://github.com/tencent/NCNN                   |
 | stb\_image        | Image Reading/Writing  | https://github.com/nothings/stb                   |
 

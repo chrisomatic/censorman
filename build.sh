@@ -37,7 +37,6 @@ case "$PLATFORM" in
           $LIB_DIR/libavutil.a \
           $LIB_DIR/libexif.a \
           $LIB_DIR/libx264.a $LIB_DIR/libvpx.a \
-          $LIB_DIR/libmupdf.a $LIB_DIR/libmupdf-third.a \
           -lm -lz -lc++ -lpthread -liconv"
     FRAMEWORKS="-framework CoreFoundation \
                 -framework CoreMedia \
@@ -61,7 +60,6 @@ case "$PLATFORM" in
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
           -lexif \
           -lx264 -lvpx \
-          -lmupdf -lmupdf-third \
           -lz -lstdc++ \
           -Wl,-Bdynamic \
           -lm -lpthread"
@@ -79,7 +77,6 @@ case "$PLATFORM" in
           -lavformat -lavcodec -lswscale -lswresample -lavutil \
           -lexif \
           -lx264 -lvpx \
-          -lmupdf -lmupdf-third \
           -liconv -lz \
           -lstdc++ -lpthread \
           -Wl,-Bdynamic \

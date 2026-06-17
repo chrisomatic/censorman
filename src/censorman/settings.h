@@ -8,7 +8,6 @@ typedef enum
     TYPE_UNSUPPORTED = 0,
     TYPE_IMAGE = 1,
     TYPE_VIDEO = 2,
-    TYPE_PDF   = 3,
 } AssetType;
 
 typedef struct

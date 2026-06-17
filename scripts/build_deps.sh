@@ -1,13 +1,13 @@
 #!/bin/bash
 # build_deps.sh - Build third-party dependencies for the current platform
 # Usage: ./build_deps.sh <target>
-#   target: all | ffmpeg | ncnn | exif | mupdf
+#   target: all | ffmpeg | ncnn | exif
 
 set -e
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 if [ -z "$1" ]; then
-  echo "Usage: $0 <all|ffmpeg|ncnn|exif|mupdf>"
+  echo "Usage: $0 <all|ffmpeg|ncnn|exif>"
   exit 1
 fi
 
@@ -426,63 +426,6 @@ build_exif() {
   echo "exif libs installed to $LIB_DEST"
 }
 
-build_mupdf() {
-  echo "════════════════════════════════════"
-  echo " Building libmupdf"
-  echo "════════════════════════════════════"
-
-  BUILD_DIR="$PWD/build_mupdf"
-
-  rm -rf "$BUILD_DIR"
-  mkdir -p "$BUILD_DIR"
-
-  cd "$BUILD_DIR"
-  git clone --branch 1.27.2 git://git.ghostscript.com/mupdf.git
-  cd mupdf
-  git submodule update --init thirdparty/freetype
-  git submodule update --init thirdparty/libjpeg
-  git submodule update --init thirdparty/openjpeg
-  git submodule update --init thirdparty/zlib
-  git submodule update --init thirdparty/jbig2dec
-  git submodule update --init thirdparty/mujs
-  git submodule update --init thirdparty/lcms2
-
-  make build=release \
-  libs \
-  html=no \
-  mujs=no \
-  brotli=no \
-  xps=no \
-  svg=no \
-  extract=no \
-  tofu=yes \
-  tofu_cjk=yes \
-  USE_SYSTEM_ZLIB=yes \
-  XCFLAGS="\
-    -march=x86-64-v2 \
-    -DFZ_ENABLE_JPX=0 \
-    -DFZ_ENABLE_BARCODE=0 \
-    -DFZ_ENABLE_SPOT_RENDERING=0 \
-    -DFZ_PLOTTERS_CMYK=0 \
-    -DFZ_PLOTTERS_N=0 \
-    -DFZ_ENABLE_ICC=0 \
-    -DFZ_ENABLE_OCR_OUTPUT=0 \
-    -DFZ_ENABLE_IMG=0 \
-    -DFZ_ENABLE_CBZ=0 \
-    -Os \
-    -ffunction-sections \
-    -fdata-sections" \
-  LDFLAGS="-Wl,--gc-sections"
-
-  MUPDF_BUILD_DIR="build/release-tofu-tofu_cjk"
-  mv "$MUPDF_BUILD_DIR/libmupdf.a" "$LIB_DEST/"
-  mv "$MUPDF_BUILD_DIR/libmupdf-third.a" "$LIB_DEST/" 
-
-  cd ../..
-  rm -rf "$BUILD_DIR"
-  echo "mupdf libs installed to $LIB_DEST"
-}
-
 # ═════════════════════════════════════════════════════════════════════════════
 # DISPATCH
 # ═════════════════════════════════════════════════════════════════════════════
@@ -492,12 +435,10 @@ case "$TARGET" in
     build_ffmpeg
     build_ncnn
     build_exif
-    build_mupdf
     ;;
   ffmpeg) build_ffmpeg ;;
   ncnn)   build_ncnn   ;;
   exif)   build_exif   ;;
-  mupdf)  build_mupdf  ;;
   *)
     echo "ERROR: Unknown target '$TARGET'"
     echo "Usage: $0 <all|ffmpeg|ncnn|exif>"
