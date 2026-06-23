@@ -40,6 +40,7 @@ typedef struct
     s32 w;
     s32 h;
     u8  confidence;
+    f32 relative_angle;
     Point landmarks[LANDMARK_COUNT];
     DetectType type;
 } Box;
@@ -115,6 +116,7 @@ void detect(DetectConfig *cfg, Image *image, List *total_boxes);
 
 BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number);
 BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps *props, u8 facial_features);
+BoxFrame box_frame_calc_relative_angles(BoxFrame input);
 void     box_frame_apply_padding(BoxFrame input, ImageProps *props, f32 padding_percent);
 
 Box box_unscale(Box box, Image *image);

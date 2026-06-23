@@ -104,22 +104,8 @@ void filter_apply(Filter filter, Image *image, Box *box)
         f32 a = box->w/2.0f;
         f32 b = box->h/2.0f;
 
-        // get angle between eyes
-        Point eye_left  = box->landmarks[0];
-        Point eye_right = box->landmarks[1];
-
-        f32 eye_angle = RAD((f32)image->props.rotation);
-
-        f32 eye_dist = vec2_distance(
-                VEC2(eye_left.x, eye_left.y), 
-                VEC2(eye_right.x, eye_right.y)
-        );
-
-        if(eye_dist > 20.0f)
-        {
-            // only consider eye angle if the eyes are at least 20px apart
-            eye_angle += atanf((eye_right.y - eye_left.y)/(f32)(eye_right.x - eye_left.x));
-        }
+        f32 angle = RAD((f32)image->props.rotation);
+        angle += box->relative_angle;
 
         // filter out pixels if they fall outside of rounded+rotated ellipse
         for(s64 j = 0; j < box->h; ++j)
@@ -149,8 +135,8 @@ void filter_apply(Filter filter, Image *image, Box *box)
                 f32 x = i;
                 f32 y = j;
 
-                f32 va = ABS(((x-h)*cosf(eye_angle) + (y-k)*sinf(eye_angle))/a);
-                f32 vb = ABS(((x-h)*sinf(eye_angle) - (y-k)*cosf(eye_angle))/b);
+                f32 va = ABS(((x-h)*cosf(angle) + (y-k)*sinf(angle))/a);
+                f32 vb = ABS(((x-h)*sinf(angle) - (y-k)*cosf(angle))/b);
                 f32 v = (va*va*va) + (vb*vb*vb); // r = 3
 
                 b32 include = (v <= 1.0f);

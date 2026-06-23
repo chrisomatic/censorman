@@ -174,6 +174,7 @@ s64 entry_point(void *params)
 
                 BoxFrame box_frame = box_frame_from_list(arena_frame, box_list, 0);
 
+                box_frame = box_frame_calc_relative_angles(box_frame);
                 box_frame = box_frame_divide_into_features(arena_frame, box_frame, &img_src.props, settings.facial_features);
                 box_frame_apply_padding(box_frame, &img_src.props, settings.box_padding);
 
@@ -316,7 +317,9 @@ s64 entry_point(void *params)
 
                       BoxFrame *box_frame = &box_frames[frame];
                       *box_frame = box_frame_from_list(arena_chunk, box_list, vid.frames_processed + frame);
+                      *box_frame = box_frame_calc_relative_angles(*box_frame);
                       *box_frame = box_frame_divide_into_features(arena_chunk, *box_frame, &img_src.props, settings.facial_features);
+
                       box_frame_apply_padding(*box_frame, &img_src.props, settings.box_padding);
                       box_frame->detections_run = true;
 

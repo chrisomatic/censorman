@@ -229,6 +229,38 @@ BoxFrame box_frame_from_list(Arena *arena, List box_list, u32 frame_number)
     return bf;
 }
 
+BoxFrame box_frame_calc_relative_angles(BoxFrame input)
+{
+    BoxFrame output = input;
+    for(s64 i = 0; i < output.box_count; ++i)
+    {
+        Box *box = &output.boxes[i];
+
+        f32 angle = 0.0f;
+        if(box->type == DETECT_TYPE_FACE)
+        {
+            // get angle between eyes
+            // to try and match face rotation
+            Point eye_left  = box->landmarks[0];
+            Point eye_right = box->landmarks[1];
+
+            f32 eye_dist = vec2_distance(
+                    VEC2(eye_left.x, eye_left.y), 
+                    VEC2(eye_right.x, eye_right.y)
+            );
+
+            if(eye_dist > 20.0f)
+            {
+                // only consider eye angle if the eyes are at least 20px apart
+                angle += atanf((eye_right.y - eye_left.y)/(f32)(eye_right.x - eye_left.x));
+            }
+        }
+        box->relative_angle = angle;
+    }
+
+    return output;
+}
+
 BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps *props, u8 facial_features)
 {
     BoxFrame output = input;
@@ -237,8 +269,8 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
         return output;
 
     b8 feature_eyes     = BIT_CHECK(facial_features, FACIAL_FEATURE_EYES);
-    b8 feature_nose     = BIT_CHECK(facial_features, FACIAL_FEATURE_NOSE);
     b8 feature_mouth    = BIT_CHECK(facial_features, FACIAL_FEATURE_MOUTH);
+    b8 feature_nose     = BIT_CHECK(facial_features, FACIAL_FEATURE_NOSE);
     b8 feature_cheeks   = BIT_CHECK(facial_features, FACIAL_FEATURE_CHEEKS);
     b8 feature_forehead = BIT_CHECK(facial_features, FACIAL_FEATURE_FOREHEAD);
 
@@ -314,6 +346,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
             box_eye_left.confidence = input_box.confidence;
             box_eye_left.landmarks[0] = input_box.landmarks[0];
             box_eye_left.type = DETECT_TYPE_EYE;
+            box_eye_left.relative_angle = input_box.relative_angle;
 
             // Right eye
 
@@ -333,6 +366,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
             box_eye_right.confidence = input_box.confidence;
             box_eye_right.landmarks[0] = input_box.landmarks[1];
             box_eye_right.type = DETECT_TYPE_EYE;
+            box_eye_right.relative_angle = input_box.relative_angle;
 
             if(sideways)
             {
@@ -343,30 +377,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
             output.boxes[output.box_count++] = box_eye_right;
         }
 
-        if(feature_nose)
-        {
-            Box box_nose = {0};
-
-            f32 nose_ratio_x = ABS(nose.x - input_box.x) / (f32)input_box.w;
-
-            box_nose.w = 0.30f * input_box.w;
-            box_nose.h = 0.20f * input_box.h;
-
-            if(sideways)
-            {
-                SWAP(s32, box_nose.w, box_nose.h);
-            }
-
-            box_nose.x = nose.x - nose_ratio_x * box_nose.w;
-            box_nose.y = nose.y - 0.75f * box_nose.h;
-
-            box_nose.confidence = input_box.confidence;
-            box_nose.landmarks[0] = input_box.landmarks[2];
-            box_nose.type = DETECT_TYPE_NOSE;
-
-            output.boxes[output.box_count++] = box_nose;
-        }
-
+        
         if(feature_mouth)
         {
             Box box_mouth = {0};
@@ -400,9 +411,36 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
             box_mouth.landmarks[1] = input_box.landmarks[4];
             box_mouth.landmarks[2] = mouth_middle;
             box_mouth.type = DETECT_TYPE_MOUTH;
+            box_mouth.relative_angle = input_box.relative_angle;
 
             output.boxes[output.box_count++] = box_mouth;
         }
+
+        if(feature_nose)
+        {
+            Box box_nose = {0};
+
+            f32 nose_ratio_x = ABS(nose.x - input_box.x) / (f32)input_box.w;
+
+            box_nose.w = 0.30f * input_box.w;
+            box_nose.h = 0.20f * input_box.h;
+
+            if(sideways)
+            {
+                SWAP(s32, box_nose.w, box_nose.h);
+            }
+
+            box_nose.x = nose.x - nose_ratio_x * box_nose.w;
+            box_nose.y = nose.y - 0.75f * box_nose.h;
+
+            box_nose.confidence = input_box.confidence;
+            box_nose.landmarks[0] = input_box.landmarks[2];
+            box_nose.type = DETECT_TYPE_NOSE;
+            box_nose.relative_angle = input_box.relative_angle;
+
+            output.boxes[output.box_count++] = box_nose;
+        }
+
 
         if(feature_cheeks)
         {
@@ -427,6 +465,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
 
             box_cheek_left.confidence = input_box.confidence;
             box_cheek_left.type = DETECT_TYPE_CHEEK;
+            box_cheek_left.relative_angle = input_box.relative_angle;
 
             box_cheek_right.w = 0.35f * input_box.w;
             box_cheek_right.h = 0.20f * input_box.h;
@@ -445,6 +484,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
 
             box_cheek_right.confidence = input_box.confidence;
             box_cheek_right.type = DETECT_TYPE_CHEEK;
+            box_cheek_right.relative_angle = input_box.relative_angle;
 
             output.boxes[output.box_count++] = box_cheek_left;    
             output.boxes[output.box_count++] = box_cheek_right;
@@ -481,6 +521,7 @@ BoxFrame box_frame_divide_into_features(Arena *arena, BoxFrame input, ImageProps
             box_forehead.confidence = input_box.confidence;
             box_forehead.type = DETECT_TYPE_FOREHEAD;
             box_forehead.landmarks[0] = forehead_midpoint;
+            box_forehead.relative_angle = input_box.relative_angle;
 
             output.boxes[output.box_count++] = box_forehead;
         }
