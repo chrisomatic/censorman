@@ -243,6 +243,11 @@ build_ffmpeg() {
     --enable-decoder=opus \
     --enable-decoder=vp8 \
     --enable-decoder=vorbis \
+    --enable-decoder=mjpeg \
+    --enable-decoder=pcm_s16le \
+    --enable-decoder=pcm_u8 \
+    --enable-decoder=adpcm_ima_wav \
+    --enable-decoder=adpcm_ms \
     --enable-parser=h264 \
     --enable-parser=hevc \
     --enable-parser=mpeg4video \
@@ -254,6 +259,7 @@ build_ffmpeg() {
     --enable-parser=opus \
     --enable-parser=vp8 \
     --enable-parser=vorbis \
+    --enable-parser=mjpeg \
     --enable-muxer=mp4 \
     --enable-encoder=libx264 \
     --enable-encoder=aac \
