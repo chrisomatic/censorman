@@ -27,6 +27,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     if(open_input < 0)
     {
         loge("Failed to open input file '%s' (err: %d)",path_cstr, open_input);
+        vid.error = true;
         return vid;
     }
 
@@ -35,6 +36,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     {
         loge("Could not find stream info");
         avformat_close_input(&ctx->fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -54,6 +56,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     {
         loge("No video stream found");
         avformat_close_input(&ctx->fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -129,6 +132,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     {
         loge("Unsupported codec");
         avformat_close_input(&ctx->fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -137,6 +141,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     {
         loge("Could not allocate codec context");
         avformat_close_input(&ctx->fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -152,6 +157,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
         loge("Could not open codec");
         avcodec_free_context(&ctx->codec_ctx);
         avformat_close_input(&ctx->fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -179,6 +185,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
         loge("Failed to allocate RGB buffer of size %lu", (u64)frame_rgb_size * max_frames);
         avcodec_free_context(&ctx->codec_ctx);
         avformat_close_input(&ctx->fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -207,6 +214,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     if(!ctx->enc_fmt_ctx)
     {
         loge("Could not deduce output format");
+        vid.error = true;
         return vid;
     }
 
@@ -217,6 +225,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     {
         loge("Encoder not found");
         avformat_free_context(ctx->enc_fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -226,6 +235,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     {
         loge("Could not create stream");
         avformat_free_context(ctx->enc_fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -234,6 +244,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     {
         loge("Could not allocate codec context");
         avformat_free_context(ctx->enc_fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -329,6 +340,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
         loge("Could not open encoder");
         avcodec_free_context(&ctx->enc_codec_ctx);
         avformat_free_context(ctx->enc_fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -339,6 +351,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
         loge("Could not copy codec parameters");
         avcodec_free_context(&ctx->enc_codec_ctx);
         avformat_free_context(ctx->enc_fmt_ctx);
+        vid.error = true;
         return vid;
     }
     
@@ -370,6 +383,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
             loge("Could not open output file '%s'", out_path_cstr);
             avcodec_free_context(&ctx->enc_codec_ctx);
             avformat_free_context(ctx->enc_fmt_ctx);
+            vid.error = true;
             return vid;
         }
     }
@@ -382,6 +396,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
         avio_close(ctx->enc_fmt_ctx->pb);
         avcodec_free_context(&ctx->enc_codec_ctx);
         avformat_free_context(ctx->enc_fmt_ctx);
+        vid.error = true;
         return vid;
     }
 
@@ -393,6 +408,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     if(!ctx->enc_frame || !ctx->enc_frame_src || !ctx->enc_pkt)
     {
         loge("Could not allocate frame/packet");
+        vid.error = true;
         return vid;
     }
 
@@ -413,6 +429,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     if(!ctx->enc_sws_ctx)
     {
         loge("Could not init sws context");
+        vid.error = true;
         return vid;
     }
 

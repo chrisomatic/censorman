@@ -80,6 +80,7 @@ typedef struct
     u32 frames_processed;  // Used during encoding
     b32 load_complete;     // Set when frame decoding is done
     u32 thumbnail_frame;   // frame to take thumbnail of
+    b32 error;             // error loading video
 
     VideoContext context;  // Used by FFMPEG
 

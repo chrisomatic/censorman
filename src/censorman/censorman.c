@@ -50,6 +50,7 @@ ListArray    frames         = {0};
 BoxFrame     *box_frames    = NULL;
 DetectReport report         = {0};
 b32          video_complete = false;
+u32          ret_code       = 0;
 
 s64 entry_point(void *params);
 
@@ -75,13 +76,13 @@ int main(int argc, char **args)
         if(settings.help)
         {
             settings_print_help();   
-            return 0;
+            return ret_code;
         }
 
         if(settings.bbx_print_format)
         {
             bbx_print_format();
-            return 0;
+            return ret_code;
         }
     }
 
@@ -126,7 +127,7 @@ int main(int argc, char **args)
         thread_join(threads[thread_index]);
     }
 
-    return 0;
+    return ret_code;
 }
 
 s64 entry_point(void *params)
@@ -234,6 +235,11 @@ s64 entry_point(void *params)
 
                 vid = video_begin(arena_chunk, asset->path, asset->output_path, &vs);
                 video_print(&vid);
+
+                if(vid.error)
+                {
+                    ret_code = 1; // set return code to 1
+                }
 
                 // extra print here to give some indication that progress is happening even though it is 0
                 logi("Progress: %3d%% [%5d / %d]", (s32)(100*vid.frames_processed / (f32)vid.frame_count_total), vid.frames_processed, vid.frame_count_total);
