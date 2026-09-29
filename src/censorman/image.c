@@ -313,7 +313,8 @@ Image image_scale_lanczos(Image source, u32 target_width, u32 target_height, u32
         output.props.w     = target_width;
         output.props.h     = (u32)ceilf(source.props.h * output.props.scale);
         if(remove_margins) target_height = output.props.h;
-        output.props.pad_y = ABS(target_height - output.props.h) / 2;
+        s32 height_diff = (s64)(target_height) - (s64)(output.props.h);
+        output.props.pad_y = ABS(height_diff) / 2;
     }
     else
     {
@@ -375,13 +376,17 @@ Image image_scale_lanczos(Image source, u32 target_width, u32 target_height, u32
                 acc_g  += intermediate[idx+1] * w;
                 acc_b  += intermediate[idx+2] * w;
             }
+
             u32 dst_i  = i + output.props.pad_x;
             u32 dst_j  = j + output.props.pad_y;
+
             RGBColor p = {
                 (u8)(acc_r < 0.0f ? 0 : acc_r > 255.0f ? 255 : (u8)acc_r),
                 (u8)(acc_g < 0.0f ? 0 : acc_g > 255.0f ? 255 : (u8)acc_g),
                 (u8)(acc_b < 0.0f ? 0 : acc_b > 255.0f ? 255 : (u8)acc_b),
             };
+
+            // @NOTE: Segfaulting on this line:
             MemoryCopy(&output.data[dst_j * target_width + dst_i], &p, sizeof(RGBColor));
         }
     }

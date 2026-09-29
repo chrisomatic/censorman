@@ -130,7 +130,7 @@ Video video_begin(Arena *arena, String path, String out_path, VideoSettings *set
     ctx->codec = avcodec_find_decoder(codec_id);
     if(!ctx->codec)
     {
-        loge("Unsupported codec");
+        loge("Unsupported codec, ID: %d", codec_id);
         avformat_close_input(&ctx->fmt_ctx);
         vid.error = true;
         return vid;
